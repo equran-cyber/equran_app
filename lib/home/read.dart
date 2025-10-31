@@ -71,7 +71,7 @@ class _ReadPageState extends State<ReadPage> {
   @override
   Widget build(BuildContext context) {
     Size screenSize = MediaQuery.of(context).size;
-    int _picker = _currentVerse;
+    int picker = _currentVerse;
 
     // Define margin values for different screen sizes
     double marginValue;
@@ -146,10 +146,10 @@ class _ReadPageState extends State<ReadPage> {
                             TextButton(
                                 child: const Text("CONFIRM"),
                                 onPressed: () {
-                                  _setVerse(_picker);
+                                  _setVerse(picker);
                                   if (!SettingsDB()
                                       .get("viewMode", defaultValue: true)) {
-                                    _isc.jumpTo(index: _picker - 1);
+                                    _isc.jumpTo(index: picker - 1);
                                   }
                                   _updateDB();
                                   Navigator.of(context).pop();
@@ -162,10 +162,10 @@ class _ReadPageState extends State<ReadPage> {
                             builder: (context, sBsetState) => NumberPicker(
                                 minValue: 1,
                                 maxValue: _totalVerses,
-                                value: _picker,
+                                value: picker,
                                 onChanged: (int value) {
-                                  setState(() => _picker = value);
-                                  sBsetState(() => _picker = value);
+                                  setState(() => picker = value);
+                                  sBsetState(() => picker = value);
                                 }),
                           ),
                         ),
@@ -286,98 +286,100 @@ class _ReadPageState extends State<ReadPage> {
   }
 
   Widget cardView({required double marginValue}) {
-    return SimpleGestureDetector(
-      onHorizontalSwipe: (SwipeDirection direction) {
-        if (direction == SwipeDirection.left) {
-          _increase();
-        } else if (direction == SwipeDirection.right) {
-          _decrease();
-        }
-      },
-      child: Stack(
-        children: [
-          SingleChildScrollView(
-            controller: _scrollController,
-            child: Column(
-              children: [
-                Container(
-                  margin: EdgeInsets.only(
-                      left: marginValue, right: marginValue, top: 20),
-                  child: LinearPercentIndicator(
-                      barRadius: const Radius.circular(30),
-                      animation: true,
-                      animateFromLastPercent: true,
-                      backgroundColor: Theme.of(context).colorScheme.onTertiary,
-                      lineHeight: 20.0,
-                      percent: _currentVerse / _totalVerses,
-                      progressColor: Theme.of(context).colorScheme.tertiary),
-                ),
-                SizedBox(
-                  width: MediaQuery.of(context).size.width,
-                  child: ReadQuranCard(
-                    currentChapter: _currentChapter,
-                    currentVerse: _currentVerse,
-                    totalVerses: _totalVerses,
-                    juzNumber:
-                        quran.getJuzNumber(_currentChapter, _currentVerse),
-                    basmala: _currentChapter != 1 &&
-                            _currentVerse == 1 &&
-                            _currentChapter != 9
-                        ? quran.basmala
-                        : null,
-                    verse: quran.getVerse(_currentChapter, _currentVerse),
-                    translation: quran.getVerseTranslation(
-                        _currentChapter, _currentVerse,
-                        translation: quran.Translation.values[
-                            SettingsDB().get("translation", defaultValue: 0)]),
-                    url: quran.getAudioURLByVerse(
-                        _currentChapter, _currentVerse),
-                    fontSize: SettingsDB().get("fontSize", defaultValue: 38.0),
-                  ),
-                ),
-                const SizedBox(
-                  height: 120,
-                )
-              ],
-            ),
-          ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Container(
-              height: 80,
-              padding: const EdgeInsets.only(right: 12, left: 12),
-              color: Theme.of(context).colorScheme.background,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment
-                    .spaceBetween, // Distribute buttons horizontally
+    return SafeArea(
+      child: SimpleGestureDetector(
+        onHorizontalSwipe: (SwipeDirection direction) {
+          if (direction == SwipeDirection.left) {
+            _increase();
+          } else if (direction == SwipeDirection.right) {
+            _decrease();
+          }
+        },
+        child: Stack(
+          children: [
+            SingleChildScrollView(
+              controller: _scrollController,
+              child: Column(
                 children: [
-                  ElevatedButton(
-                    onPressed: () => _decrease(),
-                    child: const Padding(
-                      padding:
-                          EdgeInsets.symmetric(vertical: 12.0, horizontal: 18),
-                      child: Icon(
-                        Icons.arrow_back_rounded,
-                        size: 30,
-                      ),
+                  Container(
+                    margin: EdgeInsets.only(
+                        left: marginValue, right: marginValue, top: 20),
+                    child: LinearPercentIndicator(
+                        barRadius: const Radius.circular(30),
+                        animation: true,
+                        animateFromLastPercent: true,
+                        backgroundColor: Theme.of(context).colorScheme.onTertiary,
+                        lineHeight: 20.0,
+                        percent: _currentVerse / _totalVerses,
+                        progressColor: Theme.of(context).colorScheme.tertiary),
+                  ),
+                  SizedBox(
+                    width: MediaQuery.of(context).size.width,
+                    child: ReadQuranCard(
+                      currentChapter: _currentChapter,
+                      currentVerse: _currentVerse,
+                      totalVerses: _totalVerses,
+                      juzNumber:
+                          quran.getJuzNumber(_currentChapter, _currentVerse),
+                      basmala: _currentChapter != 1 &&
+                              _currentVerse == 1 &&
+                              _currentChapter != 9
+                          ? quran.basmala
+                          : null,
+                      verse: quran.getVerse(_currentChapter, _currentVerse),
+                      translation: quran.getVerseTranslation(
+                          _currentChapter, _currentVerse,
+                          translation: quran.Translation.values[
+                              SettingsDB().get("translation", defaultValue: 0)]),
+                      url: quran.getAudioURLByVerse(
+                          _currentChapter, _currentVerse),
+                      fontSize: SettingsDB().get("fontSize", defaultValue: 38.0),
                     ),
                   ),
-                  ElevatedButton(
-                    onPressed: () => _increase(),
-                    child: const Padding(
-                      padding:
-                          EdgeInsets.symmetric(vertical: 12.0, horizontal: 18),
-                      child: Icon(
-                        Icons.arrow_forward_rounded,
-                        size: 30,
-                      ),
-                    ),
-                  ),
+                  const SizedBox(
+                    height: 120,
+                  )
                 ],
               ),
             ),
-          ),
-        ],
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Container(
+                height: 80,
+                padding: const EdgeInsets.only(right: 12, left: 12),
+                color: Theme.of(context).colorScheme.background,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment
+                      .spaceBetween, // Distribute buttons horizontally
+                  children: [
+                    ElevatedButton(
+                      onPressed: () => _decrease(),
+                      child: const Padding(
+                        padding:
+                            EdgeInsets.symmetric(vertical: 12.0, horizontal: 18),
+                        child: Icon(
+                          Icons.arrow_back_rounded,
+                          size: 30,
+                        ),
+                      ),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => _increase(),
+                      child: const Padding(
+                        padding:
+                            EdgeInsets.symmetric(vertical: 12.0, horizontal: 18),
+                        child: Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 30,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

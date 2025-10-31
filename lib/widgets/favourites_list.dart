@@ -33,13 +33,13 @@ class _FavouritesListState extends State<FavouritesList> {
 
   @override
   Widget build(BuildContext context) {
-    final List<Item> _data = generateItems();
+    final List<Item> data = generateItems();
 
     return Wrap(direction: Axis.horizontal, children: [
       ExpansionTileGroup(
           spaceBetweenItem: 4,
           toggleType: ToggleType.expandOnlyCurrent,
-          children: _data.asMap().entries.map((e) {
+          children: data.asMap().entries.map((e) {
             final item = e.value;
             final surah = int.parse(item.panelTitle);
 

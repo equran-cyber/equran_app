@@ -137,7 +137,7 @@ class _MainPageState extends State<MainPage>
                 if (box.length == 0) {
                   return const SizedBox.shrink();
                 } else {
-                  return FavouritesList();
+                  return const FavouritesList();
                 }
               },
             )
