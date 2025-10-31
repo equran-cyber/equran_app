@@ -103,7 +103,7 @@ class LastReadCard extends StatelessWidget {
           ),
         );
       },
-      options: CarouselOptions(
+      options: ExpandableCarouselOptions(
           showIndicator: true,
           viewportFraction: viewportFraction,
           initialPage: 0),
