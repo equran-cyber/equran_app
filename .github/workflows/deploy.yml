@@ -16,7 +16,7 @@ jobs:
         with:
           channel: stable
 
-      - run: flutter build web --release canvaskit
+      - run: flutter build web --release
 
       - name: Create CNAME file
         run: echo 'quran.elbaesy.com' > build/web/CNAME
