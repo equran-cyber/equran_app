@@ -13,17 +13,36 @@ class BookmarkDB extends BaseDB {
   }
 
   Future<void> addReadingEntry(int surah, int verse) async {
-    // siuuuuuuuu
-    if (length > 7) {
-      removeOldestEntry();
+    final DateTime now = DateTime.now();
+    final List<ReadingEntry> entries = box
+        .toMap()
+        .values
+        .whereType<ReadingEntry>()
+        .toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+    // Prevent inserting duplicate consecutive records.
+    if (entries.isNotEmpty &&
+        entries.first.surah == surah &&
+        entries.first.verse == verse) {
+      return;
     }
 
-    await put(surah,
-        ReadingEntry(surah: surah, verse: verse, timestamp: DateTime.now()));
+    await put(
+      now.microsecondsSinceEpoch.toString(),
+      ReadingEntry(surah: surah, verse: verse, timestamp: now),
+    );
+
+    while (length > 7) {
+      removeOldestEntry();
+    }
   }
 
   void removeOldestEntry() {
-    var oldestEntry = minBy(box.toMap().entries, (p0) => p0.value.timestamp);
+    final oldestEntry = minBy(
+      box.toMap().entries.where((entry) => entry.value is ReadingEntry),
+      (entry) => (entry.value as ReadingEntry).timestamp,
+    );
     if (oldestEntry != null) {
       delete(oldestEntry.key);
     }

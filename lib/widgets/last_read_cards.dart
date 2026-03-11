@@ -4,19 +4,20 @@ import 'package:equran/backend/library.dart';
 import 'package:equran/home/read.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_carousel_widget/flutter_carousel_widget.dart';
-import 'package:flutter_svg/svg.dart';
 import 'package:quran/quran.dart';
 
 class LastReadCard extends StatelessWidget {
   const LastReadCard({super.key});
 
-  List displayReadingHistory() {
-    return BookmarkDB().getKeys().toList()
-      ..sort((a, b) {
-        var firstEntry = BookmarkDB().get(a) as ReadingEntry;
-        var secondEntry = BookmarkDB().get(b) as ReadingEntry;
-        return secondEntry.timestamp.compareTo(firstEntry.timestamp);
-      });
+  List<ReadingEntry> displayReadingHistory() {
+    final entries = BookmarkDB()
+        .box
+        .toMap()
+        .values
+        .whereType<ReadingEntry>()
+        .toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return entries.take(7).toList();
   }
 
   @override
@@ -32,18 +33,17 @@ class LastReadCard extends StatelessWidget {
       viewportFraction = 1;
     }
 
-    List keys = displayReadingHistory();
+    List<ReadingEntry> entries = displayReadingHistory();
     return ExpandableCarousel.builder(
-      itemCount: keys.length,
+      itemCount: entries.length,
       itemBuilder: (BuildContext context, int itemIndex, int pageViewIndex) {
-        int keySurah = keys[itemIndex];
-        ReadingEntry entry = BookmarkDB().get(keySurah);
+        ReadingEntry entry = entries[itemIndex];
+        int keySurah = entry.surah;
         int verse = entry.verse;
-        DateTime timeRead = entry.timestamp;
         return Card(
-          margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 8),
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           elevation: 2,
-          color: Theme.of(context).colorScheme.secondaryContainer,
+          color: Colors.transparent,
           clipBehavior: Clip.antiAlias,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20.0),
@@ -54,51 +54,51 @@ class LastReadCard extends StatelessWidget {
                       chapter: keySurah,
                       startVerse: verse,
                     ))),
-            child: Row(
-              children: <Widget>[
-                // Left Section with Text and Button
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          'Last Read',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                        const SizedBox(height: 10.0),
-                        Text(
-                          getSurahName(keySurah),
-                          // Replace with actual Surah name
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyLarge
-                              ?.copyWith(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSecondaryContainer),
-                        ),
-                        const SizedBox(height: 4.0),
-                        Text(
-                          'Ayah No : $verse',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ],
-                    ),
-                  ),
+            child: Ink(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: <Color>[
+                    Theme.of(context).colorScheme.primaryContainer.withOpacity(0.72),
+                    Theme.of(context).colorScheme.tertiaryContainer.withOpacity(0.52),
+                    Theme.of(context).colorScheme.surfaceContainerHighest,
+                  ],
                 ),
-                // Right Section with SVG
-                Padding(
-                  padding: const EdgeInsets.only(right: 20, top: 5),
-                  child: SvgPicture.asset('assets/images/quran.svg',
-                      colorFilter: ColorFilter.mode(
-                          Theme.of(context).colorScheme.onSecondaryContainer,
-                          BlendMode.srcIn)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'Last Read',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 24,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      getSurahName(keySurah),
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 18,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Ayah $verse',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontSize: 15,
+                          ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         );

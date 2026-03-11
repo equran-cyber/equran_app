@@ -4,62 +4,89 @@ import 'package:flutter/material.dart';
 
 class QuranCard extends StatelessWidget {
   final Surah surah;
-  const QuranCard({super.key, required this.surah});
+  final bool compact;
+
+  const QuranCard({super.key, required this.surah, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+
     return Card(
-      elevation: 3.0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      margin: EdgeInsets.zero,
+      elevation: compact ? 0 : 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+      ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(30),
-        onTap: () async {
-          await Future.delayed(const Duration(milliseconds: 270));
-          Navigator.of(context).push(MaterialPageRoute(
-              builder: (context) => ReadPage(
-                    chapter: surah.id,
-                  )));
-        },
-        child: ListTile(
-          leading: Container(
-              height: 30,
-              width: 30,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.secondaryContainer,
-                borderRadius: BorderRadius.circular(50),
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ReadPage(chapter: surah.id),
+          ),
+        ),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 10 : 12,
+            vertical: compact ? 10 : 12,
+          ),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: compact ? 38 : 44,
+                height: compact ? 38 : 44,
+                decoration: BoxDecoration(
+                  color: colorScheme.secondaryContainer,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  surah.id.toString().padLeft(2, '0'),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onSecondaryContainer,
+                  ),
+                ),
               ),
-              child: Center(
-                  child: Text(surah.id.toString(),
-                      style: Theme.of(context).textTheme.titleSmall))),
-          title: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                surah.transliteration,
-                style: Theme.of(context).textTheme.titleMedium,
+              SizedBox(width: compact ? 10 : 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      surah.transliteration,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: (compact ? theme.textTheme.titleMedium : theme.textTheme.titleLarge)
+                          ?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: <Widget>[
+                        Text(
+                          '${surah.verses} Ayahs',
+                          style: (compact ? theme.textTheme.bodyMedium : theme.textTheme.bodyLarge)
+                              ?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
               Text(
                 surah.name,
-                style: Theme.of(context).textTheme.titleMedium,
+                style: (compact ? theme.textTheme.titleMedium : theme.textTheme.titleLarge)
+                    ?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),
-
-          subtitle: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                surah.englishName,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              Text(
-                "${surah.verses} Verses",
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
-          ),
-          //
         ),
       ),
     );

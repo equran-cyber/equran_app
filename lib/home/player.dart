@@ -204,6 +204,9 @@ class _PlayerPageState extends State<PlayerPage> {
         _safeSetState(() {
           _isPlaying = state == ap.PlayerState.playing;
           _isPaused = state == ap.PlayerState.paused;
+          if (_isPlaying || _isPaused || state == ap.PlayerState.stopped) {
+            _isLoading = false;
+          }
         });
       });
 
@@ -230,6 +233,11 @@ class _PlayerPageState extends State<PlayerPage> {
         _isPlaying = state.playing;
         _isPaused =
             !state.playing && state.processingState == ja.ProcessingState.ready;
+        if (_isPlaying ||
+            state.processingState == ja.ProcessingState.ready ||
+            state.processingState == ja.ProcessingState.completed) {
+          _isLoading = false;
+        }
       });
 
       if (state.processingState == ja.ProcessingState.completed) {
@@ -275,8 +283,13 @@ class _PlayerPageState extends State<PlayerPage> {
       'https://server8.mp3quran.net/afs/${_surahFileName(surah)}';
 
   String _time(Duration value) {
+    final int totalHours = value.inHours;
     final String minutes = value.inMinutes.remainder(60).toString().padLeft(2, '0');
     final String seconds = value.inSeconds.remainder(60).toString().padLeft(2, '0');
+    if (totalHours > 0) {
+      final String hours = totalHours.toString().padLeft(2, '0');
+      return '$hours:$minutes:$seconds';
+    }
     return '$minutes:$seconds';
   }
 
@@ -376,7 +389,7 @@ class _PlayerPageState extends State<PlayerPage> {
       ),
     );
     await _justAudio.setSpeed(_playbackRate);
-    await _justAudio.play();
+    unawaited(_justAudio.play());
   }
 
   Future<void> _resumeCurrentTrack() async {
@@ -384,7 +397,7 @@ class _PlayerPageState extends State<PlayerPage> {
       await _linuxAudio.resume();
       await _linuxAudio.setPlaybackRate(_playbackRate);
     } else {
-      await _justAudio.play();
+      unawaited(_justAudio.play());
       await _justAudio.setSpeed(_playbackRate);
     }
   }
@@ -462,13 +475,176 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   Future<void> _playNext() async {
-    await _playSurah(_wrapSurah(_selectedSurah + 1), forceRestart: true);
+    final int nextSurah = _shuffleEnabled
+        ? _randomSurah(excluding: _selectedSurah)
+        : _wrapSurah(_selectedSurah + 1);
+    await _playSurah(nextSurah, forceRestart: true);
   }
 
   Future<void> _seek(double fraction) async {
     if (_duration.inMilliseconds <= 0) return;
     final int ms = (_duration.inMilliseconds * fraction).round();
     await _seekCurrentTrack(Duration(milliseconds: ms));
+  }
+
+  Future<void> _selectSurah(int? surah) async {
+    if (surah == null) return;
+    await _playSurah(surah, forceRestart: true);
+  }
+
+  Widget _buildSurahSelectionList({
+    required ThemeData theme,
+    required ColorScheme colorScheme,
+    required bool closeOnSelect,
+  }) {
+    return ListView.builder(
+      physics: const ClampingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+      itemCount: 114,
+      itemBuilder: (context, index) {
+        final int surah = index + 1;
+        final bool isSelected = surah == _selectedSurah;
+        return ListTile(
+          selected: isSelected,
+          selectedTileColor: Colors.transparent,
+          tileColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          selectedColor: colorScheme.onSurface,
+          textColor: colorScheme.onSurface,
+          iconColor: colorScheme.onSurfaceVariant,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+          onTap: () async {
+            if (closeOnSelect) {
+              Navigator.of(context).pop(surah);
+              return;
+            }
+            await _selectSurah(surah);
+          },
+          leading: CircleAvatar(
+            radius: 16,
+            backgroundColor: isSelected
+                ? colorScheme.secondaryContainer
+                : colorScheme.surfaceContainerLow,
+            child: Text(
+              surah.toString(),
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: isSelected
+                    ? colorScheme.onSecondaryContainer
+                    : colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          title: Text(_surahName(surah)),
+          subtitle: Text('Surah $surah'),
+          trailing: isSelected
+              ? Icon(Icons.check_circle_rounded, color: colorScheme.primary)
+              : null,
+        );
+      },
+    );
+  }
+
+  Widget _buildSurahSelectionPane({
+    required ThemeData theme,
+    required ColorScheme colorScheme,
+  }) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[
+              colorScheme.surfaceContainerHigh.withOpacity(0.78),
+              colorScheme.surfaceContainer.withOpacity(0.66),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: colorScheme.outlineVariant.withOpacity(0.55),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+              child: Text(
+                'Choose Surah',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Divider(
+              height: 1,
+              color: colorScheme.outlineVariant.withOpacity(0.35),
+            ),
+            Expanded(
+              child: _buildSurahSelectionList(
+                theme: theme,
+                colorScheme: colorScheme,
+                closeOnSelect: false,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openSurahPickerSheet() async {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final int? selectedSurah = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: colorScheme.surfaceContainer,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) {
+        final double maxHeight = min(
+          MediaQuery.sizeOf(context).height * 0.72,
+          620,
+        );
+        return SafeArea(
+          child: Material(
+            color: colorScheme.surfaceContainer,
+            child: SizedBox(
+              height: maxHeight,
+              child: Column(
+                children: <Widget>[
+                  ListTile(
+                    leading: const Icon(Icons.queue_music_rounded),
+                    title: Text(
+                      'Choose Surah',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: _buildSurahSelectionList(
+                      theme: theme,
+                      colorScheme: colorScheme,
+                      closeOnSelect: true,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    await _selectSurah(selectedSurah);
   }
 
   Future<void> _downloadSurah() async {
@@ -597,9 +773,18 @@ class _PlayerPageState extends State<PlayerPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final double width = constraints.maxWidth;
+        final bool isFoldableLayout = width >= 720 && width < 1100;
         final bool isDesktop = width >= 1100;
-        final double maxContentWidth = isDesktop ? 980 : 560;
-        final double artSize = isDesktop ? 520 : min(width - 56, 440);
+        final double maxContentWidth = isDesktop
+            ? 980
+            : isFoldableLayout
+                ? min(width, 1000)
+                : 560;
+        final double artSize = isDesktop
+            ? 520
+            : isFoldableLayout
+                ? min(width * 0.42, 360)
+                : min(width - 56, 440);
 
         final header = Padding(
           padding: EdgeInsets.only(bottom: isDesktop ? 24 : 16),
@@ -611,6 +796,12 @@ class _PlayerPageState extends State<PlayerPage> {
                   icon: const Icon(Icons.menu_rounded),
                 ),
               ),
+              if (!isFoldableLayout)
+                IconButton.filledTonal(
+                  tooltip: 'Choose Surah',
+                  onPressed: _openSurahPickerSheet,
+                  icon: const Icon(Icons.queue_music_rounded),
+                ),
               Expanded(
                 child: Text(
                   _surahName(_selectedSurah),
@@ -621,10 +812,35 @@ class _PlayerPageState extends State<PlayerPage> {
                 ),
               ),
               MenuAnchor(
+                style: MenuStyle(
+                  backgroundColor:
+                      MaterialStatePropertyAll(colorScheme.surfaceContainer),
+                  surfaceTintColor:
+                      MaterialStatePropertyAll(colorScheme.surfaceTint),
+                  elevation: const MaterialStatePropertyAll(6),
+                  side: MaterialStatePropertyAll(
+                    BorderSide(color: colorScheme.outlineVariant),
+                  ),
+                  shape: MaterialStatePropertyAll(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  padding: const MaterialStatePropertyAll(
+                    EdgeInsets.symmetric(vertical: 6),
+                  ),
+                ),
                 menuChildren: <Widget>[
-                  const MenuItemButton(
+                  MenuItemButton(
                     onPressed: null,
-                    child: Text('Playback Speed'),
+                    leadingIcon: const Icon(Icons.speed_rounded),
+                    child: Text(
+                      'Playback Speed',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                   const Divider(height: 1),
                   ...playbackRates.map(
@@ -632,6 +848,7 @@ class _PlayerPageState extends State<PlayerPage> {
                       onPressed: (!_useLinuxFallback || rate == 1.0)
                           ? () => _setPlaybackRate(rate)
                           : null,
+                      leadingIcon: const Icon(Icons.tune_rounded),
                       trailingIcon: _playbackRate == rate
                           ? Icon(Icons.check_rounded, color: colorScheme.primary)
                           : null,
@@ -639,7 +856,7 @@ class _PlayerPageState extends State<PlayerPage> {
                     ),
                   ),
                 ],
-                builder: (context, controller, child) => IconButton(
+                builder: (context, controller, child) => IconButton.filledTonal(
                   tooltip: 'Playback Speed',
                   onPressed: () {
                     if (controller.isOpen) {
@@ -703,7 +920,7 @@ class _PlayerPageState extends State<PlayerPage> {
                         ),
                       ),
                       Text(
-                        'Surah $_selectedSurah • ${_playingFromOffline ? "Offline MP3" : "Streaming"}',
+                        'Surah $_selectedSurah • ${_isDownloaded ? "Offline MP3" : "Streaming"}',
                         style: theme.textTheme.bodyLarge?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                         ),
@@ -712,7 +929,7 @@ class _PlayerPageState extends State<PlayerPage> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.only(left: 14, right: 4),
+                  padding: const EdgeInsets.only(left: 8, right: 4),
                   child: _isDownloaded
                       ? IconButton(
                           tooltip: 'Delete downloaded MP3',
@@ -823,6 +1040,30 @@ class _PlayerPageState extends State<PlayerPage> {
           ],
         );
 
+        final Widget bodyContent = isFoldableLayout
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Expanded(
+                    child: _buildSurahSelectionPane(
+                      theme: theme,
+                      colorScheme: colorScheme,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      physics: const ClampingScrollPhysics(),
+                      child: nowPlaying,
+                    ),
+                  ),
+                ],
+              )
+            : SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: nowPlaying,
+              );
+
         return Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -840,23 +1081,18 @@ class _PlayerPageState extends State<PlayerPage> {
               alignment: Alignment.topCenter,
               child: ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: maxContentWidth),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
-                  child: isDesktop
-                      ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: <Widget>[
-                            header,
-                            nowPlaying,
-                          ],
-                        )
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: <Widget>[
-                            header,
-                            nowPlaying,
-                          ],
-                        ),
+                child: SizedBox(
+                  height: constraints.maxHeight,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        header,
+                        Expanded(child: bodyContent),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),

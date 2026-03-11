@@ -11,172 +11,200 @@ class MainPage extends StatefulWidget {
   State<MainPage> createState() => _MainPageState();
 }
 
-class _MainPageState extends State<MainPage>
-    with SingleTickerProviderStateMixin {
-  String _searchQuery = '';
-  final debouncer = Debouncer(milliseconds: 700);
-  final List<Tab> _tabs = const [
-    Tab(text: 'SURAH'),
-    Tab(text: 'JUZ\''),
-    Tab(
-      icon: Icon(Icons.favorite_border_rounded),
-    )
-  ];
-  late TabController _tabController;
-  late ScrollController _scrollController;
+class _MainPageState extends State<MainPage> {
+  final Debouncer _debouncer = Debouncer(milliseconds: 400);
+  final TextEditingController _searchController = TextEditingController();
 
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: _tabs.length, vsync: this);
-    _scrollController = ScrollController();
-  }
+  String _searchQuery = '';
+  int _selectedSegment = 0;
+  bool _showSearch = false;
 
   @override
   void dispose() {
-    _tabController.dispose();
-    _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+
     return SafeArea(
-      child: NestedScrollView(
-        controller: _scrollController,
-        headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) =>
-            <Widget>[
-          SliverAppBar(
-            iconTheme: IconThemeData(
-                color: Theme.of(context).colorScheme.onPrimaryContainer),
-            elevation: 2,
-            shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.only(
-                    bottomLeft: Radius.circular(30),
-                    bottomRight: Radius.circular(30))),
-            pinned: true,
-            floating: false,
-            expandedHeight: 150,
-            centerTitle: true,
-            title: innerBoxIsScrolled
-                ? GestureDetector(
-                    onTap: () {
-                      _scrollController.animateTo(
-                          _scrollController.position.minScrollExtent,
-                          duration: const Duration(milliseconds: 500),
-                          curve: Curves.easeInOut);
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Builder(
+                  builder: (context) => IconButton(
+                    onPressed: () => Scaffold.of(context).openDrawer(),
+                    icon: const Icon(Icons.menu_rounded),
+                  ),
+                ),
+                Expanded(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 260),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) {
+                      return SizeTransition(
+                        sizeFactor: animation,
+                        axis: Axis.horizontal,
+                        axisAlignment: -1,
+                        child: FadeTransition(opacity: animation, child: child),
+                      );
                     },
-                    child: Text(
-                      "eQuran",
-                      style: Theme.of(context)
-                          .textTheme
-                          .headlineMedium
-                          ?.copyWith(fontWeight: FontWeight.bold),
-                    ))
-                : null,
-            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-            flexibleSpace: FlexibleSpaceBar(
-              background: Column(
-                //crossAxisAlignment: CrossAxisAlignment.center,
-                children: <Widget>[
-                  const SizedBox(
-                    height: 10,
+                    child: _showSearch
+                        ? SearchBar(
+                            key: const ValueKey<String>('header-search'),
+                            controller: _searchController,
+                            leading: const Icon(Icons.search_rounded),
+                            hintText: 'Search surah name or number...',
+                            onChanged: _changeSearchQuery,
+                            elevation: const WidgetStatePropertyAll(0),
+                            shape: WidgetStatePropertyAll(
+                              RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                          )
+                        : Text(
+                            'eQuran',
+                            key: const ValueKey<String>('header-title'),
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
                   ),
-                  Text(
-                    "eQuran",
-                    style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                        color: Theme.of(context).colorScheme.onPrimaryContainer,
-                        fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(
-                    height: 20,
-                  ),
-                  MySearchBar(
-                    onChanged: (value) {
-                      _changeSearchQuery(value);
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: SettingsDB().get("showLastRead", defaultValue: true) == true
-                ? ValueListenableBuilder(
-                    valueListenable: BookmarkDB().listener,
-                    builder: (BuildContext context, Box<dynamic> box, child) {
-                      if (box.length == 0) {
-                        return const SizedBox.shrink();
-                      } else {
-                        return const LastReadCard();
+                ),
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _showSearch = !_showSearch;
+                      if (!_showSearch) {
+                        _searchController.clear();
+                        _changeSearchQuery('');
                       }
-                    },
-                  )
-                : null,
-          ),
-          SliverPersistentHeader(
-            pinned: false,
-            delegate: _SliverAppBarDelegate(
-              TabBar(
-                splashBorderRadius: BorderRadius.circular(30),
-                dividerHeight: 2,
-                controller: _tabController,
-                tabs: _tabs,
+                    });
+                  },
+                  icon: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    child: Icon(
+                      _showSearch ? Icons.close_rounded : Icons.search_rounded,
+                      key: ValueKey<bool>(_showSearch),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (SettingsDB().get("showLastRead", defaultValue: true) == true)
+              ValueListenableBuilder(
+                valueListenable: BookmarkDB().listener,
+                builder: (BuildContext context, Box<dynamic> box, child) {
+                  if (box.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return const LastReadCard();
+                },
+              ),
+            const SizedBox(height: 18),
+            Row(
+              children: <Widget>[
+                Text(
+                  'Al Quran',
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                SegmentedButton<int>(
+                  showSelectedIcon: false,
+                  style: ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                    shape: WidgetStatePropertyAll(
+                      RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    padding: const WidgetStatePropertyAll(
+                      EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    ),
+                  ),
+                  segments: const <ButtonSegment<int>>[
+                    ButtonSegment<int>(value: 0, label: Text('Surah')),
+                    ButtonSegment<int>(value: 1, label: Text('Juz')),
+                    ButtonSegment<int>(
+                      value: 2,
+                      icon: Icon(Icons.favorite_rounded),
+                    ),
+                  ],
+                  selected: <int>{_selectedSegment},
+                  onSelectionChanged: (selection) {
+                    setState(() {
+                      _selectedSegment = selection.first;
+                    });
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: _buildSegmentBody(colorScheme),
               ),
             ),
-          ),
-        ],
-        body: TabBarView(
-          controller: _tabController,
-          children: [
-            QuranCardList(searchQuery: _searchQuery),
-            const JuzCardList(),
-            ValueListenableBuilder(
-              valueListenable: FavouritesDB().listener,
-              builder: (BuildContext context, Box<dynamic> box, child) {
-                if (box.length == 0) {
-                  return const SizedBox.shrink();
-                } else {
-                  return const FavouritesList();
-                }
-              },
-            )
           ],
         ),
       ),
     );
   }
 
+  Widget _buildSegmentBody(ColorScheme colorScheme) {
+    if (_selectedSegment == 0) {
+      return QuranCardList(
+        key: const ValueKey<String>('surah-list'),
+        searchQuery: _searchQuery,
+      );
+    }
+
+    if (_selectedSegment == 1) {
+      return const JuzCardList(
+        key: ValueKey<String>('juz-list'),
+      );
+    }
+
+    return ValueListenableBuilder(
+      key: const ValueKey<String>('page-list'),
+      valueListenable: FavouritesDB().listener,
+      builder: (BuildContext context, Box<dynamic> box, child) {
+        if (box.isEmpty) {
+          return Center(
+            child: Text(
+              'No saved pages yet.',
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          );
+        }
+        return const FavouritesList();
+      },
+    );
+  }
+
   void _changeSearchQuery(String value) {
-    debouncer.call(() {
+    _debouncer.call(() {
+      if (!mounted) return;
       setState(() {
         _searchQuery = value;
       });
     });
-  }
-}
-
-class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
-  final TabBar _tabBar;
-
-  _SliverAppBarDelegate(this._tabBar);
-
-  @override
-  double get minExtent => _tabBar.preferredSize.height;
-
-  @override
-  double get maxExtent => _tabBar.preferredSize.height;
-
-  @override
-  Widget build(
-      BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Container(
-      child: _tabBar,
-    );
-  }
-
-  @override
-  bool shouldRebuild(_SliverAppBarDelegate oldDelegate) {
-    return false;
   }
 }

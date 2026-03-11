@@ -11,7 +11,7 @@ class QuranCardList extends StatefulWidget {
   const QuranCardList({super.key, required this.searchQuery});
 
   @override
-  _QuranCardListState createState() => _QuranCardListState();
+  State<QuranCardList> createState() => _QuranCardListState();
 }
 
 class _QuranCardListState extends State<QuranCardList>
@@ -19,51 +19,58 @@ class _QuranCardListState extends State<QuranCardList>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    dynamic width = MediaQuery.of(context).size.width;
-    int crossAxisCount = 1;
-    if (width > 650) {
-      crossAxisCount = 2;
-    }
-    if (width > 1300) {
-      crossAxisCount = 3;
-    }
 
-    return FutureBuilder(
+    return FutureBuilder<List<Surah>>(
       future: _fetchSurahs(),
       builder: (BuildContext context, AsyncSnapshot<List<Surah>> snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Container(
-            margin: const EdgeInsets.symmetric(vertical: 50),
-            child: const Center(
-              child: CircularProgressIndicator(),
-            ),
-          );
-        } else {
-          final data = snapshot.data!;
-          return DynamicHeightGridView(
-            physics: const BouncingScrollPhysics(),
-            itemCount: data.length,
-            shrinkWrap: true,
-            crossAxisCount: crossAxisCount,
-            crossAxisSpacing: 0,
-            mainAxisSpacing: 0,
-            builder: (BuildContext context, int index) {
-              Surah surah = data[index];
-
-              return QuranCard(
-                surah: surah,
-              );
-            },
-          );
+          return const Center(child: CircularProgressIndicator());
         }
+
+        final List<Surah> data = snapshot.data ?? <Surah>[];
+        if (data.isEmpty) {
+          return const Center(child: Text('No surahs found.'));
+        }
+
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final double width = constraints.maxWidth;
+            final bool isWebLike = width >= 1200;
+            final int columns = isWebLike ? 3 : (width >= 700 ? 2 : 1);
+
+            if (columns == 1) {
+              return ListView.separated(
+                physics: const BouncingScrollPhysics(),
+                itemCount: data.length,
+                separatorBuilder: (context, index) => const SizedBox(height: 6),
+                itemBuilder: (BuildContext context, int index) {
+                  return QuranCard(surah: data[index], compact: false);
+                },
+              );
+            }
+
+            return DynamicHeightGridView(
+              physics: const BouncingScrollPhysics(),
+              shrinkWrap: true,
+              itemCount: data.length,
+              crossAxisCount: columns,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              builder: (BuildContext context, int index) {
+                return QuranCard(surah: data[index], compact: true);
+              },
+            );
+          },
+        );
       },
     );
   }
 
   Future<List<Surah>> _fetchSurahs() async {
     List<Surah> surahs = <Surah>[];
+
     if (SurahDB().contains("surahsList")) {
-      var cachedData = SurahDB().get("surahsList");
+      final cachedData = SurahDB().get("surahsList");
       if (cachedData is List) {
         surahs = cachedData.cast<Surah>();
       } else {
@@ -71,34 +78,33 @@ class _QuranCardListState extends State<QuranCardList>
       }
     } else {
       for (int i = 1; i <= 114; i++) {
-        final transliteration = quran.getSurahName(i);
-        final name = quran.getSurahNameArabic(i);
-        final verses = quran.getVerseCount(i);
-        final englishName = quran.getSurahNameEnglish(i);
-
-        surahs.add(Surah(
+        surahs.add(
+          Surah(
             id: i,
-            transliteration: transliteration,
-            verses: verses,
-            name: name,
-            englishName: englishName));
+            transliteration: quran.getSurahName(i),
+            verses: quran.getVerseCount(i),
+            name: quran.getSurahNameArabic(i),
+            englishName: quran.getSurahNameEnglish(i),
+          ),
+        );
       }
       await SurahDB().put("surahsList", surahs);
     }
+
     if (widget.searchQuery.isEmpty) {
       return surahs;
-    } else {
-      return surahs
-          .where((surah) =>
-              surah.name
-                  .toLowerCase()
-                  .contains(widget.searchQuery.toLowerCase()) ||
+    }
+
+    return surahs
+        .where(
+          (surah) =>
+              surah.name.toLowerCase().contains(widget.searchQuery.toLowerCase()) ||
               surah.transliteration
                   .toLowerCase()
                   .contains(widget.searchQuery.toLowerCase()) ||
-              surah.id.toString() == widget.searchQuery)
-          .toList();
-    }
+              surah.id.toString() == widget.searchQuery,
+        )
+        .toList();
   }
 
   @override
