@@ -265,8 +265,10 @@ class _ReadPageState extends State<ReadPage> {
 
   void _vibrate() async {
     if (SettingsDB().get("vibration", defaultValue: true) == true) {
-      if (await Vibration.hasVibrator() != null) {
+      try {
         Vibration.vibrate(duration: 10);
+      } catch (_) {
+        // Ignore vibration failures on unsupported platforms/devices.
       }
     }
   }

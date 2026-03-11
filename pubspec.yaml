@@ -17,7 +17,7 @@ dependencies:
   cupertino_icons: ^1.0.6
   google_fonts: ^6.2.0
   quran: 1.2.7
-  vibration: 1.8.4
+  vibration: ^3.1.6
   hive: ^2.2.3
   hive_flutter:
   hive_generator:
