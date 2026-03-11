@@ -1,6 +1,6 @@
 # equran_app
 
-Application for reading the Holy Quran.
+Application for reading the Holy Quran. 
 
 [<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"
 alt="Get it on F-Droid"
