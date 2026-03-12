@@ -16,6 +16,7 @@ jobs:
       app_version: ${{ steps.get_version.outputs.app_version }}
       release_version: ${{ steps.get_version.outputs.release_version }}
       release_tag: ${{ steps.get_version.outputs.release_tag }}
+      should_run: ${{ steps.check_tag.outputs.should_run }}
     steps:
       - uses: actions/checkout@v4
       - id: get_version
@@ -38,8 +39,23 @@ jobs:
             exit 1
           fi
 
+      - id: check_tag
+        name: Check If Release Tag Already Exists
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.get_version.outputs.release_tag }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "Tag ${RELEASE_TAG} already exists on origin. Skipping build/release jobs."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag ${RELEASE_TAG} is new. Build/release jobs will run."
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build-android:
     needs: version
+    if: needs.version.outputs.should_run == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -62,6 +78,7 @@ jobs:
 
   build-linux:
     needs: version
+    if: needs.version.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -100,6 +117,7 @@ jobs:
 
   build-windows:
     needs: version
+    if: needs.version.outputs.should_run == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -125,6 +143,7 @@ jobs:
 
   release:
     needs: [version, build-android, build-linux, build-windows]
+    if: needs.version.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
