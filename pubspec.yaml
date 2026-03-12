@@ -3,7 +3,7 @@ description: "Application for reading the Holy Quran"
 
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
-version: 2.1.1+16
+version: 2.1.2+17
 environment:
   sdk: '>=3.3.0 <4.0.0'
 
