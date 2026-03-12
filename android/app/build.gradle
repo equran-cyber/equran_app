@@ -27,6 +27,13 @@ def keystorePropertiesFile = rootProject.file('key.properties')
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
+def keystorePath = keystoreProperties['storeFile'] ?: 'app/keystore.jks'
+def keystoreFile = rootProject.file(keystorePath)
+def hasReleaseSigning =
+        keystoreProperties['keyAlias'] &&
+        keystoreProperties['keyPassword'] &&
+        keystoreProperties['storePassword'] &&
+        keystoreFile.exists()
 
 android {
     namespace "com.app.equran"
@@ -60,7 +67,7 @@ android {
         release {
            keyAlias keystoreProperties['keyAlias']
            keyPassword keystoreProperties['keyPassword']
-           storeFile = file('keystore.jks')
+           storeFile = rootProject.file(keystorePath)
            storePassword keystoreProperties['storePassword']
         }
     }
@@ -70,7 +77,7 @@ android {
            signingConfig signingConfigs.debug
         }
         release {
-           signingConfig signingConfigs.release
+           signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
         }
     }
 }
