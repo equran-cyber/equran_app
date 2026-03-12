@@ -16,6 +16,14 @@ class QuranCardList extends StatefulWidget {
 
 class _QuranCardListState extends State<QuranCardList>
     with AutomaticKeepAliveClientMixin {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -39,26 +47,38 @@ class _QuranCardListState extends State<QuranCardList>
             final int columns = isWebLike ? 3 : (width >= 700 ? 2 : 1);
 
             if (columns == 1) {
-              return ListView.separated(
-                physics: const BouncingScrollPhysics(),
-                itemCount: data.length,
-                separatorBuilder: (context, index) => const SizedBox(height: 6),
-                itemBuilder: (BuildContext context, int index) {
-                  return QuranCard(surah: data[index], compact: false);
-                },
+              return Scrollbar(
+                controller: _scrollController,
+                child: ListView.separated(
+                  controller: _scrollController,
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.only(bottom: 16),
+                  itemCount: data.length,
+                  separatorBuilder: (context, index) => const SizedBox(height: 6),
+                  itemBuilder: (BuildContext context, int index) {
+                    return QuranCard(surah: data[index], compact: false);
+                  },
+                ),
               );
             }
 
-            return DynamicHeightGridView(
-              physics: const BouncingScrollPhysics(),
-              shrinkWrap: true,
-              itemCount: data.length,
-              crossAxisCount: columns,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-              builder: (BuildContext context, int index) {
-                return QuranCard(surah: data[index], compact: true);
-              },
+            return Scrollbar(
+              controller: _scrollController,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: DynamicHeightGridView(
+                  controller: _scrollController,
+                  physics: const BouncingScrollPhysics(),
+                  shrinkWrap: true,
+                  itemCount: data.length,
+                  crossAxisCount: columns,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                  builder: (BuildContext context, int index) {
+                    return QuranCard(surah: data[index], compact: true);
+                  },
+                ),
+              ),
             );
           },
         );
