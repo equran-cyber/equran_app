@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:equran/backend/library.dart';
 import 'package:equran/utils/debouncer.dart';
 import 'package:equran/widgets/library.dart';
@@ -14,13 +16,30 @@ class MainPage extends StatefulWidget {
 class _MainPageState extends State<MainPage> {
   final Debouncer _debouncer = Debouncer(milliseconds: 400);
   final TextEditingController _searchController = TextEditingController();
+  StreamSubscription<BoxEvent>? _bookmarkSubscription;
+  StreamSubscription<BoxEvent>? _favouritesSubscription;
 
   String _searchQuery = '';
   int _selectedSegment = 0;
   bool _showSearch = false;
 
   @override
+  void initState() {
+    super.initState();
+    _bookmarkSubscription = BookmarkDB().box.watch().listen((_) {
+      if (!mounted) return;
+      setState(() {});
+    });
+    _favouritesSubscription = FavouritesDB().box.watch().listen((_) {
+      if (!mounted) return;
+      setState(() {});
+    });
+  }
+
+  @override
   void dispose() {
+    _bookmarkSubscription?.cancel();
+    _favouritesSubscription?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -107,10 +126,19 @@ class _MainPageState extends State<MainPage> {
               ValueListenableBuilder(
                 valueListenable: BookmarkDB().listener,
                 builder: (BuildContext context, Box<dynamic> box, child) {
-                  if (box.isEmpty) {
+                  final entries = box.values.whereType<ReadingEntry>().toList();
+                  if (entries.isEmpty) {
                     return const SizedBox.shrink();
                   }
-                  return const LastReadCard();
+
+                  entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+                  final latest = entries.first;
+
+                  return LastReadCard(
+                    key: ValueKey<String>(
+                      '${latest.surah}-${latest.verse}-${latest.timestamp.microsecondsSinceEpoch}',
+                    ),
+                  );
                 },
               ),
             const SizedBox(height: 18),
@@ -184,17 +212,11 @@ class _MainPageState extends State<MainPage> {
       key: const ValueKey<String>('page-list'),
       valueListenable: FavouritesDB().listener,
       builder: (BuildContext context, Box<dynamic> box, child) {
-        if (box.isEmpty) {
-          return Center(
-            child: Text(
-              'No saved pages yet.',
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-            ),
-          );
+        if (box.length == 0) {
+          return const SizedBox.shrink();
+        } else {
+          return const FavouritesList();
         }
-        return const FavouritesList();
       },
     );
   }

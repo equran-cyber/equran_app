@@ -35,6 +35,7 @@ class _ReadPageState extends State<ReadPage> {
   late ItemPositionsListener _ipl;
   late ItemScrollController _isc;
   late bool _viewMode;
+  bool _hasSavedOnExit = false;
 
   @override
   void initState() {
@@ -56,6 +57,9 @@ class _ReadPageState extends State<ReadPage> {
 
   @override
   void dispose() {
+    if (!_hasSavedOnExit) {
+      BookmarkDB().addReadingEntry(_currentChapter, _currentVerse);
+    }
     _scrollController.dispose();
     _buttonFocusNode.dispose();
     super.dispose();
@@ -84,8 +88,13 @@ class _ReadPageState extends State<ReadPage> {
     } else {
       marginValue = 8.0; // Small screen
     }
-    return Scaffold(
-      appBar: AppBar(
+    return WillPopScope(
+      onWillPop: () async {
+        await _saveProgressOnExit();
+        return true;
+      },
+      child: Scaffold(
+        appBar: AppBar(
         leading: const BackButton(),
         title: Text(quran.getSurahName(_currentChapter)),
         centerTitle: true,
@@ -120,7 +129,7 @@ class _ReadPageState extends State<ReadPage> {
                               child: const Text("OK"),
                               onPressed: () {
                                 _reset();
-                                _delete();
+                                _updateDB();
                                 if (!SettingsDB()
                                     .get("viewMode", defaultValue: true)) {
                                   _isc.jumpTo(index: 0);
@@ -190,8 +199,24 @@ class _ReadPageState extends State<ReadPage> {
           ),
         ],
       ),
-      body: _viewMode ? cardView(marginValue: marginValue) : listView(),
+        body: _viewMode ? cardView(marginValue: marginValue) : listView(),
+      ),
     );
+  }
+
+  Future<void> _saveProgressOnExit() async {
+    if (_hasSavedOnExit) return;
+
+    if (!_viewMode) {
+      final positions = _ipl.itemPositions.value;
+      if (positions.isNotEmpty) {
+        final int currentIndex = positions.first.index + 1;
+        _currentVerse = currentIndex;
+      }
+    }
+
+    _hasSavedOnExit = true;
+    await BookmarkDB().addReadingEntry(_currentChapter, _currentVerse);
   }
 
   void _increase() {
@@ -203,7 +228,6 @@ class _ReadPageState extends State<ReadPage> {
       _updateDB();
     } else {
       // New Chapter
-      _delete();
       _reset();
       if (_currentChapter != 114) {
         _incrementChapter();
@@ -211,6 +235,7 @@ class _ReadPageState extends State<ReadPage> {
         _resetChapter();
       }
       _getTotalVerses();
+      _updateDB();
     }
   }
 
@@ -290,10 +315,6 @@ class _ReadPageState extends State<ReadPage> {
 
   void _updateDB() {
     BookmarkDB().addReadingEntry(_currentChapter, _currentVerse);
-  }
-
-  void _delete() {
-    BookmarkDB().delete(_currentChapter);
   }
 
   Widget cardView({required double marginValue}) {

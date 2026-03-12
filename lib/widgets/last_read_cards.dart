@@ -10,12 +10,23 @@ class LastReadCard extends StatelessWidget {
   const LastReadCard({super.key});
 
   List<ReadingEntry> displayReadingHistory() {
-    final entries = BookmarkDB()
+    final rawEntries = BookmarkDB()
         .box
         .toMap()
         .values
         .whereType<ReadingEntry>()
-        .toList()
+        .toList();
+
+    // Keep one record per surah: latest ayah read only.
+    final Map<int, ReadingEntry> latestPerSurah = <int, ReadingEntry>{};
+    for (final entry in rawEntries) {
+      final ReadingEntry? current = latestPerSurah[entry.surah];
+      if (current == null || entry.timestamp.isAfter(current.timestamp)) {
+        latestPerSurah[entry.surah] = entry;
+      }
+    }
+
+    final entries = latestPerSurah.values.toList()
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
     return entries.take(7).toList();
   }

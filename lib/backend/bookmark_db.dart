@@ -14,22 +14,23 @@ class BookmarkDB extends BaseDB {
 
   Future<void> addReadingEntry(int surah, int verse) async {
     final DateTime now = DateTime.now();
-    final List<ReadingEntry> entries = box
-        .toMap()
-        .values
-        .whereType<ReadingEntry>()
-        .toList()
-      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-
-    // Prevent inserting duplicate consecutive records.
-    if (entries.isNotEmpty &&
-        entries.first.surah == surah &&
-        entries.first.verse == verse) {
+    final ReadingEntry? existing = get(surah) as ReadingEntry?;
+    if (existing != null && existing.verse == verse) {
       return;
     }
 
+    final entries = box.toMap().entries.where((entry) {
+      final value = entry.value;
+      return value is ReadingEntry &&
+          value.surah == surah &&
+          entry.key != surah;
+    });
+    for (final entry in entries) {
+      await delete(entry.key);
+    }
+
     await put(
-      now.microsecondsSinceEpoch.toString(),
+      surah,
       ReadingEntry(surah: surah, verse: verse, timestamp: now),
     );
 
