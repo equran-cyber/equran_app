@@ -1,6 +1,8 @@
 import 'package:equran/backend/bookmark_db.dart';
 import 'package:equran/backend/library.dart' show SettingsDB;
 import 'package:equran/widgets/library.dart' show ReadQuranCard;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:numberpicker/numberpicker.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
@@ -264,12 +266,19 @@ class _ReadPageState extends State<ReadPage> {
   }
 
   void _vibrate() async {
-    if (SettingsDB().get("vibration", defaultValue: true) == true) {
-      try {
-        Vibration.vibrate(duration: 10);
-      } catch (_) {
-        // Ignore vibration failures on unsupported platforms/devices.
-      }
+    if (SettingsDB().get("vibration", defaultValue: true) != true) return;
+    if (kIsWeb) return;
+
+    final bool supportedPlatform = defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+    if (!supportedPlatform) return;
+
+    try {
+      final bool hasVibrator = await Vibration.hasVibrator() ?? false;
+      if (!hasVibrator) return;
+      await Vibration.vibrate(duration: 10);
+    } catch (_) {
+      // Ignore vibration failures on unsupported platforms/devices.
     }
   }
 
