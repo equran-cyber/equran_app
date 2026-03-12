@@ -227,7 +227,8 @@ class _ReadPageState extends State<ReadPage> {
       _incrementVerse();
       _updateDB();
     } else {
-      // New Chapter
+      // Surah completed: remove its last-read progress, then move to next chapter.
+      BookmarkDB().delete(_currentChapter);
       _reset();
       if (_currentChapter != 114) {
         _incrementChapter();
