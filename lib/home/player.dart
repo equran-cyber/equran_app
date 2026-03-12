@@ -796,12 +796,6 @@ class _PlayerPageState extends State<PlayerPage> {
                   icon: const Icon(Icons.menu_rounded),
                 ),
               ),
-              if (!isFoldableLayout)
-                IconButton.filledTonal(
-                  tooltip: 'Choose Surah',
-                  onPressed: _openSurahPickerSheet,
-                  icon: const Icon(Icons.queue_music_rounded),
-                ),
               Expanded(
                 child: Text(
                   _surahName(_selectedSurah),
@@ -811,66 +805,90 @@ class _PlayerPageState extends State<PlayerPage> {
                   ),
                 ),
               ),
-              MenuAnchor(
-                style: MenuStyle(
-                  backgroundColor:
-                      MaterialStatePropertyAll(colorScheme.surfaceContainer),
-                  surfaceTintColor:
-                      MaterialStatePropertyAll(colorScheme.surfaceTint),
-                  elevation: const MaterialStatePropertyAll(6),
-                  side: MaterialStatePropertyAll(
-                    BorderSide(color: colorScheme.outlineVariant),
-                  ),
-                  shape: MaterialStatePropertyAll(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                  padding: const MaterialStatePropertyAll(
-                    EdgeInsets.symmetric(vertical: 6),
-                  ),
-                ),
-                menuChildren: <Widget>[
-                  MenuItemButton(
-                    onPressed: null,
-                    leadingIcon: const Icon(Icons.speed_rounded),
-                    child: Text(
-                      'Playback Speed',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  ...playbackRates.map(
-                    (rate) => MenuItemButton(
-                      onPressed: (!_useLinuxFallback || rate == 1.0)
-                          ? () => _setPlaybackRate(rate)
-                          : null,
-                      leadingIcon: const Icon(Icons.tune_rounded),
-                      trailingIcon: _playbackRate == rate
-                          ? Icon(Icons.check_rounded, color: colorScheme.primary)
-                          : null,
-                      child: Text('${rate}x'),
-                    ),
-                  ),
-                ],
-                builder: (context, controller, child) => IconButton.filledTonal(
-                  tooltip: 'Playback Speed',
-                  onPressed: () {
-                    if (controller.isOpen) {
-                      controller.close();
-                    } else {
-                      controller.open();
-                    }
-                  },
-                  icon: const Icon(Icons.speed_rounded),
-                ),
-              ),
+              const SizedBox(width: 48),
             ],
           ),
         );
+
+        final Widget speedButton = MenuAnchor(
+          style: MenuStyle(
+            backgroundColor: MaterialStatePropertyAll(colorScheme.surfaceContainer),
+            surfaceTintColor: MaterialStatePropertyAll(colorScheme.surfaceTint),
+            elevation: const MaterialStatePropertyAll(6),
+            side: MaterialStatePropertyAll(
+              BorderSide(color: colorScheme.outlineVariant),
+            ),
+            shape: MaterialStatePropertyAll(
+              RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+            ),
+            padding: const MaterialStatePropertyAll(
+              EdgeInsets.symmetric(vertical: 6),
+            ),
+          ),
+          menuChildren: <Widget>[
+            MenuItemButton(
+              onPressed: null,
+              leadingIcon: const Icon(Icons.speed_rounded),
+              child: Text(
+                'Playback Speed',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            ...playbackRates.map(
+              (rate) => MenuItemButton(
+                onPressed: (!_useLinuxFallback || rate == 1.0)
+                    ? () => _setPlaybackRate(rate)
+                    : null,
+                leadingIcon: const Icon(Icons.tune_rounded),
+                trailingIcon: _playbackRate == rate
+                    ? Icon(Icons.check_rounded, color: colorScheme.primary)
+                    : null,
+                child: Text('${rate}x'),
+              ),
+            ),
+          ],
+          builder: (context, controller, child) => IconButton(
+            tooltip: 'Playback Speed',
+            onPressed: () {
+              if (controller.isOpen) {
+                controller.close();
+              } else {
+                controller.open();
+              }
+            },
+            icon: const Icon(Icons.speed_rounded),
+          ),
+        );
+
+        final Widget downloadButton = _isDownloaded
+            ? IconButton(
+                tooltip: 'Delete downloaded MP3',
+                onPressed: _confirmDeleteSurahDownload,
+                icon: Icon(
+                  Icons.check_circle_rounded,
+                  color: colorScheme.primary,
+                ),
+              )
+            : IconButton(
+                tooltip: 'Download MP3',
+                onPressed: _isDownloading ? null : _downloadSurah,
+                icon: _isDownloading
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: colorScheme.primary,
+                        ),
+                      )
+                    : const Icon(Icons.download_rounded),
+              );
 
         final nowPlaying = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -904,6 +922,20 @@ class _PlayerPageState extends State<PlayerPage> {
                 ),
               ),
             ),
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: <Widget>[
+                if (!isFoldableLayout)
+                  IconButton(
+                    tooltip: 'Choose Surah',
+                    onPressed: _openSurahPickerSheet,
+                    icon: const Icon(Icons.queue_music_rounded),
+                  ),
+                speedButton,
+                downloadButton,
+              ],
+            ),
             const SizedBox(height: 22),
             Row(
               children: <Widget>[
@@ -927,32 +959,6 @@ class _PlayerPageState extends State<PlayerPage> {
                       ),
                     ],
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 8, right: 4),
-                  child: _isDownloaded
-                      ? IconButton(
-                          tooltip: 'Delete downloaded MP3',
-                          onPressed: _confirmDeleteSurahDownload,
-                          icon: Icon(
-                            Icons.check_circle_rounded,
-                            color: colorScheme.primary,
-                          ),
-                        )
-                      : IconButton(
-                          tooltip: 'Download MP3',
-                          onPressed: _isDownloading ? null : _downloadSurah,
-                          icon: _isDownloading
-                              ? SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: colorScheme.primary,
-                                  ),
-                                )
-                              : const Icon(Icons.download_rounded),
-                        ),
                 ),
               ],
             ),

@@ -7,39 +7,63 @@ class BaseDB {
   // Constructor
   BaseDB(this.boxName);
 
-  late final Box _box;
+  Box? _box;
+  static final Map<String, Future<Box<dynamic>>> _openingBoxes =
+      <String, Future<Box<dynamic>>>{};
 
   Future<void> initBox() async {
-    _box = await Hive.openBox(boxName);
+    if (_box != null) return;
+
+    if (Hive.isBoxOpen(boxName)) {
+      _box = Hive.box(boxName);
+      return;
+    }
+
+    final Future<Box<dynamic>> openingFuture =
+        _openingBoxes.putIfAbsent(boxName, () => Hive.openBox(boxName));
+
+    try {
+      _box = await openingFuture;
+    } finally {
+      _openingBoxes.remove(boxName);
+    }
   }
 
   dynamic get(dynamic key, {dynamic defaultValue}) {
-    return _box.get(key, defaultValue: defaultValue);
+    return _requireBox().get(key, defaultValue: defaultValue);
   }
 
   bool contains(dynamic key) {
-    return _box.containsKey(key);
+    return _requireBox().containsKey(key);
   }
 
   Future<void> put(dynamic key, dynamic value) async {
-    await _box.put(key, value);
+    await _requireBox().put(key, value);
   }
 
   Future<void> delete(dynamic key) async {
-    await _box.delete(key);
+    await _requireBox().delete(key);
   }
 
-  int get length => _box.length;
+  int get length => _requireBox().length;
 
-  Box get box => _box;
+  Box get box => _requireBox();
 
   Iterable<dynamic> getKeys() {
-    return _box.keys;
+    return _requireBox().keys;
   }
 
   Future<void> clear() async {
-    await _box.clear();
+    await _requireBox().clear();
   }
 
-  ValueListenable<Box<dynamic>> get listener => _box.listenable();
+  ValueListenable<Box<dynamic>> get listener => _requireBox().listenable();
+
+  Box _requireBox() {
+    final box = _box;
+    if (box == null) {
+      throw StateError('Box "$boxName" is not initialized. Call initBox() first.');
+    }
+    return box;
+  }
 }

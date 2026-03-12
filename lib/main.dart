@@ -27,7 +27,8 @@ Future<void> main() async {
   }
 
   // ----- HIVE -----
-  await Hive.initFlutter();
+  // Use an app-specific subdirectory to avoid desktop lock collisions in shared paths.
+  await Hive.initFlutter('equran');
 
   Hive.registerAdapter(SurahAdapter());
   Hive.registerAdapter(ReadingEntryAdapter());
