@@ -16,17 +16,19 @@ class QuranCardList extends StatefulWidget {
 
 class _QuranCardListState extends State<QuranCardList>
     with AutomaticKeepAliveClientMixin {
-  final ScrollController _scrollController = ScrollController();
+  final ScrollController _fallbackScrollController = ScrollController();
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    _fallbackScrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final ScrollController scrollController =
+        PrimaryScrollController.maybeOf(context) ?? _fallbackScrollController;
 
     return FutureBuilder<List<Surah>>(
       future: _fetchSurahs(),
@@ -48,9 +50,11 @@ class _QuranCardListState extends State<QuranCardList>
 
             if (columns == 1) {
               return Scrollbar(
-                controller: _scrollController,
+                controller: scrollController,
+                thumbVisibility: true,
+                interactive: true,
                 child: ListView.separated(
-                  controller: _scrollController,
+                  controller: scrollController,
                   physics: const BouncingScrollPhysics(),
                   padding: const EdgeInsets.only(bottom: 16),
                   itemCount: data.length,
@@ -63,13 +67,15 @@ class _QuranCardListState extends State<QuranCardList>
             }
 
             return Scrollbar(
-              controller: _scrollController,
+              controller: scrollController,
+              thumbVisibility: true,
+              interactive: true,
               child: Align(
                 alignment: Alignment.topCenter,
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: DynamicHeightGridView(
-                    controller: _scrollController,
+                    controller: scrollController,
                     physics: const BouncingScrollPhysics(),
                     shrinkWrap: true,
                     itemCount: data.length,
