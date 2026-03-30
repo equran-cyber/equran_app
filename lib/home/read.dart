@@ -365,7 +365,7 @@ class _ReadPageState extends State<ReadPage> {
                           translation: quran.Translation.values[
                               SettingsDB().get("translation", defaultValue: 0)]),
                       url: quran.getAudioURLByVerse(
-                          _currentChapter, _currentVerse),
+                          _currentChapter, _currentVerse, reciter: quran.Reciter.arAlafasy),
                       fontSize: SettingsDB().get("fontSize", defaultValue: 38.0),
                     ),
                   ),

@@ -10,6 +10,8 @@ import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart' as ja;
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:quran/quran.dart' as quran;
+
 
 const List<String> _surahTransliterations = <String>[
   'Al-Fatihah',
@@ -279,8 +281,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
   String _surahFileName(int surah) => '${surah.toString().padLeft(3, '0')}.mp3';
 
-  String _surahStreamUrl(int surah) =>
-      'https://server8.mp3quran.net/afs/${_surahFileName(surah)}';
+  String _surahStreamUrl(int surah) => quran.getAudioURLBySurah(surah, reciter: quran.Reciter.arAlafasy);
 
   String _time(Duration value) {
     final int totalHours = value.inHours;
