@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:equran/backend/library.dart';
 import 'package:equran/utils/debouncer.dart';
 import 'package:equran/widgets/library.dart';
@@ -16,30 +14,13 @@ class MainPage extends StatefulWidget {
 class _MainPageState extends State<MainPage> {
   final Debouncer _debouncer = Debouncer(milliseconds: 400);
   final TextEditingController _searchController = TextEditingController();
-  StreamSubscription<BoxEvent>? _bookmarkSubscription;
-  StreamSubscription<BoxEvent>? _favouritesSubscription;
 
   String _searchQuery = '';
   int _selectedSegment = 0;
   bool _showSearch = false;
 
   @override
-  void initState() {
-    super.initState();
-    _bookmarkSubscription = BookmarkDB().box.watch().listen((_) {
-      if (!mounted) return;
-      setState(() {});
-    });
-    _favouritesSubscription = FavouritesDB().box.watch().listen((_) {
-      if (!mounted) return;
-      setState(() {});
-    });
-  }
-
-  @override
   void dispose() {
-    _bookmarkSubscription?.cancel();
-    _favouritesSubscription?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -73,17 +54,33 @@ class _MainPageState extends State<MainPage> {
                       valueListenable: BookmarkDB().listener,
                       builder: (BuildContext context, Box<dynamic> box, child) {
                         final entries = box.values.whereType<ReadingEntry>().toList();
-                        if (entries.isEmpty) {
-                          return const SizedBox.shrink();
+                        Widget currentChild = const SizedBox.shrink();
+
+                        if (entries.isNotEmpty) {
+                          entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+                          final latest = entries.first;
+                          currentChild = LastReadCard(
+                            key: ValueKey<String>(
+                              '${latest.surah}-${latest.verse}-${latest.timestamp.microsecondsSinceEpoch}',
+                            ),
+                          );
                         }
 
-                        entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-                        final latest = entries.first;
-
-                        return LastReadCard(
-                          key: ValueKey<String>(
-                            '${latest.surah}-${latest.verse}-${latest.timestamp.microsecondsSinceEpoch}',
-                          ),
+                        return AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 220),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          transitionBuilder: (child, animation) {
+                            return FadeTransition(
+                              opacity: animation,
+                              child: SizeTransition(
+                                sizeFactor: animation,
+                                axisAlignment: -1,
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: currentChild,
                         );
                       },
                     ),

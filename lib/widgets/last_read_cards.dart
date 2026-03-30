@@ -9,6 +9,12 @@ import 'package:quran/quran.dart';
 class LastReadCard extends StatelessWidget {
   const LastReadCard({super.key});
 
+  Future<void> _handleMenuAction(String value, ReadingEntry entry) async {
+    if (value == 'delete') {
+      await BookmarkDB().delete(entry.surah);
+    }
+  }
+
   List<ReadingEntry> displayReadingHistory() {
     final rawEntries = BookmarkDB()
         .box
@@ -82,12 +88,34 @@ class LastReadCard extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(
-                      'Last Read',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 24,
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            'Last Read',
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 24,
+                                ),
                           ),
+                        ),
+                        PopupMenuButton<String>(
+                          tooltip: 'More options',
+                          icon: const Icon(Icons.more_vert_rounded),
+                          onSelected: (value) => _handleMenuAction(value, entry),
+                          itemBuilder: (BuildContext context) =>
+                              const <PopupMenuEntry<String>>[
+                            PopupMenuItem<String>(
+                              value: 'delete',
+                              child: ListTile(
+                                leading: Icon(Icons.delete_outline_rounded),
+                                title: Text('Delete'),
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 8),
                     Text(
