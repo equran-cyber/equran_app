@@ -64,19 +64,22 @@ class _QuranCardListState extends State<QuranCardList>
 
             return Scrollbar(
               controller: _scrollController,
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: DynamicHeightGridView(
-                  controller: _scrollController,
-                  physics: const BouncingScrollPhysics(),
-                  shrinkWrap: true,
-                  itemCount: data.length,
-                  crossAxisCount: columns,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                  builder: (BuildContext context, int index) {
-                    return QuranCard(surah: data[index], compact: true);
-                  },
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: DynamicHeightGridView(
+                    controller: _scrollController,
+                    physics: const BouncingScrollPhysics(),
+                    shrinkWrap: true,
+                    itemCount: data.length,
+                    crossAxisCount: columns,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
+                    builder: (BuildContext context, int index) {
+                      return QuranCard(surah: data[index], compact: true);
+                    },
+                  ),
                 ),
               ),
             );
