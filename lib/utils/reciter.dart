@@ -5,16 +5,6 @@ enum AppReciter {
     code: 'ar.alafasy',
     englishName: 'Alafasy',
     bitrate: 128,
-  ),
-  arShaatree(
-    code: 'ar.shaatree',
-    englishName: 'Abu Bakr Ash-Shaatree',
-    bitrate: 128,
-  ),
-  arYasserAlDowsari(
-    code: 'ar.yasseraldossari',
-    englishName: 'Yasser Al-Dowsari',
-    bitrate: 128,
   );
 
   final String code;
@@ -34,14 +24,14 @@ enum AppReciter {
     );
   }
 
-  String surahUrl(int surah) =>
-      'https://cdn.islamic.network/quran/audio-surah/$bitrate/$code/$surah.mp3';
+  String surahUrl(int surah) {
+    final String surahUrl = quran.getAudioURLBySurah(surah);
+    return surahUrl.replaceAll("ar.alafasy", code);
+  }
 
   String ayahUrl(int surah, int ayah)
   {
     final String ayahUrl = quran.getAudioURLByVerse(surah, ayah);
-    // return ayahUrl.replaceAll("ar.alafasy", code);
-    print(ayahUrl);
-    return ayahUrl;
+    return ayahUrl.replaceAll("ar.alafasy", code);
   }
 }
