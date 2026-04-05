@@ -15,6 +15,7 @@ class ReadQuranCard extends StatelessWidget {
   final String? basmala;
 
   final double fontSize;
+  final double fontSizeTranslation;
 
   const ReadQuranCard({
     super.key,
@@ -22,6 +23,7 @@ class ReadQuranCard extends StatelessWidget {
     required this.currentVerse,
     required this.totalVerses,
     required this.fontSize,
+    required this.fontSizeTranslation,
     required this.juzNumber,
     required this.translation,
     this.basmala,
@@ -132,7 +134,7 @@ class ReadQuranCard extends StatelessWidget {
               style: Theme.of(context)
                   .textTheme
                   .bodyMedium
-                  ?.copyWith(fontSize: fontSize / 2.55),
+                  ?.copyWith(fontSize: fontSizeTranslation),
             )
           ],
         ),

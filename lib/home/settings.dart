@@ -91,7 +91,7 @@ class SettingsPage extends StatelessWidget {
             subtitle: const Text("Choose your preferred reciter."),
             onTap: () {
               List<AppReciter> items = AppReciter.values;
-              final selected = SettingsDB().get("reciter", defaultValue: "ar.yasseraldossari");
+              final selected = SettingsDB().get("reciter", defaultValue: "ar.alafasi");
               final selectedReciter = AppReciter.fromCode(selected);
               showDialog(
                 context: context,
@@ -175,10 +175,6 @@ class SettingsPage extends StatelessWidget {
             },
             title: const Text("Theme"),
             subtitle: const Text("Pick your desired color scheme."),
-            // trailing: CircleAvatar(
-            //   backgroundColor: Theme.of(context).colorScheme.primary,
-            //   radius: 12.5, // Adjust radius as needed
-            // ),
           ),
           const FontSlider(),
           ListTile(

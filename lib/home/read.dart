@@ -509,6 +509,7 @@ class _ReadPageState extends State<ReadPage> {
                               SettingsDB().get("translation", defaultValue: 0)]),
                       url: QuranAudioService().getAyahUrl(_currentChapter, _currentVerse),
                       fontSize: SettingsDB().get("fontSize", defaultValue: 38.0),
+                      fontSizeTranslation: SettingsDB().get("fontSizeTranslation", defaultValue: 20),
                     ),
                   ),
                   const SizedBox(
@@ -586,6 +587,7 @@ class _ReadPageState extends State<ReadPage> {
                         SettingsDB().get("translation", defaultValue: 0)]),
                 url: quran.getAudioURLByVerse(_currentChapter, currentVerse),
                 fontSize: SettingsDB().get("fontSize", defaultValue: 38.0),
+                fontSizeTranslation: SettingsDB().get("fontSizeTranslation", defaultValue: 20),
               ),
               currentVerse != _totalVerses
                   ? const Divider()

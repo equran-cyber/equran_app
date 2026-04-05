@@ -14,6 +14,7 @@ class _FontSliderState extends State<FontSlider> {
   @override
   Widget build(BuildContext context) {
     double fontSize = SettingsDB().get("fontSize", defaultValue: 38.0);
+    double fontSizeTranslation = SettingsDB().get("fontSizeTranslation", defaultValue: 20.0);
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -33,12 +34,29 @@ class _FontSliderState extends State<FontSlider> {
                       SettingsDB().put("fontSize", value);
                     });
                   }),
+                  
+            ),
+              ListTile(
+              title: const Center(child: Text("Translation Font Size")),
+              subtitle: Slider(
+                  value: fontSizeTranslation,
+                  min: 15.0,
+                  max: 30.0,
+                  label: (fontSizeTranslation / 2).round().toString(),
+                  onChanged: (double value) {
+                    setState(() {
+                      fontSizeTranslation = value;
+                      SettingsDB().put("fontSizeTranslation", value);
+                    });
+                  }),
+                  
             ),
             ReadQuranCard(
                 currentChapter: 1,
                 currentVerse: 1,
                 totalVerses: 7,
                 fontSize: fontSize,
+                fontSizeTranslation: fontSizeTranslation,
                 juzNumber: 1,
                 url: "",
                 translation: quran.getVerseTranslation(1, 1),
