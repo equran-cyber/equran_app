@@ -592,7 +592,7 @@ class _ReadPageState extends State<ReadPage> {
                         SettingsDB().get("translation", defaultValue: 0)]),
                 url: quran.getAudioURLByVerse(_currentChapter, currentVerse),
                 fontSize: SettingsDB().get("fontSize", defaultValue: 38.0),
-                fontSizeTranslation: SettingsDB().get("fontSizeTranslation", defaultValue: 20),
+                fontSizeTranslation: SettingsDB().get("fontSizeTranslation", defaultValue: 20.0),
               ),
               currentVerse != _totalVerses
                   ? const Divider()
