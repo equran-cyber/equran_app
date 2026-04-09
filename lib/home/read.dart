@@ -4,6 +4,7 @@ import 'package:equran/widgets/library.dart' show ReadQuranCard;
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:numberpicker/numberpicker.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
 import 'package:quran/quran.dart' as quran;
@@ -31,6 +32,7 @@ class _ReadPageState extends State<ReadPage> {
   late ScrollController _scrollController;
   late int _totalVerses;
   late FocusNode _buttonFocusNode;
+  late FocusNode _pageFocusNode;
   late ItemPositionsListener _ipl;
   late ItemScrollController _isc;
   late bool _viewMode;
@@ -56,6 +58,7 @@ class _ReadPageState extends State<ReadPage> {
     _currentChapter = widget.chapter;
     _currentVerse = widget.startVerse is int ? widget.startVerse! : 1;
     _buttonFocusNode = FocusNode(debugLabel: 'Menu Button');
+    _pageFocusNode = FocusNode(debugLabel: 'Read Page Keyboard Focus');
     _getTotalVerses();
   }
 
@@ -66,6 +69,7 @@ class _ReadPageState extends State<ReadPage> {
     }
     _scrollController.dispose();
     _buttonFocusNode.dispose();
+    _pageFocusNode.dispose();
     super.dispose();
   }
 
@@ -97,8 +101,28 @@ class _ReadPageState extends State<ReadPage> {
         await _saveProgressOnExit();
         return true;
       },
-      child: Scaffold(
-        appBar: AppBar(
+      child: Focus(
+        autofocus: true,
+        focusNode: _pageFocusNode,
+        onKeyEvent: (node, event) {
+          if (event is! KeyDownEvent) {
+            return KeyEventResult.ignored;
+          }
+
+          if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+            _increase();
+            return KeyEventResult.handled;
+          }
+
+          if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+            _decrease();
+            return KeyEventResult.handled;
+          }
+
+          return KeyEventResult.ignored;
+        },
+        child: Scaffold(
+          appBar: AppBar(
         leading: const BackButton(),
         title: Text(quran.getSurahName(_currentChapter)),
         centerTitle: true,
@@ -204,6 +228,7 @@ class _ReadPageState extends State<ReadPage> {
         ],
       ),
         body: _viewMode ? cardView(marginValue: marginValue) : listView(),
+        ),
       ),
     );
   }
