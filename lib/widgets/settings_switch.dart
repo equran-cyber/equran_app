@@ -17,18 +17,24 @@ class SettingsSwitch extends StatefulWidget {
 }
 
 class _SettingsSwitchState extends State<SettingsSwitch> {
+  void _setValue(bool value) {
+    setState(() {
+      SettingsDB().put(widget.settingsKey, value);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bool currentValue =
+        SettingsDB().get(widget.settingsKey, defaultValue: true);
+
     return ListTile(
+      onTap: () => _setValue(!currentValue),
       title: Text(widget.title),
       subtitle: widget.subtitle != null ? Text(widget.subtitle!) : null,
       trailing: Switch(
-        value: SettingsDB().get(widget.settingsKey, defaultValue: true),
-        onChanged: (bool value) {
-          setState(() {
-            SettingsDB().put(widget.settingsKey, value);
-          });
-        },
+        value: currentValue,
+        onChanged: _setValue,
       ),
     );
   }
