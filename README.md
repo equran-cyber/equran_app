@@ -1,12 +1,96 @@
-# equran_app
-
-Application for reading the Holy Quran. 
+# eQuran — Your Modern Quran Companion
 
 [<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"
 alt="Get it on F-Droid"
 height="80">](https://f-droid.org/en/packages/com.app.equran/)
 
-## Prerequisites
+Experience the Quran with clarity, focus, and ease.
+
+**eQuran** is designed to bring together reading, listening, and reflection in one seamless experience. With a clean Material 3 interface and thoughtfully crafted features, it helps you stay connected to the Quran—whether you're at home, on the go, or revisiting your last session.
+
+---
+
+## ✨ Why You’ll Love eQuran
+
+- 📖 Effortless reading with a clean, distraction-free design  
+- 🎧 Smooth audio playback for both Surahs and individual ayahs  
+- 🔄 Instantly resume where you left off  
+- 📱 Works beautifully across phones, tablets, and desktops  
+- 🌙 Built for daily recitation, memorization, and reflection  
+
+---
+
+## 📖 Beautiful Reading Experience
+
+- Browse by **Surah or Juz**
+- Smooth, intuitive navigation between verses
+- Quick access to Surah details and verse counts
+- Optimized for both mobile and large screens
+
+---
+
+## 🔁 Never Lose Your Place
+
+- Automatically saves your **last read position**
+- Quickly return to recent ayahs
+- Designed for seamless continuity across sessions
+
+---
+
+## 🎧 Powerful Audio Experience
+
+- Stream high-quality recitations instantly  
+- Play **individual ayahs directly from the page**  
+- Download Surahs for **offline listening**  
+- Automatically switches to offline audio when available  
+
+**Playback controls:**
+- Play, pause, next, previous  
+- Shuffle and loop modes  
+- Adjustable playback speed  
+
+---
+
+## 🎙️ Multiple Reciters
+
+- Mishary Rashid Al Afasy  
+- Abu Bakr Al Shatri  
+- Nasser Al Qatami  
+- Yasser Al Dosari  
+- Hani Ar Rifai  
+
+---
+
+## 🎵 Background Playback
+
+- Listen while using other apps  
+- Control playback from system media controls  
+
+---
+
+## ⭐ Favorites & Personalization
+
+- Save important ayahs for quick access  
+- Theme-aware design  
+- Modern Material 3 interface  
+
+---
+
+## 📱 Built for Every Device
+
+- Optimized for phones, tablets, foldables, and desktops  
+- Adaptive layouts for reading and playback  
+- Improved readability on larger screens  
+
+---
+
+## 🌿 Simple. Modern. Focused.
+
+eQuran is built for those who want a clean, reliable, and distraction-free Quran experience.
+
+Whether you're reading daily, memorizing, or listening on the go, **eQuran helps you stay consistent and focused.**
+
+## Requirements for building the app
 
 - Flutter SDK (stable channel)
 - Git

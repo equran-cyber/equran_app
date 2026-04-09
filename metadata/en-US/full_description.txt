@@ -1,41 +1,32 @@
 eQuran is a modern Quran companion designed for focused reading, listening, and daily reflection. Built with a clean Material 3 interface, eQuran helps you move between recitation, browsing, and study with speed and clarity.
 
-Whether you want to continue where you left off, stream a Surah, or download audio for offline listening, eQuran keeps the experience simple, elegant, and reliable.
+Whether you want to continue where you left off, stream a Surah, play a specific ayah, or download audio for offline listening, eQuran keeps the experience simple, elegant, and reliable.
 
-Key Features
+Features
 
-• Beautiful Quran Reading Experience
-- Read by Surah or Juz in a clean, distraction-free interface.
-- Smooth navigation between verses and chapters.
-- Fast access to Surah metadata and verse counts.
+- Read the Quran by Surah or Juz
+- Smooth navigation between verses
+- Automatic last-read position tracking
+- Audio playback for Surahs and individual ayahs
+- Download audio for offline use
+- Multiple reciters available
+- Background playback support
+- Save favorite ayahs
+- Responsive layout for different screen sizes
 
-• Smart Last Read History
-- Automatically saves your recent reading progress.
-- Tracks your latest ayahs so you can resume quickly.
-- Designed for consistency across sessions.
+Audio
 
-• Advanced Audio Player
-- Stream high-quality Surah audio instantly.
-- Download Surah MP3 files for offline listening.
-- Automatically uses offline files when available.
-- Playback controls: shuffle, previous, play/pause, next, and loop.
-- Playback speed options for flexible listening.
+- Stream or download recitations
+- Automatically uses offline files when available
+- Includes playback controls and speed adjustment
 
-• Background Playback Support
-- Keep listening while using other apps.
-- Media controls available through system playback controls (supported platforms).
+Interface
 
-• Favorites and Personalization
-- Save your important ayahs for quick revisit.
-- Theme-aware design that adapts to your app settings.
-- Material 3 components throughout for modern usability.
-
-• Responsive Layouts
-- Optimized for phones, foldables, tablets, and desktop-sized screens.
-- Adaptive player layout for larger displays.
+- Material 3 design
+- Optimized for phones, tablets, and larger screens
 
 Why eQuran
 
-eQuran is built for readers and listeners who want a polished, modern Quran app without unnecessary complexity. It combines practical features, thoughtful UI design, and dependable playback behavior in one focused experience.
+eQuran is built for readers and listeners who want a polished, modern Quran app without unnecessary complexity. It combines practical features, thoughtful UI design, flexible reciter choices, and dependable playback behavior in one focused experience.
 
 Use eQuran for daily recitation, memorization support, listening on the go, and reconnecting with your progress anytime.
