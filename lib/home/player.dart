@@ -279,6 +279,9 @@ class _PlayerPageState extends State<PlayerPage> {
 
   String _surahName(int surah) => _surahTransliterations[surah - 1];
 
+  String _selectedReciterName() =>
+      QuranAudioService().selectedReciter.englishName;
+
   String _surahFileName(int surah) {
     final String reciterCode = QuranAudioService().selectedReciter.code;
     return '${reciterCode}_${surah.toString().padLeft(3, '0')}.mp3';
@@ -784,7 +787,7 @@ class _PlayerPageState extends State<PlayerPage> {
         final bool isFoldableLayout = width >= 720 && width < 1100;
         final bool isDesktop = width >= 1100;
         final double maxContentWidth = isDesktop
-            ? 980
+            ? width
             : isFoldableLayout
                 ? min(width, 1000)
                 : 560;
@@ -793,6 +796,10 @@ class _PlayerPageState extends State<PlayerPage> {
             : isFoldableLayout
                 ? min(width * 0.42, 360)
                 : min(width - 56, 440);
+        final double desktopCenterWidth = min(
+          640.0,
+          max(320.0, width - 760),
+        );
 
         final header = Padding(
           padding: EdgeInsets.only(bottom: isDesktop ? 24 : 16),
@@ -805,12 +812,25 @@ class _PlayerPageState extends State<PlayerPage> {
                 ),
               ),
               Expanded(
-                child: Text(
-                  _surahName(_selectedSurah),
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      _surahName(_selectedSurah),
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _selectedReciterName(),
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 48),
@@ -870,7 +890,7 @@ class _PlayerPageState extends State<PlayerPage> {
                 controller.open();
               }
             },
-            icon: const Icon(Icons.speed_rounded),
+            icon: const Icon(Icons.speed_rounded, size: 28),
           ),
         );
 
@@ -880,6 +900,7 @@ class _PlayerPageState extends State<PlayerPage> {
                 onPressed: _confirmDeleteSurahDownload,
                 icon: Icon(
                   Icons.check_circle_rounded,
+                  size: 28,
                   color: colorScheme.primary,
                 ),
               )
@@ -888,17 +909,17 @@ class _PlayerPageState extends State<PlayerPage> {
                 onPressed: _isDownloading ? null : _downloadSurah,
                 icon: _isDownloading
                     ? SizedBox(
-                        width: 20,
-                        height: 20,
+                        width: 22,
+                        height: 22,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           color: colorScheme.primary,
                         ),
                       )
-                    : const Icon(Icons.download_rounded),
+                    : const Icon(Icons.download_rounded, size: 28),
               );
 
-        final nowPlaying = Column(
+        final Widget artworkPanel = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             Center(
@@ -944,33 +965,43 @@ class _PlayerPageState extends State<PlayerPage> {
                 downloadButton,
               ],
             ),
-            const SizedBox(height: 22),
-            Row(
+          ],
+        );
+
+        final Widget playbackPanel = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        _surahName(_selectedSurah),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      Text(
-                        'Surah $_selectedSurah • ${_isDownloaded ? "Offline MP3" : "Streaming"}',
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                Text(
+                  _surahName(_selectedSurah),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _selectedReciterName(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Surah $_selectedSurah • ${_isDownloaded ? "Offline MP3" : "Streaming"}',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Slider(value: progress, onChanged: (value) => _seek(value)),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1054,7 +1085,292 @@ class _PlayerPageState extends State<PlayerPage> {
           ],
         );
 
-        final Widget bodyContent = isFoldableLayout
+        final Widget desktopBottomBar = Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+          decoration: BoxDecoration(
+            color: colorScheme.surface.withOpacity(0.92),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: colorScheme.outlineVariant.withOpacity(0.4),
+            ),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: colorScheme.shadow.withOpacity(0.18),
+                blurRadius: 28,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: width >= 1500 ? 132 : 124,
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: <Widget>[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: <Widget>[
+                    Expanded(
+                      child: Row(
+                        children: <Widget>[
+                          Container(
+                            width: 84,
+                            height: 84,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(18),
+                              gradient: LinearGradient(
+                                colors: <Color>[
+                                  colorScheme.primaryContainer,
+                                  colorScheme.tertiaryContainer,
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.graphic_eq_rounded,
+                              size: 42,
+                              color: colorScheme.onPrimaryContainer,
+                            ),
+                          ),
+                          const SizedBox(width: 18),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 320),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  _surahName(_selectedSurah),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.headlineSmall?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _selectedReciterName(),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Surah $_selectedSurah • ${_isDownloaded ? "Offline MP3" : "Streaming"}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 220),
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            IconButton(
+                              tooltip: 'Choose Surah',
+                              onPressed: _openSurahPickerSheet,
+                              icon: const Icon(Icons.queue_music_rounded, size: 28),
+                            ),
+                            speedButton,
+                            downloadButton,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                IgnorePointer(
+                  ignoring: false,
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: desktopCenterWidth,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: <Widget>[
+                              IconButton(
+                                tooltip: 'Shuffle',
+                                onPressed: () {
+                                  _safeSetState(() {
+                                    _shuffleEnabled = !_shuffleEnabled;
+                                  });
+                                },
+                                icon: const Icon(Icons.shuffle_rounded),
+                                color: _shuffleEnabled
+                                    ? colorScheme.primary
+                                    : colorScheme.onSurfaceVariant,
+                              ),
+                              IconButton(
+                                tooltip: 'Previous',
+                                onPressed: _playPrevious,
+                                icon: const Icon(Icons.skip_previous_rounded),
+                                iconSize: 34,
+                              ),
+                              FilledButton(
+                                onPressed: _togglePlayPause,
+                                style: FilledButton.styleFrom(
+                                  shape: const CircleBorder(),
+                                  padding: const EdgeInsets.all(20),
+                                ),
+                                child: _isLoading
+                                    ? SizedBox(
+                                        width: 30,
+                                        height: 30,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.4,
+                                          color: colorScheme.onPrimary,
+                                        ),
+                                      )
+                                    : Icon(
+                                        _isPlaying
+                                            ? Icons.pause_rounded
+                                            : Icons.play_arrow_rounded,
+                                        size: 34,
+                                      ),
+                              ),
+                              IconButton(
+                                tooltip: 'Next',
+                                onPressed: _playNext,
+                                icon: const Icon(Icons.skip_next_rounded),
+                                iconSize: 34,
+                              ),
+                              IconButton(
+                                tooltip: 'Loop',
+                                onPressed: () {
+                                  _safeSetState(() {
+                                    _loopEnabled = !_loopEnabled;
+                                  });
+                                },
+                                icon: const Icon(Icons.repeat_rounded),
+                                color: _loopEnabled
+                                    ? colorScheme.primary
+                                    : colorScheme.onSurfaceVariant,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: <Widget>[
+                              SizedBox(
+                                width: 64,
+                                child: Text(
+                                  _time(_position),
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Slider(
+                                  value: progress,
+                                  onChanged: (value) => _seek(value),
+                                ),
+                              ),
+                              SizedBox(
+                                width: 64,
+                                child: Text(
+                                  _time(_duration),
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  textAlign: TextAlign.right,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+
+        final Widget nowPlaying = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            artworkPanel,
+            const SizedBox(height: 22),
+            playbackPanel,
+          ],
+        );
+
+        final Widget bodyContent = isDesktop
+            ? Column(
+                children: <Widget>[
+                  Expanded(
+                    child: SingleChildScrollView(
+                      physics: const ClampingScrollPhysics(),
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Column(
+                          children: <Widget>[
+                            Center(
+                              child: Container(
+                                width: artSize,
+                                height: artSize,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(18),
+                                  gradient: LinearGradient(
+                                    colors: <Color>[
+                                      colorScheme.primaryContainer,
+                                      colorScheme.tertiaryContainer,
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  boxShadow: <BoxShadow>[
+                                    BoxShadow(
+                                      color: colorScheme.shadow.withOpacity(0.18),
+                                      blurRadius: 26,
+                                      offset: const Offset(0, 14),
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  Icons.graphic_eq_rounded,
+                                  size: 170,
+                                  color: colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  desktopBottomBar,
+                ],
+              )
+            : isFoldableLayout
             ? Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
