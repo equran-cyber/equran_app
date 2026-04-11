@@ -139,18 +139,18 @@ class PlayerPage extends StatefulWidget {
 
 class _PlayerPageState extends State<PlayerPage> {
   final ja.AudioPlayer _justAudio = ja.AudioPlayer();
-  final ap.AudioPlayer _linuxAudio = ap.AudioPlayer();
+  final ap.AudioPlayer _fallbackAudio = ap.AudioPlayer();
   final Random _random = Random();
 
-  late final bool _useLinuxFallback;
+  late final bool _useAudioplayersFallback;
 
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration?>? _durationSubscription;
   StreamSubscription<ja.PlayerState>? _stateSubscription;
-  StreamSubscription<Duration>? _linuxPositionSubscription;
-  StreamSubscription<Duration>? _linuxDurationSubscription;
-  StreamSubscription<ap.PlayerState>? _linuxStateSubscription;
-  StreamSubscription<void>? _linuxCompleteSubscription;
+  StreamSubscription<Duration>? _fallbackPositionSubscription;
+  StreamSubscription<Duration>? _fallbackDurationSubscription;
+  StreamSubscription<ap.PlayerState>? _fallbackStateSubscription;
+  StreamSubscription<void>? _fallbackCompleteSubscription;
 
   int _selectedSurah = 1;
   int? _loadedSurah;
@@ -174,7 +174,8 @@ class _PlayerPageState extends State<PlayerPage> {
   void initState() {
     super.initState();
 
-    _useLinuxFallback = !kIsWeb && Platform.isLinux;
+    _useAudioplayersFallback =
+        !kIsWeb && (Platform.isLinux || Platform.isWindows);
 
     final dynamic rate = SettingsDB().get("playbackRate", defaultValue: 1.0);
     if (rate is num) {
@@ -186,23 +187,23 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   void _bindAudioListeners() {
-    if (_useLinuxFallback) {
-      _linuxPositionSubscription =
-          _linuxAudio.onPositionChanged.listen((position) {
+    if (_useAudioplayersFallback) {
+      _fallbackPositionSubscription =
+          _fallbackAudio.onPositionChanged.listen((position) {
         _safeSetState(() {
           _position = position;
         });
       });
 
-      _linuxDurationSubscription =
-          _linuxAudio.onDurationChanged.listen((duration) {
+      _fallbackDurationSubscription =
+          _fallbackAudio.onDurationChanged.listen((duration) {
         _safeSetState(() {
           _duration = duration;
         });
       });
 
-      _linuxStateSubscription =
-          _linuxAudio.onPlayerStateChanged.listen((state) {
+      _fallbackStateSubscription =
+          _fallbackAudio.onPlayerStateChanged.listen((state) {
         _safeSetState(() {
           _isPlaying = state == ap.PlayerState.playing;
           _isPaused = state == ap.PlayerState.paused;
@@ -212,7 +213,8 @@ class _PlayerPageState extends State<PlayerPage> {
         });
       });
 
-      _linuxCompleteSubscription = _linuxAudio.onPlayerComplete.listen((_) async {
+      _fallbackCompleteSubscription =
+          _fallbackAudio.onPlayerComplete.listen((_) async {
         await _handleTrackComplete();
       });
       return;
@@ -343,14 +345,14 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   Future<void> _setPlaybackRate(double value) async {
-    final double rate = _useLinuxFallback ? 1.0 : value.clamp(0.5, 2.0);
+    final double rate = _useAudioplayersFallback ? 1.0 : value.clamp(0.5, 2.0);
     _safeSetState(() {
       _playbackRate = rate;
     });
     await SettingsDB().put("playbackRate", rate);
 
-    if (_useLinuxFallback) {
-      await _linuxAudio.setPlaybackRate(rate);
+    if (_useAudioplayersFallback) {
+      await _fallbackAudio.setPlaybackRate(rate);
     } else {
       await _justAudio.setSpeed(rate);
     }
@@ -360,8 +362,8 @@ class _PlayerPageState extends State<PlayerPage> {
     required int surah,
     required bool playOffline,
   }) async {
-    if (_useLinuxFallback) {
-      await _linuxAudio.stop();
+    if (_useAudioplayersFallback) {
+      await _fallbackAudio.stop();
       _safeSetState(() {
         _position = Duration.zero;
         _duration = Duration.zero;
@@ -369,12 +371,12 @@ class _PlayerPageState extends State<PlayerPage> {
 
       if (playOffline) {
         final File file = await _surahFile(surah);
-        await _linuxAudio.play(ap.DeviceFileSource(file.path));
+        await _fallbackAudio.play(ap.DeviceFileSource(file.path));
       } else {
         final String url = await _surahStreamUrl(surah);
-        await _linuxAudio.play(ap.UrlSource(url));
+        await _fallbackAudio.play(ap.UrlSource(url));
       }
-      await _linuxAudio.setPlaybackRate(_playbackRate);
+      await _fallbackAudio.setPlaybackRate(_playbackRate);
       return;
     }
 
@@ -404,9 +406,9 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   Future<void> _resumeCurrentTrack() async {
-    if (_useLinuxFallback) {
-      await _linuxAudio.resume();
-      await _linuxAudio.setPlaybackRate(_playbackRate);
+    if (_useAudioplayersFallback) {
+      await _fallbackAudio.resume();
+      await _fallbackAudio.setPlaybackRate(_playbackRate);
     } else {
       unawaited(_justAudio.play());
       await _justAudio.setSpeed(_playbackRate);
@@ -414,24 +416,24 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   Future<void> _pauseCurrentTrack() async {
-    if (_useLinuxFallback) {
-      await _linuxAudio.pause();
+    if (_useAudioplayersFallback) {
+      await _fallbackAudio.pause();
     } else {
       await _justAudio.pause();
     }
   }
 
   Future<void> _stopCurrentTrack() async {
-    if (_useLinuxFallback) {
-      await _linuxAudio.stop();
+    if (_useAudioplayersFallback) {
+      await _fallbackAudio.stop();
     } else {
       await _justAudio.stop();
     }
   }
 
   Future<void> _seekCurrentTrack(Duration position) async {
-    if (_useLinuxFallback) {
-      await _linuxAudio.seek(position);
+    if (_useAudioplayersFallback) {
+      await _fallbackAudio.seek(position);
     } else {
       await _justAudio.seek(position);
     }
@@ -761,13 +763,13 @@ class _PlayerPageState extends State<PlayerPage> {
     _positionSubscription?.cancel();
     _durationSubscription?.cancel();
     _stateSubscription?.cancel();
-    _linuxPositionSubscription?.cancel();
-    _linuxDurationSubscription?.cancel();
-    _linuxStateSubscription?.cancel();
-    _linuxCompleteSubscription?.cancel();
+    _fallbackPositionSubscription?.cancel();
+    _fallbackDurationSubscription?.cancel();
+    _fallbackStateSubscription?.cancel();
+    _fallbackCompleteSubscription?.cancel();
 
     _justAudio.dispose();
-    _linuxAudio.dispose();
+    _fallbackAudio.dispose();
     super.dispose();
   }
 
@@ -848,7 +850,7 @@ class _PlayerPageState extends State<PlayerPage> {
             const Divider(height: 1),
             ...playbackRates.map(
               (rate) => MenuItemButton(
-                onPressed: (!_useLinuxFallback || rate == 1.0)
+                onPressed: (!_useAudioplayersFallback || rate == 1.0)
                     ? () => _setPlaybackRate(rate)
                     : null,
                 leadingIcon: const Icon(Icons.tune_rounded),
