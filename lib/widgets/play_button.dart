@@ -207,14 +207,13 @@ class _PlayButtonState extends State<PlayButton> {
     return Stack(
       alignment: Alignment.center,
       children: [
-        _isPlaying
-            ? CircularPercentIndicator(
-          radius: 20.0,
-          progressColor: Theme.of(context).colorScheme.primary,
-          lineWidth: 3.5,
-          percent: _progress,
-        )
-            : const SizedBox.shrink(),
+        if (_isPlaying)
+          CircularPercentIndicator(
+            radius: 20.0,
+            progressColor: Theme.of(context).colorScheme.primary,
+            lineWidth: 3.5,
+            percent: _progress,
+          ),
         IconButton(
           onPressed: _togglePlayPause,
           icon: _isLoading

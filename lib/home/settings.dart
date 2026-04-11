@@ -25,10 +25,9 @@ class SettingsPage extends StatelessWidget {
           ListTile(
             title: Text(
               "General",
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: Theme.of(context).colorScheme.primary),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+              ),
             ),
           ),
           const SettingsSwitch(
@@ -45,6 +44,11 @@ class SettingsPage extends StatelessWidget {
             title: "Show reading history",
             settingsKey: "showLastRead",
             subtitle: "Shows you up to 7 last read Surahs.",
+          ),
+          const SettingsSwitch(
+            title: "Enable Translation",
+            subtitle: "Enables translation for each verse.",
+            settingsKey: "enableTranslation",
           ),
           ListTile(
             title: const Text("Translation"),
@@ -67,7 +71,8 @@ class SettingsPage extends StatelessWidget {
                               int index = entry.key;
                               return RadioListTile(
                                 shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(20)),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
                                 title: Text(entry.value.name),
                                 value: index,
                                 groupValue: selected,
@@ -93,8 +98,8 @@ class SettingsPage extends StatelessWidget {
               final List<AppReciter> items = AppReciter.values.toList()
                 ..sort(
                   (a, b) => a.englishName.toLowerCase().compareTo(
-                        b.englishName.toLowerCase(),
-                      ),
+                    b.englishName.toLowerCase(),
+                  ),
                 );
               final selected = SettingsDB().get("reciter", defaultValue: "1");
               final selectedReciter = AppReciter.fromCode(selected);
@@ -113,7 +118,8 @@ class SettingsPage extends StatelessWidget {
                               int index = entry.key;
                               return RadioListTile<AppReciter>(
                                 shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(20)),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
                                 title: Text(entry.value.englishName),
                                 value: entry.value,
                                 groupValue: selectedReciter,
@@ -137,10 +143,9 @@ class SettingsPage extends StatelessWidget {
           ListTile(
             title: Text(
               "Appearance",
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: Theme.of(context).colorScheme.primary),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+              ),
             ),
           ),
           ListTile(
@@ -161,10 +166,12 @@ class SettingsPage extends StatelessWidget {
                             SettingsDB().put("color", index);
 
                             AdaptiveTheme.of(context).setTheme(
-                                light: ThemeData(colorSchemeSeed: color),
-                                dark: ThemeData(
-                                    colorSchemeSeed: color,
-                                    brightness: Brightness.dark));
+                              light: ThemeData(colorSchemeSeed: color),
+                              dark: ThemeData(
+                                colorSchemeSeed: color,
+                                brightness: Brightness.dark,
+                              ),
+                            );
                           },
                           child: CircleAvatar(
                             backgroundColor: color,
@@ -185,119 +192,120 @@ class SettingsPage extends StatelessWidget {
           ListTile(
             title: Text(
               "Data",
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: Theme.of(context).colorScheme.primary),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+              ),
             ),
           ),
           ListTile(
             title: const Text("Clear reading history"),
             subtitle: const Text("Removes all your reading history."),
             onTap: () => showDialog<void>(
-                context: context,
-                builder: (BuildContext context) => AlertDialog(
-                      backgroundColor:
-                          Theme.of(context).colorScheme.errorContainer,
-                      title: Text(
-                        "Clear reading history",
-                        style: TextStyle(
-                            color:
-                                Theme.of(context).colorScheme.onErrorContainer),
+              context: context,
+              builder: (BuildContext context) => AlertDialog(
+                backgroundColor: Theme.of(context).colorScheme.errorContainer,
+                title: Text(
+                  "Clear reading history",
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
+                ),
+                icon: const Icon(Icons.warning_amber_rounded),
+                content: Text(
+                  "WARNING: Are you sure you want to clear your reading history?",
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
+                ),
+                actions: <Widget>[
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Text(
+                      "NO",
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onErrorContainer,
                       ),
-                      icon: const Icon(Icons.warning_amber_rounded),
-                      content: Text(
-                        "WARNING: Are you sure you want to clear your reading history?",
-                        style: TextStyle(
-                            color:
-                                Theme.of(context).colorScheme.onErrorContainer),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      await BookmarkDB().clear();
+                      Navigator.of(context).pop();
+                    },
+                    child: Text(
+                      "YES",
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onErrorContainer,
                       ),
-                      actions: <Widget>[
-                        TextButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: Text(
-                              "NO",
-                              style: TextStyle(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onErrorContainer),
-                            )),
-                        TextButton(
-                            onPressed: () async {
-                              await BookmarkDB().clear();
-                              Navigator.of(context).pop();
-                            },
-                            child: Text(
-                              "YES",
-                              style: TextStyle(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onErrorContainer),
-                            ))
-                      ],
-                    )),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
           ListTile(
             title: const Text("Clear Favourites"),
             subtitle: const Text("Removes all verses you have liked. "),
             onTap: () => showDialog<void>(
-                context: context,
-                builder: (BuildContext context) => AlertDialog(
-                      backgroundColor:
-                          Theme.of(context).colorScheme.errorContainer,
-                      title: Text(
-                        "Clear Favourites",
-                        style: TextStyle(
-                            color:
-                                Theme.of(context).colorScheme.onErrorContainer),
+              context: context,
+              builder: (BuildContext context) => AlertDialog(
+                backgroundColor: Theme.of(context).colorScheme.errorContainer,
+                title: Text(
+                  "Clear Favourites",
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
+                ),
+                icon: const Icon(Icons.warning_amber_rounded),
+                content: Text(
+                  "WARNING: Are you sure you want to clear favourites?",
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
+                ),
+                actions: <Widget>[
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Text(
+                      "NO",
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onErrorContainer,
                       ),
-                      icon: const Icon(Icons.warning_amber_rounded),
-                      content: Text(
-                        "WARNING: Are you sure you want to clear favourites?",
-                        style: TextStyle(
-                            color:
-                                Theme.of(context).colorScheme.onErrorContainer),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      await FavouritesDB().clear();
+                      Navigator.of(context).pop();
+                    },
+                    child: Text(
+                      "YES",
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onErrorContainer,
                       ),
-                      actions: <Widget>[
-                        TextButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: Text(
-                              "NO",
-                              style: TextStyle(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onErrorContainer),
-                            )),
-                        TextButton(
-                            onPressed: () async {
-                              await FavouritesDB().clear();
-                              Navigator.of(context).pop();
-                            },
-                            child: Text(
-                              "YES",
-                              style: TextStyle(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onErrorContainer),
-                            ))
-                      ],
-                    )),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
           Divider(),
-          FutureBuilder(future: getVersion(), builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const Text("Loading...");
-            }
-            return ListTile(
-              title: Text(
-                "Version: ${snapshot.data}",
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(color: Theme.of(context).colorScheme.primary),
-              ),
-            );
-          })
+          FutureBuilder(
+            future: getVersion(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Text("Loading...");
+              }
+              return ListTile(
+                title: Text(
+                  "Version: ${snapshot.data}",
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              );
+            },
+          ),
         ],
       ),
     );

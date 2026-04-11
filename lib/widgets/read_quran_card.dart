@@ -2,6 +2,7 @@ import 'package:equran/backend/favourites_db.dart';
 import 'package:equran/widgets/library.dart';
 import 'package:flutter/material.dart';
 import 'package:like_button/like_button.dart';
+import 'package:equran/backend/library.dart' show SettingsDB;
 
 class ReadQuranCard extends StatelessWidget {
   final int currentChapter;
@@ -32,31 +33,35 @@ class ReadQuranCard extends StatelessWidget {
   });
 
   void _showInputPrompt(
-      BuildContext context, TextEditingController textController) {
+    BuildContext context,
+    TextEditingController textController,
+  ) {
     showDialog(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: const Text('Enter a note:'),
-            content: TextField(
-              maxLines: null,
-              controller: textController,
-              decoration: const InputDecoration(hintText: "Optional..."),
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Enter a note:'),
+          content: TextField(
+            maxLines: null,
+            controller: textController,
+            decoration: const InputDecoration(hintText: "Optional..."),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('OK'),
+              onPressed: () {
+                // Process the submitted text (from _textController.text)
+                FavouritesDB().put(
+                  "$currentChapter-${currentVerse.toString().padLeft(3, "0")}",
+                  textController.text,
+                );
+                Navigator.of(context).pop();
+              },
             ),
-            actions: <Widget>[
-              TextButton(
-                child: const Text('OK'),
-                onPressed: () {
-                  // Process the submitted text (from _textController.text)
-                  FavouritesDB().put(
-                      "$currentChapter-${currentVerse.toString().padLeft(3, "0")}",
-                      textController.text);
-                  Navigator.of(context).pop();
-                },
-              ),
-            ],
-          );
-        });
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -97,28 +102,32 @@ class ReadQuranCard extends StatelessWidget {
                 ),
                 LikeButton(
                   isLiked: FavouritesDB().contains(
-                      "$currentChapter-${currentVerse.toString().padLeft(3, "0")}"),
+                    "$currentChapter-${currentVerse.toString().padLeft(3, "0")}",
+                  ),
                   onTap: (bool isLiked) async {
                     if (!isLiked) {
                       _showInputPrompt(context, textController);
                     } else {
                       FavouritesDB().delete(
-                          "$currentChapter-${currentVerse.toString().padLeft(3, "0")}");
+                        "$currentChapter-${currentVerse.toString().padLeft(3, "0")}",
+                      );
                     }
                     return !isLiked;
                   },
-                )
+                ),
               ],
             ),
-            basmala != null
-                ? Text(basmala!,
-                    textDirection: TextDirection.rtl,
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        height: 2,
-                        fontFamily: 'Hafs',
-                        fontSize: fontSize))
-                : const SizedBox(),
+            if (basmala != null)
+              Text(
+                basmala!,
+                textDirection: TextDirection.rtl,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  height: 2,
+                  fontFamily: 'Hafs',
+                  fontSize: fontSize,
+                ),
+              ),
             Text(
               verse,
               textDirection: TextDirection.rtl,
@@ -129,14 +138,14 @@ class ReadQuranCard extends StatelessWidget {
                 fontSize: fontSize,
               ),
             ),
-            Text(
-              translation,
-              textAlign: TextAlign.justify,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(fontSize: fontSizeTranslation),
-            )
+            if (SettingsDB().get("enableTranslation", defaultValue: true))
+              Text(
+                translation,
+                textAlign: TextAlign.justify,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(fontSize: fontSizeTranslation),
+              ),
           ],
         ),
       ),
