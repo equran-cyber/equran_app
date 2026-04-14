@@ -21,11 +21,8 @@ class _JuzCardListState extends State<JuzCardList>
   final ScrollController _fallbackScrollController = ScrollController();
   final Map<int, GlobalKey> _sectionKeys = <int, GlobalKey>{};
 
-  ScrollController? _attachedScrollController;
-
   @override
   void dispose() {
-    _detachScrollController();
     _fallbackScrollController.dispose();
     super.dispose();
   }
@@ -35,7 +32,6 @@ class _JuzCardListState extends State<JuzCardList>
     super.build(context);
     final ScrollController scrollController =
         PrimaryScrollController.maybeOf(context) ?? _fallbackScrollController;
-    _attachScrollController(scrollController);
     final List<_JuzGroup> juzGroups = _buildJuzGroups(widget.searchQuery);
 
     if (juzGroups.isEmpty) {
@@ -48,47 +44,38 @@ class _JuzCardListState extends State<JuzCardList>
       controller: scrollController,
       thumbVisibility: true,
       interactive: true,
-      child: ListView.builder(
+      child: SingleChildScrollView(
         controller: scrollController,
-        shrinkWrap: true,
         physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.only(right: 8),
-        itemCount: juzGroups.length,
-        itemBuilder: (BuildContext context, int index) {
-          final _JuzGroup group = juzGroups[index];
-          final List<QuranJuzTile> juzCards = group.entries
-              .map(
-                (_JuzEntry entry) => QuranJuzTile(
-                  id: entry.surahId,
-                  transliteration: entry.transliteration,
-                  name: entry.name,
-                  startVerse: entry.startVerse,
-                  endVerse: entry.endVerse,
-                ),
-              )
-              .toList();
+        child: Padding(
+          padding: const EdgeInsets.only(right: 8, bottom: 24),
+          child: Column(
+            children: juzGroups.map((group) {
+              final List<QuranJuzTile> juzCards = group.entries
+                  .map(
+                    (_JuzEntry entry) => QuranJuzTile(
+                      id: entry.surahId,
+                      transliteration: entry.transliteration,
+                      name: entry.name,
+                      startVerse: entry.startVerse,
+                      endVerse: entry.endVerse,
+                    ),
+                  )
+                  .toList();
 
-          return KeyedSubtree(
-            key: _sectionKeys[group.juzNumber],
-            child: _JuzGroupSection(
-              juzNumber: group.juzNumber,
-              surahCount: group.entries.length,
-              children: juzCards,
-            ),
-          );
-        },
+              return KeyedSubtree(
+                key: _sectionKeys[group.juzNumber],
+                child: _JuzGroupSection(
+                  juzNumber: group.juzNumber,
+                  surahCount: group.entries.length,
+                  children: juzCards,
+                ),
+              );
+            }).toList(),
+          ),
+        ),
       ),
     );
-  }
-
-  void _attachScrollController(ScrollController controller) {
-    if (identical(_attachedScrollController, controller)) return;
-    _detachScrollController();
-    _attachedScrollController = controller;
-  }
-
-  void _detachScrollController() {
-    _attachedScrollController = null;
   }
 
   void _syncSectionKeys(List<_JuzGroup> groups) {
