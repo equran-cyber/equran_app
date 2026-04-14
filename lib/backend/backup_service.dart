@@ -62,7 +62,7 @@ class BackupService {
     );
 
     if (!Platform.isAndroid && !Platform.isIOS) {
-      final String? outputPath = await FilePicker.platform.saveFile(
+      final String? outputPath = await FilePicker.saveFile(
         dialogTitle: 'Save eQuran backup',
         fileName: fileName,
         type: FileType.custom,
@@ -98,7 +98,7 @@ class BackupService {
   }
 
   static Future<BackupRestoreResult> restoreFromPickedFile() async {
-    final FilePickerResult? result = await FilePicker.platform.pickFiles(
+    final FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const <String>['json', 'equranbackup'],
       withData: true,
