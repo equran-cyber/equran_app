@@ -1,8 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:cross_file/cross_file.dart';
 import 'package:equran/backend/bookmark_db.dart';
 import 'package:equran/backend/favourites_db.dart';
 import 'package:equran/backend/reading_model.dart';
@@ -10,7 +8,6 @@ import 'package:equran/backend/settings_db.dart';
 import 'package:equran/utils/reciter.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:quran/quran.dart' show Translation;
-import 'package:share_plus/share_plus.dart';
 
 class AppBackupException implements Exception {
   AppBackupException(this.message);
@@ -61,40 +58,19 @@ class BackupService {
       _buildBackupPayload(),
     );
 
-    if (!Platform.isAndroid && !Platform.isIOS) {
-      final String? outputPath = await FilePicker.saveFile(
-        dialogTitle: 'Save eQuran backup',
-        fileName: fileName,
-        type: FileType.custom,
-        allowedExtensions: const <String>['equranbackup'],
-        bytes: Uint8List.fromList(utf8.encode(encoded)),
-      );
-
-      if (outputPath == null) {
-        throw AppBackupException('Backup cancelled.');
-      }
-
-      final File outputFile = File(outputPath);
-      await outputFile.writeAsString(encoded);
-      return outputFile.path;
-    }
-
-    await SharePlus.instance.share(
-      ShareParams(
-        title: 'eQuran backup',
-        subject: 'eQuran backup',
-        text: 'Your eQuran backup file is attached.',
-        files: <XFile>[
-          XFile.fromData(
-            Uint8List.fromList(utf8.encode(encoded)),
-            mimeType: 'application/json',
-          ),
-        ],
-        fileNameOverrides: <String>[fileName],
-      ),
+    final String? outputPath = await FilePicker.saveFile(
+      dialogTitle: 'Save eQuran backup',
+      fileName: fileName,
+      type: FileType.custom,
+      allowedExtensions: const <String>['equranbackup'],
+      bytes: Uint8List.fromList(utf8.encode(encoded)),
     );
 
-    return null;
+    if (outputPath == null) {
+      throw AppBackupException('Backup cancelled.');
+    }
+
+    return outputPath;
   }
 
   static Future<BackupRestoreResult> restoreFromPickedFile() async {
