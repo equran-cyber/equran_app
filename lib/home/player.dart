@@ -802,6 +802,26 @@ class _PlayerPageState extends State<PlayerPage> {
     super.dispose();
   }
 
+  void _notifyAudioUserActivity() {
+    AndroidAudioDisplayMode.notifyUserActivity();
+  }
+
+  Widget _buildAudioInteractionBoundary({required Widget child}) {
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) => _notifyAudioUserActivity(),
+      onPointerMove: (_) => _notifyAudioUserActivity(),
+      onPointerSignal: (_) => _notifyAudioUserActivity(),
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (_) {
+          _notifyAudioUserActivity();
+          return false;
+        },
+        child: child,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
@@ -1455,33 +1475,35 @@ class _PlayerPageState extends State<PlayerPage> {
                 child: nowPlaying,
               );
 
-        return Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: <Color>[
-                colorScheme.primaryContainer.withOpacity(0.60),
-                colorScheme.tertiaryContainer.withOpacity(0.35),
-                colorScheme.surface,
-              ],
+        return _buildAudioInteractionBoundary(
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: <Color>[
+                  colorScheme.primaryContainer.withOpacity(0.60),
+                  colorScheme.tertiaryContainer.withOpacity(0.35),
+                  colorScheme.surface,
+                ],
+              ),
             ),
-          ),
-          child: SafeArea(
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: maxContentWidth),
-                child: SizedBox(
-                  height: constraints.maxHeight,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: <Widget>[
-                        header,
-                        Expanded(child: bodyContent),
-                      ],
+            child: SafeArea(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: maxContentWidth),
+                  child: SizedBox(
+                    height: constraints.maxHeight,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          header,
+                          Expanded(child: bodyContent),
+                        ],
+                      ),
                     ),
                   ),
                 ),
