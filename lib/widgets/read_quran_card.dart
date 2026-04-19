@@ -1,8 +1,8 @@
 import 'package:equran/backend/favourites_db.dart';
+import 'package:equran/backend/library.dart' show SettingsDB;
 import 'package:equran/widgets/library.dart';
 import 'package:flutter/material.dart';
 import 'package:like_button/like_button.dart';
-import 'package:equran/backend/library.dart' show SettingsDB;
 
 const int _favouriteNoteMaxLength = 80;
 
@@ -20,6 +20,7 @@ class ReadQuranCard extends StatelessWidget {
   final double fontSize;
   final double fontSizeTranslation;
   final Future<void> Function(int surah, int ayah)? onPlayRequested;
+  final bool showActions;
 
   const ReadQuranCard({
     super.key,
@@ -34,97 +35,104 @@ class ReadQuranCard extends StatelessWidget {
     required this.verse,
     required this.url,
     this.onPlayRequested,
+    this.showActions = true,
   });
 
-  void _showInputPrompt(
-    BuildContext context,
-    TextEditingController textController,
-  ) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Enter a note:'),
-          content: TextField(
-            maxLength: _favouriteNoteMaxLength,
-            maxLines: null,
-            controller: textController,
-            decoration: const InputDecoration(hintText: "Optional..."),
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('OK'),
-              onPressed: () {
-                // Process the submitted text (from _textController.text)
-                FavouritesDB().put(
-                  "$currentChapter-${currentVerse.toString().padLeft(3, "0")}",
-                  textController.text,
-                );
-                Navigator.of(context).pop();
-              },
+  String get _favouriteKey {
+    return "$currentChapter-${currentVerse.toString().padLeft(3, "0")}";
+  }
+
+  Future<void> _showInputPrompt(BuildContext context) async {
+    final TextEditingController textController = TextEditingController();
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('Enter a note:'),
+            content: TextField(
+              maxLength: _favouriteNoteMaxLength,
+              maxLines: null,
+              controller: textController,
+              decoration: const InputDecoration(hintText: "Optional..."),
             ),
-          ],
-        );
-      },
+            actions: <Widget>[
+              TextButton(
+                child: const Text('OK'),
+                onPressed: () {
+                  FavouritesDB().put(_favouriteKey, textController.text);
+                  Navigator.of(context).pop();
+                },
+              ),
+            ],
+          );
+        },
+      );
+    } finally {
+      textController.dispose();
+    }
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    final TextStyle? labelStyle = Theme.of(context).textTheme.bodyLarge;
+    final String label = "Juz' $juzNumber - $currentVerse/$totalVerses";
+
+    if (!showActions) {
+      return Text(
+        label,
+        style: labelStyle?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: <Widget>[
+        PlayButton(
+          key: ValueKey('$currentChapter-$currentVerse'),
+          url: url,
+          surah: currentChapter,
+          ayah: currentVerse,
+          onPlayRequested: onPlayRequested,
+        ),
+        Text(label, style: labelStyle),
+        LikeButton(
+          isLiked: FavouritesDB().contains(_favouriteKey),
+          onTap: (bool isLiked) async {
+            if (!isLiked) {
+              await _showInputPrompt(context);
+            } else {
+              FavouritesDB().delete(_favouriteKey);
+            }
+            return !isLiked;
+          },
+        ),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Get the size of the screen
-    Size screenSize = MediaQuery.of(context).size;
-    TextEditingController textController = TextEditingController();
+    final Size screenSize = MediaQuery.of(context).size;
 
-    // Define margin values for different screen sizes
     double marginValue;
-    if (screenSize.width > 1500) {
-      marginValue = 150;
-    }
     if (screenSize.width > 1200) {
-      marginValue = 120.0; // Large screen
+      marginValue = 120.0;
     } else if (screenSize.width > 700) {
-      marginValue = 40.0; // Medium screen
+      marginValue = 40.0;
     } else {
-      marginValue = 8.0; // Small screen
+      marginValue = 8.0;
     }
+
     return Card(
       elevation: 4,
       margin: EdgeInsets.symmetric(horizontal: marginValue, vertical: 10),
       child: Padding(
         padding: const EdgeInsets.all(12.0),
         child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                PlayButton(
-                  key: ValueKey('$currentChapter-$currentVerse'),
-                  url: url,
-                  surah: currentChapter,
-                  ayah: currentVerse,
-                  onPlayRequested: onPlayRequested,
-                ),
-                Text(
-                  "Juz' $juzNumber • $currentVerse/$totalVerses",
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-                LikeButton(
-                  isLiked: FavouritesDB().contains(
-                    "$currentChapter-${currentVerse.toString().padLeft(3, "0")}",
-                  ),
-                  onTap: (bool isLiked) async {
-                    if (!isLiked) {
-                      _showInputPrompt(context, textController);
-                    } else {
-                      FavouritesDB().delete(
-                        "$currentChapter-${currentVerse.toString().padLeft(3, "0")}",
-                      );
-                    }
-                    return !isLiked;
-                  },
-                ),
-              ],
-            ),
+          children: <Widget>[
+            _buildHeader(context),
             if (basmala != null)
               Text(
                 basmala!,
