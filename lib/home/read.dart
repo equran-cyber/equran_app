@@ -18,10 +18,15 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:numberpicker/numberpicker.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
 import 'package:quran/quran.dart' as quran;
 import 'package:vibration/vibration.dart';
+
+class _OfflineAudioPlaybackException implements Exception {
+  const _OfflineAudioPlaybackException();
+}
 
 class ReadPage extends StatefulWidget {
   final int chapter;
@@ -413,7 +418,9 @@ class _ReadPageState extends State<ReadPage> {
 
   Future<void> _updateKeepScreenOn() async {
     await _setKeepScreenOn(
-      !_viewMode && _continuousPlayback && _isVersePlaying,
+      !_viewMode &&
+          _playerVisible &&
+          (_continuousPlayback || _repeatIntervalEnabled),
     );
   }
 
@@ -442,17 +449,17 @@ class _ReadPageState extends State<ReadPage> {
     _scrollToVerseIfNeeded(verse);
 
     try {
-      await _versePlayer.stop();
-      final double rate = _playbackRate();
-      await _versePlayer.setPlaybackRate(rate);
-      final offlineFile = await AudioDownloadService().ayahFile(surah, verse);
-      if (!kIsWeb && offlineFile.existsSync()) {
-        await _versePlayer.play(DeviceFileSource(offlineFile.path));
-      } else {
-        final String url = await QuranAudioService().getAyahUrl(surah, verse);
-        await _versePlayer.play(UrlSource(url));
+      await _playVerseWithRetry(surah, verse);
+    } on _OfflineAudioPlaybackException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'You are offline. Download this ayah or reconnect to stream it.',
+            ),
+          ),
+        );
       }
-      await _versePlayer.setPlaybackRate(rate);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -465,6 +472,66 @@ class _ReadPageState extends State<ReadPage> {
           _isVerseLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _playVerseWithRetry(int surah, int verse) async {
+    const List<Duration> retryDelays = <Duration>[
+      Duration(milliseconds: 350),
+      Duration(milliseconds: 800),
+      Duration(milliseconds: 1400),
+    ];
+
+    Object? lastError;
+    for (int attempt = 0; attempt <= retryDelays.length; attempt++) {
+      try {
+        await _playVerseSource(surah, verse);
+        return;
+      } on _OfflineAudioPlaybackException {
+        rethrow;
+      } catch (error) {
+        lastError = error;
+        if (attempt == retryDelays.length) break;
+        await Future<void>.delayed(retryDelays[attempt]);
+      }
+    }
+
+    Error.throwWithStackTrace(
+      lastError ?? Exception('Audio playback failed.'),
+      StackTrace.current,
+    );
+  }
+
+  Future<void> _playVerseSource(int surah, int verse) async {
+    await _versePlayer.stop();
+    final double rate = _playbackRate();
+    await _versePlayer.setPlaybackRate(rate);
+    final offlineFile = await AudioDownloadService().ayahFile(surah, verse);
+    if (!kIsWeb && offlineFile.existsSync()) {
+      await _versePlayer.play(DeviceFileSource(offlineFile.path));
+    } else {
+      if (!await _hasInternetConnection()) {
+        throw const _OfflineAudioPlaybackException();
+      }
+      final String url = await QuranAudioService().getAyahUrl(surah, verse);
+      await _versePlayer.play(UrlSource(url));
+    }
+    await _versePlayer.setPlaybackRate(rate);
+  }
+
+  Future<bool> _hasInternetConnection() async {
+    if (kIsWeb) return true;
+
+    final http.Client client = http.Client();
+    try {
+      final http.Response response = await client
+          .head(Uri.parse('https://quranapi.pages.dev/api/1/1.json'))
+          .timeout(const Duration(seconds: 3));
+      return response.statusCode >= 200 && response.statusCode < 500;
+    } catch (_) {
+      return false;
+    } finally {
+      client.close();
     }
   }
 
@@ -621,8 +688,6 @@ class _ReadPageState extends State<ReadPage> {
   }
 
   Future<void> _stopBottomPlayer() async {
-    await _versePlayer.stop();
-    await _setKeepScreenOn(false);
     if (!mounted) return;
     setState(() {
       _playerVisible = false;
@@ -634,6 +699,8 @@ class _ReadPageState extends State<ReadPage> {
       _playerPosition = Duration.zero;
       _playerDuration = Duration.zero;
     });
+    await _versePlayer.stop();
+    await _setKeepScreenOn(false);
   }
 
   void _toggleContinuousPlayback(bool value) {
@@ -855,6 +922,9 @@ class _ReadPageState extends State<ReadPage> {
   }
 
   void _goToNextSurah() {
+    if (_playerMounted || _playingVerse != null) {
+      unawaited(_stopBottomPlayer());
+    }
     BookmarkDB().delete(_currentChapter);
     setState(() {
       _currentChapter = _currentChapter == 114 ? 1 : _currentChapter + 1;
@@ -871,6 +941,9 @@ class _ReadPageState extends State<ReadPage> {
   }
 
   void _goToPreviousSurah() {
+    if (_playerMounted || _playingVerse != null) {
+      unawaited(_stopBottomPlayer());
+    }
     setState(() {
       _currentChapter = _currentChapter == 1 ? 114 : _currentChapter - 1;
       _currentVerse = 1;
