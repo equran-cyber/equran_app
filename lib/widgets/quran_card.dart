@@ -1,6 +1,7 @@
 import 'package:equran/backend/surah_model.dart';
 import 'package:equran/home/read.dart';
 import 'package:equran/utils/app_radii.dart';
+import 'package:equran/widgets/number_badge.dart';
 import 'package:flutter/material.dart';
 
 class QuranCard extends StatelessWidget {
@@ -32,21 +33,9 @@ class QuranCard extends StatelessWidget {
           ),
           child: Row(
             children: <Widget>[
-              Container(
-                width: compact ? 38 : 44,
-                height: compact ? 38 : 44,
-                decoration: BoxDecoration(
-                  color: colorScheme.secondaryContainer,
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  surah.id.toString(),
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: colorScheme.onSecondaryContainer,
-                  ),
-                ),
+              NumberBadge(
+                label: surah.id.toString(),
+                size: compact ? 38 : 44,
               ),
               SizedBox(width: compact ? 10 : 14),
               Expanded(
