@@ -4,7 +4,12 @@ import 'dart:math';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:equran/backend/bookmark_db.dart';
 import 'package:equran/backend/library.dart'
-    show AudioDownloadService, FavouritesDB, QuranAudioService, SettingsDB;
+    show
+        AudioDownloadService,
+        DownloadNotifications,
+        FavouritesDB,
+        QuranAudioService,
+        SettingsDB;
 import 'package:equran/utils/app_radii.dart';
 import 'package:equran/widgets/library.dart' show ReadQuranCard;
 import 'package:flutter/foundation.dart'
@@ -35,6 +40,10 @@ class ReadPage extends StatefulWidget {
 }
 
 class _ReadPageState extends State<ReadPage> {
+  static const MethodChannel _readPageChannel = MethodChannel(
+    'com.app.equran/read_page',
+  );
+
   final AudioPlayer _versePlayer = AudioPlayer();
   late int _currentVerse;
   late int _currentChapter;
@@ -47,6 +56,8 @@ class _ReadPageState extends State<ReadPage> {
   bool _playerMounted = false;
   bool _isVersePlaying = false;
   bool _isVerseLoading = false;
+  bool _isDownloadingSurahAyahs = false;
+  bool _hasDownloadedSurahAyahs = false;
   bool _continuousPlayback = false;
   bool _repeatIntervalEnabled = false;
   int? _playingVerse;
@@ -79,6 +90,9 @@ class _ReadPageState extends State<ReadPage> {
     _scrollController = ScrollController();
     _currentChapter = widget.chapter;
     _currentVerse = widget.startVerse is int ? widget.startVerse! : 1;
+    _isDownloadingSurahAyahs = AudioDownloadService()
+        .isSurahAyahsDownloadInProgress(_currentChapter);
+    unawaited(_refreshSurahAyahDownloadState());
     _pageFocusNode = FocusNode(debugLabel: 'Read Page Keyboard Focus');
     _getTotalVerses();
     _repeatStartVerse = _currentVerse;
@@ -96,6 +110,7 @@ class _ReadPageState extends State<ReadPage> {
     if (!_hasSavedOnExit) {
       BookmarkDB().addReadingEntry(_currentChapter, _currentVerse);
     }
+    unawaited(_setKeepScreenOn(false));
     _playerPositionSubscription?.cancel();
     _playerDurationSubscription?.cancel();
     _playerStateSubscription?.cancel();
@@ -229,6 +244,26 @@ class _ReadPageState extends State<ReadPage> {
                         : Icons.play_circle_rounded,
                   ),
                 ),
+              if (!_viewMode)
+                IconButton(
+                  tooltip: _hasDownloadedSurahAyahs
+                      ? 'All ayahs downloaded'
+                      : 'Download all ayahs',
+                  onPressed: _isDownloadingSurahAyahs
+                      ? null
+                      : _downloadCurrentSurahAyahs,
+                  icon: _isDownloadingSurahAyahs
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(
+                          _hasDownloadedSurahAyahs
+                              ? Icons.offline_pin_rounded
+                              : Icons.download_for_offline_rounded,
+                        ),
+                ),
               IconButton(
                 tooltip: 'Reset',
                 onPressed: () => _showResetDialog(context),
@@ -279,6 +314,7 @@ class _ReadPageState extends State<ReadPage> {
           _isVerseLoading = false;
         }
       });
+      unawaited(_updateKeepScreenOn());
     });
 
     _playerCompleteSubscription = _versePlayer.onPlayerComplete.listen((
@@ -360,6 +396,25 @@ class _ReadPageState extends State<ReadPage> {
 
     _hasSavedOnExit = true;
     await BookmarkDB().addReadingEntry(_currentChapter, _currentVerse);
+  }
+
+  Future<void> _setKeepScreenOn(bool enabled) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+
+    try {
+      await _readPageChannel.invokeMethod<void>(
+        'setKeepScreenOn',
+        <String, bool>{'enabled': enabled},
+      );
+    } catch (_) {
+      // Ignore platform-channel failures on unsupported builds.
+    }
+  }
+
+  Future<void> _updateKeepScreenOn() async {
+    await _setKeepScreenOn(
+      !_viewMode && _continuousPlayback && _isVersePlaying,
+    );
   }
 
   Future<void> _playVerse(
@@ -459,23 +514,115 @@ class _ReadPageState extends State<ReadPage> {
     );
   }
 
+  Future<void> _playAdjacentPageViewAyah(int direction) async {
+    if (_viewMode || _isVerseLoading) return;
+
+    final int currentVerse = _playingVerse ?? _currentVerse;
+    final int targetVerse = currentVerse + direction;
+    if (targetVerse < 1 || targetVerse > _totalVerses) return;
+
+    await _playVerse(
+      _currentChapter,
+      targetVerse,
+      continuous: _continuousPlayback,
+    );
+  }
+
   void _togglePageViewPlayback() {
     if (_isVersePlaying && _playingVerse == _currentVerse) {
       unawaited(_toggleBottomPlayer());
       return;
     }
 
-    unawaited(
-      _playVerse(
-        _currentChapter,
-        _currentVerse,
-        continuous: _continuousPlayback,
-      ),
+    unawaited(_playVerse(_currentChapter, _currentVerse, continuous: true));
+  }
+
+  Future<void> _downloadCurrentSurahAyahs() async {
+    if (_isDownloadingSurahAyahs) return;
+
+    setState(() {
+      _isDownloadingSurahAyahs = true;
+    });
+
+    final int notificationId = DownloadNotifications.notificationId(
+      'surah-ayahs-$_currentChapter',
     );
+    final String surahName = quran.getSurahName(_currentChapter);
+    final String title = 'Downloading $surahName ayahs';
+
+    try {
+      await DownloadNotifications.progress(
+        id: notificationId,
+        title: title,
+        progress: null,
+      );
+      await AudioDownloadService().downloadSurahAyahs(
+        _currentChapter,
+        onProgress: (progress) => unawaited(
+          DownloadNotifications.progress(
+            id: notificationId,
+            title: title,
+            progress: progress.fraction,
+          ),
+        ),
+      );
+      await DownloadNotifications.complete(
+        id: notificationId,
+        title: 'Downloaded $surahName ayahs',
+      );
+      await _refreshSurahAyahDownloadState();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Downloaded all ayahs for $surahName')),
+        );
+      }
+    } catch (_) {
+      await DownloadNotifications.fail(
+        id: notificationId,
+        title: 'Failed to download $surahName ayahs',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to download $surahName ayahs.')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDownloadingSurahAyahs = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _refreshSurahAyahDownloadState() async {
+    if (kIsWeb) return;
+
+    final AudioDownloadService downloads = AudioDownloadService();
+    final int chapter = _currentChapter;
+    final int totalVerses = quran.getVerseCount(chapter);
+    for (int ayah = 1; ayah <= totalVerses; ayah++) {
+      if (!await downloads.hasAyah(chapter, ayah)) {
+        if (mounted && chapter == _currentChapter) {
+          setState(() {
+            _hasDownloadedSurahAyahs = false;
+          });
+        }
+        return;
+      }
+    }
+
+    if (mounted && chapter == _currentChapter) {
+      setState(() {
+        _hasDownloadedSurahAyahs = true;
+      });
+    }
   }
 
   Future<void> _stopBottomPlayer() async {
     await _versePlayer.stop();
+    await _setKeepScreenOn(false);
     if (!mounted) return;
     setState(() {
       _playerVisible = false;
@@ -503,6 +650,7 @@ class _ReadPageState extends State<ReadPage> {
         _repeatEndVerse = _currentVerse;
       }
     });
+    unawaited(_updateKeepScreenOn());
   }
 
   Future<void> _showRepeatIntervalSheet() async {
@@ -598,6 +746,7 @@ class _ReadPageState extends State<ReadPage> {
       setState(() {
         _repeatIntervalEnabled = false;
       });
+      unawaited(_updateKeepScreenOn());
       return;
     }
 
@@ -610,6 +759,7 @@ class _ReadPageState extends State<ReadPage> {
       _repeatEndVerse = end;
       _playingVerse = start;
     });
+    unawaited(_updateKeepScreenOn());
     await _playVerse(_currentChapter, start);
   }
 
@@ -712,7 +862,11 @@ class _ReadPageState extends State<ReadPage> {
       _totalVerses = quran.getVerseCount(_currentChapter);
       _repeatStartVerse = 1;
       _repeatEndVerse = 1;
+      _isDownloadingSurahAyahs = AudioDownloadService()
+          .isSurahAyahsDownloadInProgress(_currentChapter);
+      _hasDownloadedSurahAyahs = false;
     });
+    unawaited(_refreshSurahAyahDownloadState());
     _updateDB();
   }
 
@@ -723,7 +877,11 @@ class _ReadPageState extends State<ReadPage> {
       _totalVerses = quran.getVerseCount(_currentChapter);
       _repeatStartVerse = 1;
       _repeatEndVerse = 1;
+      _isDownloadingSurahAyahs = AudioDownloadService()
+          .isSurahAyahsDownloadInProgress(_currentChapter);
+      _hasDownloadedSurahAyahs = false;
     });
+    unawaited(_refreshSurahAyahDownloadState());
     _updateDB();
   }
 
@@ -1053,7 +1211,17 @@ class _ReadPageState extends State<ReadPage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
                       _buildAutoPlaybackButton(colorScheme),
-                      const SizedBox(width: 20),
+                      if (!_viewMode) ...<Widget>[
+                        const SizedBox(width: 8),
+                        _buildPageViewAyahNavButton(
+                          icon: Icons.skip_previous_rounded,
+                          tooltip: 'Previous ayah',
+                          onPressed: (_playingVerse ?? _currentVerse) <= 1
+                              ? null
+                              : () => unawaited(_playAdjacentPageViewAyah(-1)),
+                        ),
+                      ],
+                      const SizedBox(width: 8),
                       FilledButton(
                         onPressed: _toggleBottomPlayer,
                         style: FilledButton.styleFrom(
@@ -1076,7 +1244,18 @@ class _ReadPageState extends State<ReadPage> {
                                 size: 32,
                               ),
                       ),
-                      const SizedBox(width: 20),
+                      if (!_viewMode) ...<Widget>[
+                        const SizedBox(width: 8),
+                        _buildPageViewAyahNavButton(
+                          icon: Icons.skip_next_rounded,
+                          tooltip: 'Next ayah',
+                          onPressed:
+                              (_playingVerse ?? _currentVerse) >= _totalVerses
+                              ? null
+                              : () => unawaited(_playAdjacentPageViewAyah(1)),
+                        ),
+                      ],
+                      const SizedBox(width: 8),
                       _buildRepeatIntervalButton(colorScheme),
                     ],
                   ),
@@ -1165,6 +1344,17 @@ class _ReadPageState extends State<ReadPage> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: <Widget>[
                               _buildAutoPlaybackButton(colorScheme),
+                              if (!_viewMode)
+                                _buildPageViewAyahNavButton(
+                                  icon: Icons.skip_previous_rounded,
+                                  tooltip: 'Previous ayah',
+                                  onPressed:
+                                      (_playingVerse ?? _currentVerse) <= 1
+                                      ? null
+                                      : () => unawaited(
+                                          _playAdjacentPageViewAyah(-1),
+                                        ),
+                                ),
                               FilledButton(
                                 onPressed: _toggleBottomPlayer,
                                 style: FilledButton.styleFrom(
@@ -1187,6 +1377,18 @@ class _ReadPageState extends State<ReadPage> {
                                         size: 32,
                                       ),
                               ),
+                              if (!_viewMode)
+                                _buildPageViewAyahNavButton(
+                                  icon: Icons.skip_next_rounded,
+                                  tooltip: 'Next ayah',
+                                  onPressed:
+                                      (_playingVerse ?? _currentVerse) >=
+                                          _totalVerses
+                                      ? null
+                                      : () => unawaited(
+                                          _playAdjacentPageViewAyah(1),
+                                        ),
+                                ),
                               _buildRepeatIntervalButton(colorScheme),
                             ],
                           ),
@@ -1272,6 +1474,19 @@ class _ReadPageState extends State<ReadPage> {
             ? BorderSide(color: colorScheme.primary, width: 1.8)
             : BorderSide.none,
       ),
+    );
+  }
+
+  Widget _buildPageViewAyahNavButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onPressed,
+  }) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon),
+      iconSize: 30,
     );
   }
 

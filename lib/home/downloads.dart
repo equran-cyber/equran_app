@@ -1,7 +1,33 @@
 import 'package:equran/backend/library.dart'
-    show AudioDownloadEntry, AudioDownloadService, AudioDownloadsSummary;
+    show
+        AudioDownloadEntry,
+        AudioDownloadService,
+        AudioDownloadType,
+        AudioDownloadsSummary;
 import 'package:equran/utils/app_radii.dart';
+import 'package:equran/utils/reciter.dart';
 import 'package:flutter/material.dart';
+
+class _ReciterDownloadsGroup {
+  const _ReciterDownloadsGroup({
+    required this.reciterCode,
+    required this.entries,
+  });
+
+  final String reciterCode;
+  final List<AudioDownloadEntry> entries;
+
+  List<AudioDownloadEntry> get surahs => entries
+      .where((entry) => entry.type == AudioDownloadType.surah)
+      .toList(growable: false);
+
+  List<AudioDownloadEntry> get ayahs => entries
+      .where((entry) => entry.type != AudioDownloadType.surah)
+      .toList(growable: false);
+
+  int get sizeBytes =>
+      entries.fold<int>(0, (total, entry) => total + entry.sizeBytes);
+}
 
 class DownloadsPage extends StatefulWidget {
   const DownloadsPage({super.key});
@@ -99,6 +125,8 @@ class _DownloadsPageState extends State<DownloadsPage> {
         }
 
         final AudioDownloadsSummary summary = snapshot.data!;
+        final List<_ReciterDownloadsGroup> reciterGroups =
+            _groupDownloadsByReciter(summary);
         return RefreshIndicator(
           onRefresh: () async => _refresh(),
           child: ListView(
@@ -109,17 +137,15 @@ class _DownloadsPageState extends State<DownloadsPage> {
             children: <Widget>[
               _buildSummaryCard(theme, summary),
               const SizedBox(height: 16),
-              _buildSection(
-                title: 'Downloaded Surahs',
-                emptyText: 'No downloaded surahs yet.',
-                entries: summary.surahDownloads,
-              ),
-              const SizedBox(height: 16),
-              _buildSection(
-                title: 'Downloaded Ayahs',
-                emptyText: 'No downloaded ayahs yet.',
-                entries: summary.ayahDownloads,
-              ),
+              if (reciterGroups.isEmpty)
+                _buildEmptyDownloadsCard()
+              else
+                ...reciterGroups.expand(
+                  (group) => <Widget>[
+                    _buildReciterSection(group),
+                    const SizedBox(height: 16),
+                  ],
+                ),
             ],
           ),
         );
@@ -178,11 +204,33 @@ class _DownloadsPageState extends State<DownloadsPage> {
     );
   }
 
-  Widget _buildSection({
-    required String title,
-    required String emptyText,
-    required List<AudioDownloadEntry> entries,
-  }) {
+  List<_ReciterDownloadsGroup> _groupDownloadsByReciter(
+    AudioDownloadsSummary summary,
+  ) {
+    final Map<String, List<AudioDownloadEntry>> grouped =
+        <String, List<AudioDownloadEntry>>{};
+    for (final AudioDownloadEntry entry in summary.allDownloads) {
+      grouped
+          .putIfAbsent(entry.reciterCode, () => <AudioDownloadEntry>[])
+          .add(entry);
+    }
+
+    final List<_ReciterDownloadsGroup> groups = grouped.entries
+        .map(
+          (entry) => _ReciterDownloadsGroup(
+            reciterCode: entry.key,
+            entries: entry.value,
+          ),
+        )
+        .toList();
+    groups.sort(
+      (a, b) =>
+          _reciterName(a.reciterCode).compareTo(_reciterName(b.reciterCode)),
+    );
+    return groups;
+  }
+
+  Widget _buildEmptyDownloadsCard() {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
     return DecoratedBox(
@@ -196,29 +244,83 @@ class _DownloadsPageState extends State<DownloadsPage> {
         child: Column(
           children: <Widget>[
             ListTile(
-              title: Text(
-                title,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              trailing: Text(
-                '${entries.length}',
-                style: theme.textTheme.labelLarge?.copyWith(
+              leading: const Icon(Icons.download_done_outlined),
+              title: const Text('No downloaded audio yet.'),
+              subtitle: Text(
+                'Downloaded surahs and ayahs will appear here grouped by reciter.',
+                style: theme.textTheme.bodyMedium?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
-            const Divider(height: 1),
-            if (entries.isEmpty)
-              ListTile(
-                leading: const Icon(Icons.download_done_outlined),
-                title: Text(emptyText),
-              )
-            else
-              ...entries.map(_buildDownloadTile),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildReciterSection(_ReciterDownloadsGroup group) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final List<AudioDownloadEntry> surahs = group.surahs;
+    final List<AudioDownloadEntry> ayahs = group.ayahs;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(AppRadii.medium),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadii.medium),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.record_voice_over_rounded),
+              title: Text(
+                _reciterName(group.reciterCode),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              subtitle: Text(
+                '${surahs.length} surahs • ${ayahs.length} ayahs • ${AudioDownloadService.formatBytes(group.sizeBytes)}',
+              ),
+            ),
+            const Divider(height: 1),
+            if (surahs.isNotEmpty) _buildGroupHeader('Surahs', surahs.length),
+            ...surahs.map(_buildDownloadTile),
+            if (surahs.isNotEmpty && ayahs.isNotEmpty) const Divider(height: 1),
+            if (ayahs.isNotEmpty) _buildGroupHeader('Ayahs', ayahs.length),
+            ...ayahs.map(_buildDownloadTile),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGroupHeader(String title, int count) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Row(
+        children: <Widget>[
+          Text(
+            title,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: colorScheme.primary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '$count',
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -236,5 +338,14 @@ class _DownloadsPageState extends State<DownloadsPage> {
         icon: const Icon(Icons.delete_outline_rounded),
       ),
     );
+  }
+
+  String _reciterName(String reciterCode) {
+    final String normalizedCode = AppReciter.normalizeCode(reciterCode);
+    final bool isKnownReciter = AppReciter.values.any(
+      (reciter) => reciter.code == normalizedCode,
+    );
+    if (!isKnownReciter) return 'Reciter $reciterCode';
+    return AppReciter.fromCode(normalizedCode).englishName;
   }
 }

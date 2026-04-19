@@ -1,10 +1,14 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:equran/backend/download_notifications.dart';
 import 'package:equran/backend/quran_stream_url.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:quran/quran.dart' as quran;
+
+typedef AudioDownloadProgressCallback =
+    void Function(DownloadProgress progress);
 
 class AudioDownloadEntry {
   const AudioDownloadEntry({
@@ -14,6 +18,7 @@ class AudioDownloadEntry {
     required this.surah,
     required this.sizeBytes,
     this.ayah,
+    this.additionalFiles = const <File>[],
   });
 
   final File file;
@@ -22,17 +27,24 @@ class AudioDownloadEntry {
   final int surah;
   final int? ayah;
   final int sizeBytes;
+  final List<File> additionalFiles;
 
   String get title => type == AudioDownloadType.surah
       ? quran.getSurahName(surah)
+      : type == AudioDownloadType.ayahSurah
+      ? '${quran.getSurahName(surah)} • All Ayahs'
       : '${quran.getSurahName(surah)} • Ayah $ayah';
 
   String get subtitle => type == AudioDownloadType.surah
       ? 'Surah ${surah.toString().padLeft(3, '0')}'
+      : type == AudioDownloadType.ayahSurah
+      ? 'Surah $surah, ${quran.getVerseCount(surah)} ayahs'
       : 'Surah $surah, Ayah $ayah';
+
+  List<File> get files => <File>[file, ...additionalFiles];
 }
 
-enum AudioDownloadType { surah, ayah }
+enum AudioDownloadType { surah, ayah, ayahSurah }
 
 class AudioDownloadsSummary {
   const AudioDownloadsSummary({
@@ -55,6 +67,8 @@ class AudioDownloadsSummary {
 class AudioDownloadService {
   static const String _surahDirectoryName = 'surah_audio';
   static const String _ayahDirectoryName = 'ayah_audio';
+  static final Map<String, Future<List<File>>> _surahAyahDownloads =
+      <String, Future<List<File>>>{};
 
   Future<Directory> _audioDirectory(String directoryName) async {
     final Directory baseDir = await getApplicationDocumentsDirectory();
@@ -91,34 +105,181 @@ class AudioDownloadService {
 
   Future<bool> hasSurah(int surah) async {
     final File file = await surahFile(surah);
-    return file.existsSync();
+    return _isCompleteDownload(file);
   }
 
   Future<bool> hasAyah(int surah, int ayah) async {
     final File file = await ayahFile(surah, ayah);
-    return file.existsSync();
+    return _isCompleteDownload(file);
   }
 
-  Future<File> downloadSurah(int surah) async {
+  bool isSurahAyahsDownloadInProgress(int surah) {
+    return _surahAyahDownloads.containsKey('${_reciterCode()}-$surah');
+  }
+
+  Future<File> downloadSurah(
+    int surah, {
+    AudioDownloadProgressCallback? onProgress,
+  }) async {
     final String url = await QuranAudioService().getSurahUrl(surah);
     final File file = await surahFile(surah);
-    await _downloadToFile(url, file);
+    await _downloadToFile(
+      url,
+      file,
+      onProgress: onProgress == null
+          ? null
+          : (receivedBytes, totalBytes) => onProgress(
+              DownloadProgress(
+                receivedBytes: receivedBytes,
+                totalBytes: totalBytes,
+                completedFiles: 0,
+                totalFiles: 1,
+              ),
+            ),
+    );
     return file;
   }
 
-  Future<File> downloadAyah(int surah, int ayah) async {
+  Future<File> downloadAyah(
+    int surah,
+    int ayah, {
+    AudioDownloadProgressCallback? onProgress,
+  }) async {
     final String url = await QuranAudioService().getAyahUrl(surah, ayah);
     final File file = await ayahFile(surah, ayah);
-    await _downloadToFile(url, file);
+    await _downloadToFile(
+      url,
+      file,
+      onProgress: onProgress == null
+          ? null
+          : (receivedBytes, totalBytes) => onProgress(
+              DownloadProgress(
+                receivedBytes: receivedBytes,
+                totalBytes: totalBytes,
+                completedFiles: 0,
+                totalFiles: 1,
+              ),
+            ),
+    );
     return file;
   }
 
-  Future<void> _downloadToFile(String url, File file) async {
-    final http.Response response = await http.get(Uri.parse(url));
-    if (response.statusCode != 200) {
-      throw Exception('Download failed: ${response.statusCode}');
+  Future<List<File>> downloadSurahAyahs(
+    int surah, {
+    AudioDownloadProgressCallback? onProgress,
+  }) async {
+    final String downloadKey = '${_reciterCode()}-$surah';
+    final Future<List<File>>? activeDownload = _surahAyahDownloads[downloadKey];
+    if (activeDownload != null) {
+      return activeDownload;
     }
-    await file.writeAsBytes(response.bodyBytes, flush: true);
+
+    final Future<List<File>> download = _downloadMissingSurahAyahs(
+      surah,
+      onProgress: onProgress,
+    );
+    _surahAyahDownloads[downloadKey] = download;
+    void clearActiveDownload() {
+      if (identical(_surahAyahDownloads[downloadKey], download)) {
+        _surahAyahDownloads.remove(downloadKey);
+      }
+    }
+
+    download.then<void>(
+      (_) => clearActiveDownload(),
+      onError: (_, _) => clearActiveDownload(),
+    );
+    return download;
+  }
+
+  Future<List<File>> _downloadMissingSurahAyahs(
+    int surah, {
+    AudioDownloadProgressCallback? onProgress,
+  }) async {
+    final int totalFiles = quran.getVerseCount(surah);
+    final List<File> files = <File>[];
+    int completedFiles = 0;
+
+    for (int ayah = 1; ayah <= totalFiles; ayah++) {
+      final File file = await ayahFile(surah, ayah);
+      if (_isCompleteDownload(file)) {
+        files.add(file);
+        completedFiles++;
+        onProgress?.call(
+          DownloadProgress(
+            receivedBytes: 1,
+            totalBytes: 1,
+            completedFiles: completedFiles,
+            totalFiles: totalFiles,
+          ),
+        );
+        continue;
+      }
+
+      final String url = await QuranAudioService().getAyahUrl(surah, ayah);
+      await _downloadToFile(
+        url,
+        file,
+        onProgress: (receivedBytes, totalBytes) {
+          onProgress?.call(
+            DownloadProgress(
+              receivedBytes: receivedBytes,
+              totalBytes: totalBytes,
+              completedFiles: completedFiles,
+              totalFiles: totalFiles,
+            ),
+          );
+        },
+      );
+      files.add(file);
+      completedFiles++;
+    }
+    return files;
+  }
+
+  Future<void> _downloadToFile(
+    String url,
+    File file, {
+    void Function(int receivedBytes, int? totalBytes)? onProgress,
+  }) async {
+    final Uri uri = Uri.parse(url);
+    final File partialFile = File('${file.path}.part');
+    final http.Client client = http.Client();
+    try {
+      if (await partialFile.exists()) {
+        await partialFile.delete();
+      }
+      final http.StreamedResponse response = await client.send(
+        http.Request('GET', uri),
+      );
+      if (response.statusCode != 200) {
+        throw Exception('Download failed: ${response.statusCode}');
+      }
+
+      final int? totalBytes = response.contentLength;
+      int receivedBytes = 0;
+      final IOSink sink = partialFile.openWrite();
+      try {
+        await for (final List<int> chunk in response.stream) {
+          receivedBytes += chunk.length;
+          sink.add(chunk);
+          onProgress?.call(receivedBytes, totalBytes);
+        }
+      } finally {
+        await sink.close();
+      }
+      if (await file.exists()) {
+        await file.delete();
+      }
+      await partialFile.rename(file.path);
+    } catch (_) {
+      if (partialFile.existsSync()) {
+        await partialFile.delete();
+      }
+      rethrow;
+    } finally {
+      client.close();
+    }
   }
 
   Future<void> deleteSurah(int surah) async {
@@ -139,6 +300,11 @@ class AudioDownloadService {
     if (entry.file.existsSync()) {
       await entry.file.delete();
     }
+    for (final File file in entry.additionalFiles) {
+      if (file.existsSync()) {
+        await file.delete();
+      }
+    }
   }
 
   Future<void> clearAll() async {
@@ -150,7 +316,9 @@ class AudioDownloadService {
 
   Future<AudioDownloadsSummary> summary() async {
     final List<AudioDownloadEntry> surahs = await _scanSurahs();
-    final List<AudioDownloadEntry> ayahs = await _scanAyahs();
+    final List<AudioDownloadEntry> ayahs = _bundleCompleteAyahSurahs(
+      await _scanAyahs(),
+    );
     surahs.sort(_compareEntries);
     ayahs.sort(_compareEntries);
     return AudioDownloadsSummary(surahDownloads: surahs, ayahDownloads: ayahs);
@@ -169,6 +337,7 @@ class AudioDownloadService {
 
     for (final FileSystemEntity entity in dir.listSync()) {
       if (entity is! File) continue;
+      if (!_isCompleteDownload(entity)) continue;
       final RegExpMatch? match = pattern.firstMatch(_basename(entity.path));
       if (match == null) continue;
       final int? surah = int.tryParse(match.group(2)!);
@@ -193,6 +362,7 @@ class AudioDownloadService {
 
     for (final FileSystemEntity entity in dir.listSync()) {
       if (entity is! File) continue;
+      if (!_isCompleteDownload(entity)) continue;
       final RegExpMatch? match = pattern.firstMatch(_basename(entity.path));
       if (match == null) continue;
       final int? surah = int.tryParse(match.group(2)!);
@@ -213,6 +383,53 @@ class AudioDownloadService {
     return entries;
   }
 
+  List<AudioDownloadEntry> _bundleCompleteAyahSurahs(
+    List<AudioDownloadEntry> entries,
+  ) {
+    final Map<String, List<AudioDownloadEntry>> grouped =
+        <String, List<AudioDownloadEntry>>{};
+    for (final AudioDownloadEntry entry in entries) {
+      grouped
+          .putIfAbsent(
+            '${entry.reciterCode}-${entry.surah}',
+            () => <AudioDownloadEntry>[],
+          )
+          .add(entry);
+    }
+
+    final List<AudioDownloadEntry> bundled = <AudioDownloadEntry>[];
+    for (final List<AudioDownloadEntry> group in grouped.values) {
+      group.sort(_compareEntries);
+      final int surah = group.first.surah;
+      final int totalAyahs = quran.getVerseCount(surah);
+      final bool isComplete =
+          group.length == totalAyahs &&
+          group.every((entry) => entry.ayah != null) &&
+          group.map((entry) => entry.ayah).toSet().length == totalAyahs;
+
+      if (!isComplete) {
+        bundled.addAll(group);
+        continue;
+      }
+
+      final AudioDownloadEntry first = group.first;
+      bundled.add(
+        AudioDownloadEntry(
+          file: first.file,
+          type: AudioDownloadType.ayahSurah,
+          reciterCode: first.reciterCode,
+          surah: surah,
+          sizeBytes: group.fold<int>(
+            0,
+            (total, entry) => total + entry.sizeBytes,
+          ),
+          additionalFiles: group.skip(1).map((entry) => entry.file).toList(),
+        ),
+      );
+    }
+    return bundled;
+  }
+
   static String formatBytes(int bytes) {
     if (bytes <= 0) return '0 B';
     const List<String> units = <String>['B', 'KB', 'MB', 'GB'];
@@ -229,5 +446,9 @@ class AudioDownloadService {
 
   String _basename(String path) {
     return path.split(Platform.pathSeparator).last;
+  }
+
+  bool _isCompleteDownload(File file) {
+    return file.existsSync() && file.lengthSync() > 0;
   }
 }

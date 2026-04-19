@@ -190,7 +190,30 @@ class _PlayButtonState extends State<PlayButton> {
     });
 
     try {
-      await AudioDownloadService().downloadAyah(widget.surah, widget.ayah);
+      final int notificationId = DownloadNotifications.notificationId(
+        'ayah-${widget.surah}-${widget.ayah}',
+      );
+      final String title = 'Downloading ayah ${widget.surah}:${widget.ayah}';
+      await DownloadNotifications.progress(
+        id: notificationId,
+        title: title,
+        progress: null,
+      );
+      await AudioDownloadService().downloadAyah(
+        widget.surah,
+        widget.ayah,
+        onProgress: (progress) => unawaited(
+          DownloadNotifications.progress(
+            id: notificationId,
+            title: title,
+            progress: progress.fraction,
+          ),
+        ),
+      );
+      await DownloadNotifications.complete(
+        id: notificationId,
+        title: 'Downloaded ayah ${widget.surah}:${widget.ayah}',
+      );
       await _refreshDownloadState();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -200,6 +223,12 @@ class _PlayButtonState extends State<PlayButton> {
         );
       }
     } catch (e) {
+      await DownloadNotifications.fail(
+        id: DownloadNotifications.notificationId(
+          'ayah-${widget.surah}-${widget.ayah}',
+        ),
+        title: 'Failed to download ayah ${widget.surah}:${widget.ayah}',
+      );
       debugPrint('Error downloading ayah audio: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

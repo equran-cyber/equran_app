@@ -1,5 +1,6 @@
 export 'bookmark_db.dart';
 export 'audio_downloads.dart';
+export 'download_notifications.dart';
 export 'favourites_db.dart';
 export 'parse.dart';
 export 'reading_model.dart';

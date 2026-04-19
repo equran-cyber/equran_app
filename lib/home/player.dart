@@ -5,7 +5,7 @@ import 'dart:ui' show DisplayFeature, DisplayFeatureType;
 
 import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:equran/backend/library.dart'
-    show AudioDownloadService, SettingsDB;
+    show AudioDownloadService, DownloadNotifications, SettingsDB;
 import 'package:equran/utils/app_radii.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -666,7 +666,29 @@ class _PlayerPageState extends State<PlayerPage> {
     });
 
     try {
-      await _downloads.downloadSurah(_selectedSurah);
+      final int notificationId = DownloadNotifications.notificationId(
+        'surah-$_selectedSurah',
+      );
+      final String title = 'Downloading ${_surahName(_selectedSurah)}';
+      await DownloadNotifications.progress(
+        id: notificationId,
+        title: title,
+        progress: null,
+      );
+      await _downloads.downloadSurah(
+        _selectedSurah,
+        onProgress: (progress) => unawaited(
+          DownloadNotifications.progress(
+            id: notificationId,
+            title: title,
+            progress: progress.fraction,
+          ),
+        ),
+      );
+      await DownloadNotifications.complete(
+        id: notificationId,
+        title: 'Downloaded ${_surahName(_selectedSurah)}',
+      );
       await _refreshDownloadState();
 
       if (mounted) {
@@ -675,6 +697,10 @@ class _PlayerPageState extends State<PlayerPage> {
         );
       }
     } catch (_) {
+      await DownloadNotifications.fail(
+        id: DownloadNotifications.notificationId('surah-$_selectedSurah'),
+        title: 'Failed to download ${_surahName(_selectedSurah)}',
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Failed to download surah audio.')),
@@ -804,13 +830,13 @@ class _PlayerPageState extends State<PlayerPage> {
         final double maxArtHeight = isDesktop
             ? height - 260
             : isFoldableLayout
-            ? height - 300
+            ? height - 380
             : height - 360;
         final double artSize = min(
           isDesktop
               ? 520
               : isFoldableLayout
-              ? min(width * 0.42, 360)
+              ? min(width * 0.34, 300)
               : min(width - 56, 440),
           max(180, maxArtHeight),
         );
@@ -1328,6 +1354,23 @@ class _PlayerPageState extends State<PlayerPage> {
           ],
         );
 
+        final Widget foldableNowPlaying = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Expanded(
+              child: Align(
+                alignment: Alignment.center,
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: artworkPanel,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            playbackPanel,
+          ],
+        );
+
         final Widget bodyContent = isDesktop
             ? Column(
                 children: <Widget>[
@@ -1391,12 +1434,7 @@ class _PlayerPageState extends State<PlayerPage> {
                     ),
                   ),
                   const SizedBox(width: 16),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      child: nowPlaying,
-                    ),
-                  ),
+                  Expanded(child: foldableNowPlaying),
                 ],
               )
             : SingleChildScrollView(
