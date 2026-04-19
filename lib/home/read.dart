@@ -433,6 +433,7 @@ class _ReadPageState extends State<ReadPage> {
     int surah,
     int verse, {
     bool continuous = false,
+    bool smoothScroll = false,
   }) async {
     if (_isVerseLoading) return;
 
@@ -452,7 +453,7 @@ class _ReadPageState extends State<ReadPage> {
       _playerDuration = Duration.zero;
     });
     _updateDB();
-    _scrollToVerseIfNeeded(verse);
+    _scrollToVerseIfNeeded(verse, smooth: smoothScroll);
 
     try {
       await _playVerseWithRetry(surah, verse, requestId);
@@ -483,11 +484,7 @@ class _ReadPageState extends State<ReadPage> {
     }
   }
 
-  Future<void> _playVerseWithRetry(
-    int surah,
-    int verse,
-    int requestId,
-  ) async {
+  Future<void> _playVerseWithRetry(int surah, int verse, int requestId) async {
     const List<Duration> retryDelays = <Duration>[
       Duration(milliseconds: 350),
       Duration(milliseconds: 800),
@@ -508,6 +505,7 @@ class _ReadPageState extends State<ReadPage> {
         lastError = error;
         _throwIfPlaybackRequestCancelled(requestId);
         if (!await _hasInternetConnection()) {
+          _throwIfPlaybackRequestCancelled(requestId);
           throw const _OfflineAudioPlaybackException();
         }
         if (attempt == retryDelays.length) break;
@@ -574,12 +572,17 @@ class _ReadPageState extends State<ReadPage> {
       final int nextVerse = completedVerse >= _repeatEndVerse
           ? _repeatStartVerse
           : completedVerse + 1;
-      await _playVerse(_currentChapter, nextVerse);
+      await _playVerse(_currentChapter, nextVerse, smoothScroll: true);
       return;
     }
 
     if (_continuousPlayback && completedVerse < _totalVerses) {
-      await _playVerse(_currentChapter, completedVerse + 1, continuous: true);
+      await _playVerse(
+        _currentChapter,
+        completedVerse + 1,
+        continuous: true,
+        smoothScroll: true,
+      );
       return;
     }
 
@@ -714,6 +717,7 @@ class _ReadPageState extends State<ReadPage> {
 
   Future<void> _stopBottomPlayer() async {
     if (!mounted) return;
+    _playbackRequestId++;
     setState(() {
       _playerVisible = false;
       _isVersePlaying = false;
@@ -861,16 +865,20 @@ class _ReadPageState extends State<ReadPage> {
     await _versePlayer.seek(Duration(milliseconds: milliseconds));
   }
 
-  void _scrollToVerseIfNeeded(int verse) {
+  void _scrollToVerseIfNeeded(int verse, {bool smooth = false}) {
     if (_viewMode) {
       _scrollUp();
       return;
     }
 
-    _scrollToInlineVerse(verse);
+    _scrollToInlineVerse(verse, smooth: smooth);
   }
 
-  void _scrollToInlineVerse(int verse, {bool animate = true}) {
+  void _scrollToInlineVerse(
+    int verse, {
+    bool animate = true,
+    bool smooth = false,
+  }) {
     if (_viewMode) {
       _scrollUp();
       return;
@@ -887,8 +895,12 @@ class _ReadPageState extends State<ReadPage> {
         await Scrollable.ensureVisible(
           ayahContext,
           alignment: 0.08,
-          duration: animate ? const Duration(milliseconds: 320) : Duration.zero,
-          curve: Curves.easeOutCubic,
+          duration: animate
+              ? smooth
+                    ? const Duration(milliseconds: 700)
+                    : const Duration(milliseconds: 320)
+              : Duration.zero,
+          curve: smooth ? Curves.easeInOutCubic : Curves.easeOutCubic,
           alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
         );
       } finally {
