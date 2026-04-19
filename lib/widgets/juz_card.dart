@@ -1,5 +1,6 @@
 import 'package:equran/home/read.dart';
 import 'package:equran/utils/app_radii.dart';
+import 'package:equran/widgets/number_badge.dart';
 import 'package:flutter/material.dart';
 
 class QuranJuzTile extends StatelessWidget {
@@ -50,23 +51,7 @@ class QuranJuzTile extends StatelessWidget {
             padding: const EdgeInsets.all(14),
             child: Row(
               children: <Widget>[
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: colorScheme.secondaryContainer,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Text(
-                      id.toString(),
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: colorScheme.onSecondaryContainer,
-                      ),
-                    ),
-                  ),
-                ),
+                NumberBadge(label: id.toString()),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
