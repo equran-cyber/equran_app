@@ -1,22 +1,73 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 
 class AndroidAudioDisplayMode {
+  static const double _systemFrameRate = 0.0;
+  static const double _idleAudioFrameRate = 24.0;
+  static const Duration _defaultIdleDelay = Duration(milliseconds: 1400);
   static const MethodChannel _channel = MethodChannel(
     'com.app.equran/read_page',
   );
 
+  static bool _audioPlaybackActive = false;
+  static double? _lastAppliedFrameRate;
+  static Timer? _idleTimer;
+
+  static bool get _isSupported => !kIsWeb && Platform.isAndroid;
+
   static Future<void> setAudioPlaybackActive(bool active) async {
+    if (!_isSupported) return;
+    if (_audioPlaybackActive == active) return;
+
+    _audioPlaybackActive = active;
+    _idleTimer?.cancel();
+    _idleTimer = null;
+
+    if (!active) {
+      await _applyPreferredFrameRate(_systemFrameRate);
+      return;
+    }
+
+    await _applyPreferredFrameRate(_systemFrameRate);
+    _scheduleIdleFrameRate();
+  }
+
+  static void notifyUserActivity({
+    Duration idleDelay = const Duration(milliseconds: 1400),
+  }) {
+    if (!_isSupported || !_audioPlaybackActive) return;
+
+    _idleTimer?.cancel();
+    unawaited(_applyPreferredFrameRate(_systemFrameRate));
+    _idleTimer = Timer(idleDelay, () {
+      if (!_audioPlaybackActive) return;
+      unawaited(_applyPreferredFrameRate(_idleAudioFrameRate));
+    });
+  }
+
+  static void _scheduleIdleFrameRate() {
+    _idleTimer = Timer(_defaultIdleDelay, () {
+      if (!_audioPlaybackActive) return;
+      unawaited(_applyPreferredFrameRate(_idleAudioFrameRate));
+    });
+  }
+
+  static Future<void> _applyPreferredFrameRate(double frameRate) async {
     if (kIsWeb || !Platform.isAndroid) return;
+    if (_lastAppliedFrameRate == frameRate) return;
+
+    _lastAppliedFrameRate = frameRate;
 
     try {
       await _channel.invokeMethod<void>('setPreferredFrameRate', <String, num>{
-        'frameRate': active ? 24.0 : 0.0,
+        'frameRate': frameRate,
       });
     } catch (_) {
       // Devices that ignore frame-rate hints should not affect playback.
+      _lastAppliedFrameRate = null;
     }
   }
 }
