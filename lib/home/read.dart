@@ -28,6 +28,10 @@ class _OfflineAudioPlaybackException implements Exception {
   const _OfflineAudioPlaybackException();
 }
 
+class _CancelledAudioPlaybackException implements Exception {
+  const _CancelledAudioPlaybackException();
+}
+
 class ReadPage extends StatefulWidget {
   final int chapter;
   final bool juzMode;
@@ -65,6 +69,7 @@ class _ReadPageState extends State<ReadPage> {
   bool _hasDownloadedSurahAyahs = false;
   bool _continuousPlayback = false;
   bool _repeatIntervalEnabled = false;
+  int _playbackRequestId = 0;
   int? _playingVerse;
   int _repeatStartVerse = 1;
   int _repeatEndVerse = 1;
@@ -431,6 +436,7 @@ class _ReadPageState extends State<ReadPage> {
   }) async {
     if (_isVerseLoading) return;
 
+    final int requestId = ++_playbackRequestId;
     setState(() {
       _playerVisible = true;
       _playerMounted = true;
@@ -449,7 +455,9 @@ class _ReadPageState extends State<ReadPage> {
     _scrollToVerseIfNeeded(verse);
 
     try {
-      await _playVerseWithRetry(surah, verse);
+      await _playVerseWithRetry(surah, verse, requestId);
+    } on _CancelledAudioPlaybackException {
+      return;
     } on _OfflineAudioPlaybackException {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -475,7 +483,11 @@ class _ReadPageState extends State<ReadPage> {
     }
   }
 
-  Future<void> _playVerseWithRetry(int surah, int verse) async {
+  Future<void> _playVerseWithRetry(
+    int surah,
+    int verse,
+    int requestId,
+  ) async {
     const List<Duration> retryDelays = <Duration>[
       Duration(milliseconds: 350),
       Duration(milliseconds: 800),
@@ -485,12 +497,19 @@ class _ReadPageState extends State<ReadPage> {
     Object? lastError;
     for (int attempt = 0; attempt <= retryDelays.length; attempt++) {
       try {
-        await _playVerseSource(surah, verse);
+        _throwIfPlaybackRequestCancelled(requestId);
+        await _playVerseSource(surah, verse, requestId);
         return;
+      } on _CancelledAudioPlaybackException {
+        rethrow;
       } on _OfflineAudioPlaybackException {
         rethrow;
       } catch (error) {
         lastError = error;
+        _throwIfPlaybackRequestCancelled(requestId);
+        if (!await _hasInternetConnection()) {
+          throw const _OfflineAudioPlaybackException();
+        }
         if (attempt == retryDelays.length) break;
         await Future<void>.delayed(retryDelays[attempt]);
       }
@@ -502,21 +521,27 @@ class _ReadPageState extends State<ReadPage> {
     );
   }
 
-  Future<void> _playVerseSource(int surah, int verse) async {
+  Future<void> _playVerseSource(int surah, int verse, int requestId) async {
     await _versePlayer.stop();
+    _throwIfPlaybackRequestCancelled(requestId);
     final double rate = _playbackRate();
     await _versePlayer.setPlaybackRate(rate);
     final offlineFile = await AudioDownloadService().ayahFile(surah, verse);
+    _throwIfPlaybackRequestCancelled(requestId);
     if (!kIsWeb && offlineFile.existsSync()) {
       await _versePlayer.play(DeviceFileSource(offlineFile.path));
     } else {
-      if (!await _hasInternetConnection()) {
-        throw const _OfflineAudioPlaybackException();
-      }
       final String url = await QuranAudioService().getAyahUrl(surah, verse);
+      _throwIfPlaybackRequestCancelled(requestId);
       await _versePlayer.play(UrlSource(url));
     }
     await _versePlayer.setPlaybackRate(rate);
+  }
+
+  void _throwIfPlaybackRequestCancelled(int requestId) {
+    if (!mounted || requestId != _playbackRequestId) {
+      throw const _CancelledAudioPlaybackException();
+    }
   }
 
   Future<bool> _hasInternetConnection() async {
