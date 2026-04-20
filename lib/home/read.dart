@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 import 'dart:math';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -12,10 +13,10 @@ import 'package:equran/backend/library.dart'
         QuranAudioService,
         SettingsDB;
 import 'package:equran/utils/app_radii.dart';
+import 'package:equran/utils/responsive_nav.dart';
 import 'package:equran/widgets/library.dart' show ReadQuranCard;
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
-import 'package:flutter/gestures.dart' show LongPressStartDetails;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph, ScrollDirection;
 import 'package:flutter/services.dart';
@@ -76,10 +77,12 @@ class _ReadPageState extends State<ReadPage> {
   int _repeatEndVerse = 1;
   Duration _playerPosition = Duration.zero;
   Duration _playerDuration = Duration.zero;
-  final ValueNotifier<Duration> _playerPositionValue =
-      ValueNotifier<Duration>(Duration.zero);
-  final ValueNotifier<Duration> _playerDurationValue =
-      ValueNotifier<Duration>(Duration.zero);
+  final ValueNotifier<Duration> _playerPositionValue = ValueNotifier<Duration>(
+    Duration.zero,
+  );
+  final ValueNotifier<Duration> _playerDurationValue = ValueNotifier<Duration>(
+    Duration.zero,
+  );
   StreamSubscription<Duration>? _playerPositionSubscription;
   StreamSubscription<Duration>? _playerDurationSubscription;
   StreamSubscription<PlayerState>? _playerStateSubscription;
@@ -213,8 +216,8 @@ class _ReadPageState extends State<ReadPage> {
     final BuildContext? textContext = _inlineSurahTextKey.currentContext;
     final BuildContext? viewportContext = _pageViewViewportKey.currentContext;
     final RenderObject? textRenderObject = textContext?.findRenderObject();
-    final RenderObject? viewportRenderObject =
-        viewportContext?.findRenderObject();
+    final RenderObject? viewportRenderObject = viewportContext
+        ?.findRenderObject();
 
     if (textRenderObject is RenderParagraph &&
         viewportRenderObject is RenderBox) {
@@ -224,10 +227,9 @@ class _ReadPageState extends State<ReadPage> {
       final double viewportTop = viewportRenderObject
           .localToGlobal(Offset.zero)
           .dy;
-      final double localY = (viewportTop + 24 - textGlobalTopLeft.dy).clamp(
-        0.0,
-        textRenderObject.size.height,
-      ).toDouble();
+      final double localY = (viewportTop + 24 - textGlobalTopLeft.dy)
+          .clamp(0.0, textRenderObject.size.height)
+          .toDouble();
       final double localX = max(0.0, textRenderObject.size.width - 1);
       final TextPosition textPosition = textRenderObject.getPositionForOffset(
         Offset(localX, localY),
@@ -296,8 +298,8 @@ class _ReadPageState extends State<ReadPage> {
     final BuildContext? textContext = _inlineSurahTextKey.currentContext;
     final BuildContext? viewportContext = _pageViewViewportKey.currentContext;
     final RenderObject? textRenderObject = textContext?.findRenderObject();
-    final RenderObject? viewportRenderObject =
-        viewportContext?.findRenderObject();
+    final RenderObject? viewportRenderObject = viewportContext
+        ?.findRenderObject();
 
     final ScrollPosition position = _scrollController.position;
     if (textRenderObject is! RenderBox || viewportRenderObject is! RenderBox) {
@@ -306,10 +308,7 @@ class _ReadPageState extends State<ReadPage> {
 
     final double fontSize = SettingsDB().get("fontSize", defaultValue: 38.0);
     final TextPainter textPainter = TextPainter(
-      text: _buildInlineSurahTextSpan(
-        fontSize,
-        Theme.of(context).colorScheme,
-      ),
+      text: _buildInlineSurahTextSpan(fontSize, Theme.of(context).colorScheme),
       textAlign: TextAlign.justify,
       textDirection: TextDirection.rtl,
       textScaler: MediaQuery.textScalerOf(context),
@@ -322,10 +321,12 @@ class _ReadPageState extends State<ReadPage> {
         TextPosition(offset: textOffset),
         Rect.zero,
       );
-      final double verseGlobalY =
-          textRenderObject.localToGlobal(Offset(0, caretOffset.dy)).dy;
-      final double viewportTop =
-          viewportRenderObject.localToGlobal(Offset.zero).dy;
+      final double verseGlobalY = textRenderObject
+          .localToGlobal(Offset(0, caretOffset.dy))
+          .dy;
+      final double viewportTop = viewportRenderObject
+          .localToGlobal(Offset.zero)
+          .dy;
 
       return (position.pixels + verseGlobalY - viewportTop - 12)
           .clamp(position.minScrollExtent, position.maxScrollExtent)
@@ -432,6 +433,8 @@ class _ReadPageState extends State<ReadPage> {
           },
           child: Scaffold(
             appBar: AppBar(
+              toolbarHeight: ResponsiveNav.toolbarHeight(context),
+              iconTheme: IconThemeData(size: ResponsiveNav.iconSize(context)),
               leading: const BackButton(),
               title: Text(quran.getSurahName(_currentChapter)),
               centerTitle: true,
@@ -1502,9 +1505,9 @@ class _ReadPageState extends State<ReadPage> {
               .toDouble();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-      child: Container(
+      child: _buildFrostedPlayerSurface(
+        colorScheme: colorScheme,
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        decoration: _readPlayerDecoration(colorScheme),
         child: SafeArea(
           top: false,
           child: Stack(
@@ -1632,9 +1635,9 @@ class _ReadPageState extends State<ReadPage> {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-      child: Container(
+      child: _buildFrostedPlayerSurface(
+        colorScheme: colorScheme,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-        decoration: _readPlayerDecoration(colorScheme),
         child: SafeArea(
           top: false,
           child: ConstrainedBox(
@@ -1653,10 +1656,6 @@ class _ReadPageState extends State<ReadPage> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: <Widget>[
-                            _buildRepeatIntervalButton(
-                              colorScheme,
-                              iconSize: 28,
-                            ),
                             IconButton(
                               tooltip: 'Dismiss player',
                               onPressed: _stopBottomPlayer,
@@ -1782,7 +1781,7 @@ class _ReadPageState extends State<ReadPage> {
 
   BoxDecoration _readPlayerDecoration(ColorScheme colorScheme) {
     return BoxDecoration(
-      color: colorScheme.surface.withAlpha((0.92 * 255).round()),
+      color: colorScheme.surface.withAlpha((0.72 * 255).round()),
       borderRadius: BorderRadius.circular(AppRadii.large),
       border: Border.all(
         color: colorScheme.outlineVariant.withAlpha((0.4 * 255).round()),
@@ -1794,6 +1793,24 @@ class _ReadPageState extends State<ReadPage> {
           offset: const Offset(0, 12),
         ),
       ],
+    );
+  }
+
+  Widget _buildFrostedPlayerSurface({
+    required ColorScheme colorScheme,
+    required EdgeInsetsGeometry padding,
+    required Widget child,
+  }) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadii.large),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: padding,
+          decoration: _readPlayerDecoration(colorScheme),
+          child: child,
+        ),
+      ),
     );
   }
 
@@ -1849,11 +1866,11 @@ class _ReadPageState extends State<ReadPage> {
   }
 
   Widget _buildFixedPlayerBar() {
-    return RepaintBoundary(
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: _buildVersePlayerBar(),
-      ),
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: RepaintBoundary(child: _buildVersePlayerBar()),
     );
   }
 
@@ -1950,7 +1967,10 @@ class _ReadPageState extends State<ReadPage> {
                                 _currentChapter != 9
                             ? quran.basmala
                             : null,
-                        verse: _buildVerseText(_currentChapter, _currentVerse),
+                        verse: _buildCardVerseText(
+                          _currentChapter,
+                          _currentVerse,
+                        ),
                         translation: quran.getVerseTranslation(
                           _currentChapter,
                           _currentVerse,
@@ -2061,7 +2081,7 @@ class _ReadPageState extends State<ReadPage> {
           ),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
@@ -2103,10 +2123,7 @@ class _ReadPageState extends State<ReadPage> {
     );
   }
 
-  TextSpan _buildInlineSurahTextSpan(
-    double fontSize,
-    ColorScheme colorScheme,
-  ) {
+  TextSpan _buildInlineSurahTextSpan(double fontSize, ColorScheme colorScheme) {
     final TextStyle baseStyle = TextStyle(
       fontFamily: 'Hafs',
       height: 1.8,
@@ -2140,18 +2157,15 @@ class _ReadPageState extends State<ReadPage> {
       style: baseStyle,
       children: <InlineSpan>[
         if (start > 0) TextSpan(text: surahText.substring(0, start)),
-        TextSpan(
-          text: surahText.substring(start, end),
-          style: highlightStyle,
-        ),
+        TextSpan(text: surahText.substring(start, end), style: highlightStyle),
         if (end < surahText.length) TextSpan(text: surahText.substring(end)),
       ],
     );
   }
 
   void _handleInlineSurahLongPressStart(LongPressStartDetails details) {
-    final RenderObject? renderObject =
-        _inlineSurahTextKey.currentContext?.findRenderObject();
+    final RenderObject? renderObject = _inlineSurahTextKey.currentContext
+        ?.findRenderObject();
     if (renderObject is! RenderParagraph) return;
 
     final Offset localPosition = renderObject.globalToLocal(
@@ -2279,6 +2293,17 @@ class _ReadPageState extends State<ReadPage> {
   String _buildVerseText(int chapter, int verse) {
     final verseText =
         '${quran.getVerse(chapter, verse)} ${_arabicVerseNumber(verse)}';
+    if (verse == 1 && chapter != 1) {
+      return verseText.replaceAll(
+        "بِسْمِ اللَّهِ الرَّحْمَـٰنِ الرَّحِيمِ",
+        "",
+      );
+    }
+    return verseText;
+  }
+
+  String _buildCardVerseText(int chapter, int verse) {
+    final verseText = quran.getVerse(chapter, verse);
     if (verse == 1 && chapter != 1) {
       return verseText.replaceAll(
         "بِسْمِ اللَّهِ الرَّحْمَـٰنِ الرَّحِيمِ",
