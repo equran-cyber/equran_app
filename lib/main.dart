@@ -1,6 +1,7 @@
 import 'package:adaptive_theme/adaptive_theme.dart';
 import 'package:equran/home/library.dart' show HomePage;
 import 'package:equran/utils/app_theme.dart';
+import 'package:equran/utils/responsive_nav.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -65,6 +66,18 @@ class MyApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: theme,
         darkTheme: darkTheme,
+        builder: (context, child) {
+          final MediaQueryData mediaQuery = MediaQuery.of(context);
+          final double tabletTextScale = ResponsiveNav.appTextScale(context);
+          final double effectiveTextScale =
+              mediaQuery.textScaler.scale(1.0) * tabletTextScale;
+          return MediaQuery(
+            data: mediaQuery.copyWith(
+              textScaler: TextScaler.linear(effectiveTextScale),
+            ),
+            child: child ?? const SizedBox.shrink(),
+          );
+        },
         home: const HomePage(),
       ),
     );
