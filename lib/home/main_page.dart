@@ -1,6 +1,7 @@
 import 'package:equran/backend/library.dart';
 import 'package:equran/utils/app_radii.dart';
 import 'package:equran/utils/debouncer.dart';
+import 'package:equran/utils/responsive_nav.dart';
 import 'package:equran/widgets/library.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
@@ -51,14 +52,12 @@ class _MainPageState extends State<MainPage>
     final double horizontalPadding = width >= 1400
         ? 36
         : width >= 1100
-            ? 28
-            : 14;
+        ? 28
+        : 14;
     return Column(
       children: <Widget>[
         DecoratedBox(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.primaryContainer,
-          ),
+          decoration: _topBarDecoration(theme),
           child: SafeArea(
             bottom: false,
             child: Material(
@@ -79,9 +78,7 @@ class _MainPageState extends State<MainPage>
           ),
           child: _buildSectionHeader(theme),
         ),
-        Expanded(
-          child: _buildSegmentPager(horizontalPadding),
-        ),
+        Expanded(child: _buildSegmentPager(horizontalPadding)),
       ],
     );
   }
@@ -92,7 +89,11 @@ class _MainPageState extends State<MainPage>
         Builder(
           builder: (context) => IconButton(
             onPressed: () => Scaffold.of(context).openDrawer(),
-            icon: const Icon(Icons.menu_rounded),
+            style: ResponsiveNav.iconButtonStyle(context),
+            icon: Icon(
+              Icons.menu_rounded,
+              size: ResponsiveNav.iconSize(context),
+            ),
           ),
         ),
         Expanded(
@@ -167,24 +168,64 @@ class _MainPageState extends State<MainPage>
     );
   }
 
+  BoxDecoration _topBarDecoration(ThemeData theme) {
+    final ColorScheme colorScheme = theme.colorScheme;
+    final bool isLight = theme.brightness == Brightness.light;
+
+    return BoxDecoration(
+      color: isLight ? null : colorScheme.primaryContainer,
+      gradient: isLight
+          ? LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[
+                Color.alphaBlend(
+                  colorScheme.primary.withAlpha(28),
+                  colorScheme.surfaceContainerLow,
+                ),
+                Color.alphaBlend(
+                  colorScheme.tertiary.withAlpha(18),
+                  colorScheme.surfaceContainerLow,
+                ),
+              ],
+            )
+          : null,
+      border: Border(
+        bottom: BorderSide(
+          color: isLight
+              ? colorScheme.primary.withAlpha(34)
+              : colorScheme.outlineVariant.withAlpha(120),
+        ),
+      ),
+      boxShadow: <BoxShadow>[
+        BoxShadow(
+          color: colorScheme.shadow.withAlpha(isLight ? 20 : 14),
+          blurRadius: 10,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    );
+  }
+
   Widget _buildSectionHeader(ThemeData theme) {
     final ColorScheme colorScheme = theme.colorScheme;
+    final bool isLight = theme.brightness == Brightness.light;
 
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 360),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest.withAlpha(150),
+            color: isLight
+                ? colorScheme.surfaceContainerLow
+                : colorScheme.surfaceContainerHighest.withAlpha(150),
             borderRadius: BorderRadius.circular(AppRadii.medium),
-            border: Border.all(
-              color: colorScheme.primary.withAlpha(46),
-            ),
+            border: Border.all(color: colorScheme.outlineVariant),
             boxShadow: <BoxShadow>[
               BoxShadow(
-                color: colorScheme.primary.withAlpha(18),
-                blurRadius: 18,
-                offset: const Offset(0, 6),
+                color: colorScheme.shadow.withAlpha(18),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
@@ -199,14 +240,12 @@ class _MainPageState extends State<MainPage>
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: <Color>[
-                    colorScheme.primaryContainer.withAlpha(245),
-                    colorScheme.tertiaryContainer.withAlpha(225),
+                    colorScheme.primaryContainer,
+                    colorScheme.tertiaryContainer,
                   ],
                 ),
                 borderRadius: BorderRadius.circular(AppRadii.small),
-                border: Border.all(
-                  color: colorScheme.primary.withAlpha(42),
-                ),
+                border: Border.all(color: colorScheme.primary.withAlpha(58)),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
                     color: colorScheme.shadow.withAlpha(18),
@@ -332,10 +371,10 @@ class _MainPageState extends State<MainPage>
   }
 
   String get _searchHint => switch (_selectedSegment) {
-        1 => "Juz, surah, or number...",
-        2 => "Saved ayah, surah, note, or number...",
-        _ => "Surah name or number...",
-      };
+    1 => "Juz, surah, or number...",
+    2 => "Saved ayah, surah, note, or number...",
+    _ => "Surah name or number...",
+  };
 
   Widget? _buildLastReadCard() {
     if (SettingsDB().get("showLastRead", defaultValue: true) != true) {
