@@ -15,9 +15,9 @@ import 'package:equran/utils/app_radii.dart';
 import 'package:equran/widgets/library.dart' show ReadQuranCard;
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
-import 'package:flutter/gestures.dart';
+import 'package:flutter/gestures.dart' show LongPressStartDetails;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show ScrollDirection;
+import 'package:flutter/rendering.dart' show RenderParagraph, ScrollDirection;
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:numberpicker/numberpicker.dart';
@@ -85,12 +85,12 @@ class _ReadPageState extends State<ReadPage> {
   StreamSubscription<PlayerState>? _playerStateSubscription;
   StreamSubscription<void>? _playerCompleteSubscription;
   Timer? _pageScrollProgressTimer;
-  final Map<int, LongPressGestureRecognizer> _inlineAyahRecognizers =
-      <int, LongPressGestureRecognizer>{};
+  Timer? _inlineVerseHighlightTimer;
   final GlobalKey _pageViewViewportKey = GlobalKey();
   final GlobalKey _inlineSurahTextKey = GlobalKey();
   List<int>? _verseTextCumulativeLengths;
   int _verseTextTotalLength = 0;
+  String? _inlineSurahTextCache;
   int? _selectedInlineVerse;
   bool _isProgrammaticPageScroll = false;
   bool _isScrubbingProgress = false;
@@ -116,15 +116,14 @@ class _ReadPageState extends State<ReadPage> {
     _repeatEndVerse = _currentVerse;
     _bindVersePlayer();
     if (!_viewMode && _currentVerse > 1) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollToInlineVerse(_currentVerse, animate: false);
-      });
+      _scrollToInlineVerse(_currentVerse, animate: false, highlight: true);
     }
   }
 
   @override
   void dispose() {
     if (!_hasSavedOnExit) {
+      _syncCurrentVerseWithVisibleText();
       BookmarkDB().addReadingEntry(_currentChapter, _currentVerse);
     }
     unawaited(_setKeepScreenOn(false));
@@ -134,10 +133,10 @@ class _ReadPageState extends State<ReadPage> {
     _playerStateSubscription?.cancel();
     _playerCompleteSubscription?.cancel();
     _pageScrollProgressTimer?.cancel();
+    _inlineVerseHighlightTimer?.cancel();
     _versePlayer.dispose();
     _playerPositionValue.dispose();
     _playerDurationValue.dispose();
-    _disposeInlineAyahRecognizers();
     _scrollController.dispose();
     _pageFocusNode.dispose();
     super.dispose();
@@ -155,20 +154,6 @@ class _ReadPageState extends State<ReadPage> {
   void _setPlayerDuration(Duration duration) {
     _playerDuration = duration;
     _playerDurationValue.value = duration;
-  }
-
-  void _disposeInlineAyahRecognizers() {
-    for (final GestureRecognizer recognizer in _inlineAyahRecognizers.values) {
-      recognizer.dispose();
-    }
-    _inlineAyahRecognizers.clear();
-  }
-
-  LongPressGestureRecognizer _inlineRecognizerForVerse(int verse) {
-    final LongPressGestureRecognizer recognizer = _inlineAyahRecognizers
-        .putIfAbsent(verse, LongPressGestureRecognizer.new);
-    recognizer.onLongPress = () => _showAyahActions(verse);
-    return recognizer;
   }
 
   void _syncPageProgressFromScroll() {
@@ -191,25 +176,63 @@ class _ReadPageState extends State<ReadPage> {
   void _ensureVerseTextMetrics() {
     if (_verseTextCumulativeLengths != null) return;
 
+    _inlineSurahText();
+  }
+
+  String _inlineSurahText() {
+    final String? cachedText = _inlineSurahTextCache;
+    if (cachedText != null) return cachedText;
+
+    final StringBuffer buffer = StringBuffer();
     final List<int> lengths = <int>[0];
     int total = 0;
     for (int verse = 1; verse <= _totalVerses; verse++) {
-      total += _inlineVerseTextSegment(verse).length;
+      final String segment = _inlineVerseTextSegment(verse);
+      buffer.write(segment);
+      total += segment.length;
       lengths.add(total);
     }
 
     _verseTextCumulativeLengths = lengths;
     _verseTextTotalLength = total;
+    _inlineSurahTextCache = buffer.toString();
+    return _inlineSurahTextCache!;
   }
 
   void _clearVerseTextMetrics() {
     _verseTextCumulativeLengths = null;
     _verseTextTotalLength = 0;
+    _inlineSurahTextCache = null;
   }
 
   int _verseForCurrentScrollOffset() {
     if (!_scrollController.hasClients) {
       return _currentVerse;
+    }
+
+    final BuildContext? textContext = _inlineSurahTextKey.currentContext;
+    final BuildContext? viewportContext = _pageViewViewportKey.currentContext;
+    final RenderObject? textRenderObject = textContext?.findRenderObject();
+    final RenderObject? viewportRenderObject =
+        viewportContext?.findRenderObject();
+
+    if (textRenderObject is RenderParagraph &&
+        viewportRenderObject is RenderBox) {
+      final Offset textGlobalTopLeft = textRenderObject.localToGlobal(
+        Offset.zero,
+      );
+      final double viewportTop = viewportRenderObject
+          .localToGlobal(Offset.zero)
+          .dy;
+      final double localY = (viewportTop + 24 - textGlobalTopLeft.dy).clamp(
+        0.0,
+        textRenderObject.size.height,
+      ).toDouble();
+      final double localX = max(0.0, textRenderObject.size.width - 1);
+      final TextPosition textPosition = textRenderObject.getPositionForOffset(
+        Offset(localX, localY),
+      );
+      return _verseForTextOffset(textPosition.offset);
     }
 
     _ensureVerseTextMetrics();
@@ -240,6 +263,33 @@ class _ReadPageState extends State<ReadPage> {
     return low.clamp(1, _totalVerses).toInt();
   }
 
+  void _syncCurrentVerseWithVisibleText() {
+    if (_viewMode) return;
+
+    final int visibleVerse = _verseForCurrentScrollOffset();
+    if (visibleVerse == _currentVerse) return;
+    _currentVerse = visibleVerse;
+  }
+
+  void _highlightInlineVerseBriefly(
+    int verse, {
+    Duration duration = const Duration(milliseconds: 1600),
+  }) {
+    if (_viewMode) return;
+    if (verse < 1 || verse > _totalVerses) return;
+
+    _inlineVerseHighlightTimer?.cancel();
+    setState(() {
+      _selectedInlineVerse = verse;
+    });
+    _inlineVerseHighlightTimer = Timer(duration, () {
+      if (!mounted || _selectedInlineVerse != verse) return;
+      setState(() {
+        _selectedInlineVerse = null;
+      });
+    });
+  }
+
   double _scrollOffsetForVerse(int verse) {
     if (!_scrollController.hasClients) return 0;
 
@@ -259,7 +309,6 @@ class _ReadPageState extends State<ReadPage> {
       text: _buildInlineSurahTextSpan(
         fontSize,
         Theme.of(context).colorScheme,
-        includeRecognizers: false,
       ),
       textAlign: TextAlign.justify,
       textDirection: TextDirection.rtl,
@@ -306,6 +355,28 @@ class _ReadPageState extends State<ReadPage> {
     final int safeVerse = verse.clamp(1, _totalVerses).toInt();
     if (lengths.length <= safeVerse) return 0;
     return lengths[safeVerse - 1] + 1;
+  }
+
+  int _verseForTextOffset(int textOffset) {
+    _ensureVerseTextMetrics();
+    final List<int> lengths = _verseTextCumulativeLengths ?? <int>[0];
+    if (_verseTextTotalLength <= 0 || lengths.length <= 1) {
+      return _currentVerse;
+    }
+
+    final int offset = textOffset.clamp(0, _verseTextTotalLength).toInt();
+    int low = 1;
+    int high = lengths.length - 1;
+    while (low < high) {
+      final int mid = (low + high) >> 1;
+      if (lengths[mid] <= offset) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
+
+    return low.clamp(1, _totalVerses).toInt();
   }
 
   String _inlineVerseTextSegment(int verse) {
@@ -497,8 +568,8 @@ class _ReadPageState extends State<ReadPage> {
           TextButton(
             onPressed: () {
               _setVerse(picker);
-              if (!SettingsDB().get("viewMode", defaultValue: true)) {
-                _scrollToInlineVerse(picker);
+              if (!_viewMode) {
+                _scrollToInlineVerse(picker, highlight: true);
               }
               _updateDB();
               Navigator.of(context).pop();
@@ -529,6 +600,7 @@ class _ReadPageState extends State<ReadPage> {
     if (_hasSavedOnExit) return;
 
     _hasSavedOnExit = true;
+    _syncCurrentVerseWithVisibleText();
     await BookmarkDB().addReadingEntry(_currentChapter, _currentVerse);
   }
 
@@ -1003,6 +1075,7 @@ class _ReadPageState extends State<ReadPage> {
     int verse, {
     bool animate = true,
     bool smooth = false,
+    bool highlight = false,
   }) {
     if (_viewMode) {
       _scrollUp();
@@ -1029,6 +1102,9 @@ class _ReadPageState extends State<ReadPage> {
       } finally {
         if (mounted) {
           _isProgrammaticPageScroll = false;
+          if (highlight) {
+            _highlightInlineVerseBriefly(verse);
+          }
         }
       }
     });
@@ -1773,9 +1849,11 @@ class _ReadPageState extends State<ReadPage> {
   }
 
   Widget _buildFixedPlayerBar() {
-    return Align(
-      alignment: Alignment.bottomCenter,
-      child: _buildVersePlayerBar(),
+    return RepaintBoundary(
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: _buildVersePlayerBar(),
+      ),
     );
   }
 
@@ -1813,14 +1891,16 @@ class _ReadPageState extends State<ReadPage> {
   }
 
   Widget _buildCardViewBottomBars() {
-    return Align(
-      alignment: Alignment.bottomCenter,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          _buildVersePlayerBar(),
-          _buildNavigationButtons(fixed: true),
-        ],
+    return RepaintBoundary(
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            _buildVersePlayerBar(),
+            _buildNavigationButtons(fixed: true),
+          ],
+        ),
       ),
     );
   }
@@ -1965,32 +2045,45 @@ class _ReadPageState extends State<ReadPage> {
     required double fontSize,
     required double pageMargin,
   }) {
-    return Card(
-      elevation: 1,
-      margin: EdgeInsets.symmetric(horizontal: pageMargin, vertical: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            if (_currentChapter != 1 && _currentChapter != 9)
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: Text(
-                  quran.basmala,
-                  textDirection: TextDirection.rtl,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    height: 2,
-                    fontFamily: 'Hafs',
-                    fontSize: fontSize,
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final Color pageCardColor =
+        theme.cardTheme.color ?? colorScheme.surfaceContainerLow;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: pageMargin, vertical: 10),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: pageCardColor,
+          borderRadius: BorderRadius.circular(AppRadii.small),
+          border: Border.all(
+            color: colorScheme.outlineVariant.withAlpha((0.45 * 255).round()),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              if (_currentChapter != 1 && _currentChapter != 9)
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Text(
+                    quran.basmala,
+                    textDirection: TextDirection.rtl,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      height: 2,
+                      fontFamily: 'Hafs',
+                      fontSize: fontSize,
+                    ),
                   ),
                 ),
-              ),
-            const SizedBox(height: 16),
-            _buildInlineSurahText(fontSize),
-          ],
+              const SizedBox(height: 16),
+              _buildInlineSurahText(fontSize),
+            ],
+          ),
         ),
       ),
     );
@@ -1998,54 +2091,81 @@ class _ReadPageState extends State<ReadPage> {
 
   Widget _buildInlineSurahText(double fontSize) {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
-    return RichText(
-      key: _inlineSurahTextKey,
-      textDirection: TextDirection.rtl,
-      textAlign: TextAlign.justify,
-      text: _buildInlineSurahTextSpan(fontSize, colorScheme),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPressStart: _handleInlineSurahLongPressStart,
+      child: RichText(
+        key: _inlineSurahTextKey,
+        textDirection: TextDirection.rtl,
+        textAlign: TextAlign.justify,
+        text: _buildInlineSurahTextSpan(fontSize, colorScheme),
+      ),
     );
   }
 
   TextSpan _buildInlineSurahTextSpan(
     double fontSize,
-    ColorScheme colorScheme, {
-    bool includeRecognizers = true,
-  }) {
+    ColorScheme colorScheme,
+  ) {
     final TextStyle baseStyle = TextStyle(
       fontFamily: 'Hafs',
       height: 1.8,
       fontSize: fontSize,
       color: colorScheme.onSurface,
     );
+    final String surahText = _inlineSurahText();
+    final int? highlightedVerse = _selectedInlineVerse ?? _playingVerse;
+
+    if (highlightedVerse == null ||
+        highlightedVerse < 1 ||
+        highlightedVerse > _totalVerses) {
+      return TextSpan(text: surahText, style: baseStyle);
+    }
+
+    _ensureVerseTextMetrics();
+    final List<int> lengths = _verseTextCumulativeLengths ?? <int>[0];
+    if (lengths.length <= highlightedVerse) {
+      return TextSpan(text: surahText, style: baseStyle);
+    }
+
+    final int start = lengths[highlightedVerse - 1];
+    final int end = lengths[highlightedVerse]
+        .clamp(start, surahText.length)
+        .toInt();
+    final TextStyle highlightStyle = baseStyle.copyWith(
+      color: colorScheme.primary,
+    );
 
     return TextSpan(
-      children: List<InlineSpan>.generate(_totalVerses, (index) {
-        final int verse = index + 1;
-        final bool isSelected =
-            _selectedInlineVerse == verse || _playingVerse == verse;
-        final LongPressGestureRecognizer? recognizer = includeRecognizers
-            ? _inlineRecognizerForVerse(verse)
-            : null;
-
-        return TextSpan(
-          style: baseStyle.copyWith(
-            color: isSelected ? colorScheme.primary : colorScheme.onSurface,
-          ),
-          recognizer: recognizer,
-          children: <InlineSpan>[
-            const TextSpan(text: '\u2067'),
-            TextSpan(
-              text: _buildVerseText(_currentChapter, verse),
-              recognizer: recognizer,
-            ),
-            const TextSpan(text: '\u2069  '),
-          ],
-        );
-      }),
+      style: baseStyle,
+      children: <InlineSpan>[
+        if (start > 0) TextSpan(text: surahText.substring(0, start)),
+        TextSpan(
+          text: surahText.substring(start, end),
+          style: highlightStyle,
+        ),
+        if (end < surahText.length) TextSpan(text: surahText.substring(end)),
+      ],
     );
   }
 
+  void _handleInlineSurahLongPressStart(LongPressStartDetails details) {
+    final RenderObject? renderObject =
+        _inlineSurahTextKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderParagraph) return;
+
+    final Offset localPosition = renderObject.globalToLocal(
+      details.globalPosition,
+    );
+    final TextPosition textPosition = renderObject.getPositionForOffset(
+      localPosition,
+    );
+    final int verse = _verseForTextOffset(textPosition.offset);
+    _showAyahActions(verse);
+  }
+
   Future<void> _showAyahActions(int verse) async {
+    _inlineVerseHighlightTimer?.cancel();
     setState(() {
       _selectedInlineVerse = verse;
       _currentVerse = verse;

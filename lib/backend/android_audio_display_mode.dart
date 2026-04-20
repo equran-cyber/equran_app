@@ -15,6 +15,7 @@ class AndroidAudioDisplayMode {
   static bool _audioPlaybackActive = false;
   static double? _lastAppliedFrameRate;
   static Timer? _idleTimer;
+  static DateTime? _lastUserActivityAt;
 
   static bool get _isSupported => !kIsWeb && Platform.isAndroid;
 
@@ -25,6 +26,7 @@ class AndroidAudioDisplayMode {
     _audioPlaybackActive = active;
     _idleTimer?.cancel();
     _idleTimer = null;
+    _lastUserActivityAt = null;
 
     if (!active) {
       await _applyPreferredFrameRate(_systemFrameRate);
@@ -40,19 +42,37 @@ class AndroidAudioDisplayMode {
   }) {
     if (!_isSupported || !_audioPlaybackActive) return;
 
-    _idleTimer?.cancel();
+    _lastUserActivityAt = DateTime.now();
     unawaited(_applyPreferredFrameRate(_systemFrameRate));
-    _idleTimer = Timer(idleDelay, () {
-      if (!_audioPlaybackActive) return;
-      unawaited(_applyPreferredFrameRate(_idleAudioFrameRate));
-    });
+    _idleTimer ??= Timer(idleDelay, () => _handleIdleTimer(idleDelay));
   }
 
   static void _scheduleIdleFrameRate() {
-    _idleTimer = Timer(_defaultIdleDelay, () {
-      if (!_audioPlaybackActive) return;
-      unawaited(_applyPreferredFrameRate(_idleAudioFrameRate));
-    });
+    _lastUserActivityAt = DateTime.now();
+    _idleTimer = Timer(
+      _defaultIdleDelay,
+      () => _handleIdleTimer(_defaultIdleDelay),
+    );
+  }
+
+  static void _handleIdleTimer(Duration idleDelay) {
+    if (!_audioPlaybackActive) {
+      _idleTimer = null;
+      return;
+    }
+
+    final DateTime now = DateTime.now();
+    final DateTime lastActivity = _lastUserActivityAt ?? now;
+    final Duration idleFor = now.difference(lastActivity);
+    if (idleFor < idleDelay) {
+      _idleTimer = Timer(idleDelay - idleFor, () {
+        _handleIdleTimer(idleDelay);
+      });
+      return;
+    }
+
+    _idleTimer = null;
+    unawaited(_applyPreferredFrameRate(_idleAudioFrameRate));
   }
 
   static Future<void> _applyPreferredFrameRate(double frameRate) async {

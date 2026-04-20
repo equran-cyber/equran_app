@@ -13,12 +13,12 @@ class BookmarkDB extends BaseDB {
   }
 
   Future<void> addReadingEntry(int surah, int verse) async {
-    final DateTime now = DateTime.now();
-    final ReadingEntry? existing = get(surah) as ReadingEntry?;
-    if (existing != null && existing.verse == verse) {
+    if (verse <= 1) {
+      await delete(surah);
       return;
     }
 
+    final DateTime now = DateTime.now();
     final entries = box.toMap().entries.where((entry) {
       final value = entry.value;
       return value is ReadingEntry &&
