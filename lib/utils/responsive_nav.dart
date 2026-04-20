@@ -19,6 +19,10 @@ class ResponsiveNav {
     return isTablet(context) ? 64 : 56;
   }
 
+  static double drawerFooterTileHeight(BuildContext context) {
+    return isTablet(context) ? 54 : 44;
+  }
+
   static double appTextScale(BuildContext context) {
     return isTablet(context) ? 1.08 : 1.0;
   }

@@ -385,15 +385,13 @@ class _MainPageState extends State<MainPage>
       valueListenable: BookmarkDB().listener,
       builder: (BuildContext context, Box<dynamic> box, child) {
         final entries = box.values.whereType<ReadingEntry>().toList();
-        Widget currentChild = const SizedBox.shrink();
+        Widget currentChild = const SizedBox.shrink(
+          key: ValueKey<String>('last-read-empty'),
+        );
 
         if (entries.isNotEmpty) {
-          entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-          final latest = entries.first;
           currentChild = LastReadCard(
-            key: ValueKey<String>(
-              '${latest.surah}-${latest.verse}-${latest.timestamp.microsecondsSinceEpoch}',
-            ),
+            key: const ValueKey<String>('last-read-card'),
           );
         }
 

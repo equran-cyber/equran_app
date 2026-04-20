@@ -76,7 +76,7 @@ class ReadQuranCard extends StatelessWidget {
 
   Widget _buildHeader(BuildContext context) {
     final TextStyle? labelStyle = Theme.of(context).textTheme.bodyLarge;
-    final String label = "Juz' $juzNumber - $currentVerse/$totalVerses";
+    final String label = "Juz' $juzNumber • $currentVerse/$totalVerses";
 
     if (!showActions) {
       return Text(
@@ -119,6 +119,8 @@ class ReadQuranCard extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
     final bool isLight = theme.brightness == Brightness.light;
+    final Color pageViewCardColor =
+        theme.cardTheme.color ?? colorScheme.surfaceContainerLow;
 
     double marginValue;
     if (screenSize.width > 1200) {
@@ -131,7 +133,7 @@ class ReadQuranCard extends StatelessWidget {
 
     return Card(
       elevation: isLight ? 5 : 4,
-      color: isLight ? Colors.transparent : null,
+      color: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       clipBehavior: Clip.antiAlias,
       margin: EdgeInsets.symmetric(horizontal: marginValue, vertical: 10),
@@ -145,6 +147,7 @@ class ReadQuranCard extends StatelessWidget {
       ),
       child: DecoratedBox(
         decoration: BoxDecoration(
+          color: isLight ? colorScheme.surfaceContainerLow : pageViewCardColor,
           gradient: isLight
               ? LinearGradient(
                   begin: Alignment.topLeft,
@@ -161,7 +164,6 @@ class ReadQuranCard extends StatelessWidget {
                   ],
                 )
               : null,
-          color: isLight ? null : colorScheme.surface,
         ),
         child: Padding(
           padding: const EdgeInsets.all(12.0),

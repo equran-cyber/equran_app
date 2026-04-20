@@ -171,26 +171,26 @@ class _HomePageState extends State<HomePage> {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(0, 8, 0, 16),
+        padding: const EdgeInsets.fromLTRB(0, 4, 0, 10),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             _buildThemeToggleFooterButton(context),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             _buildDrawerFooterButton(
               context: context,
               icon: Icons.info_outline,
               label: 'About this app',
               onPressed: () => _showAboutApp(context),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             _buildDrawerFooterButton(
               context: context,
               icon: Icons.share_outlined,
               label: 'Share this app',
               onPressed: () => _shareApp(context),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             _buildDrawerFooterButton(
               context: context,
               icon: Icons.feedback_outlined,
@@ -229,7 +229,7 @@ class _HomePageState extends State<HomePage> {
           onTap: onPressed,
           child: SizedBox(
             width: double.infinity,
-            height: ResponsiveNav.drawerTileHeight(context),
+            height: ResponsiveNav.drawerFooterTileHeight(context),
             child: Row(
               children: <Widget>[
                 const SizedBox(width: _drawerTileLeadingGap),
