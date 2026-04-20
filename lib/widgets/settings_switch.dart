@@ -5,12 +5,14 @@ class SettingsSwitch extends StatefulWidget {
   final String title;
   final String settingsKey;
   final String? subtitle;
+  final ValueChanged<bool>? onChanged;
 
   const SettingsSwitch(
       {super.key,
       required this.title,
       required this.settingsKey,
-      this.subtitle});
+      this.subtitle,
+      this.onChanged});
 
   @override
   State<SettingsSwitch> createState() => _SettingsSwitchState();
@@ -21,6 +23,7 @@ class _SettingsSwitchState extends State<SettingsSwitch> {
     setState(() {
       SettingsDB().put(widget.settingsKey, value);
     });
+    widget.onChanged?.call(value);
   }
 
   @override

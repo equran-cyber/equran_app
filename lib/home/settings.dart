@@ -26,6 +26,17 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final bool cardViewEnabled = SettingsDB().get(
+      "viewMode",
+      defaultValue: true,
+    );
+    final bool translationEnabled = SettingsDB().get(
+      "enableTranslation",
+      defaultValue: true,
+    );
+    final bool showTranslationControls =
+        cardViewEnabled && translationEnabled;
+
     return Material(
       child: ListView(
         physics: const BouncingScrollPhysics(),
@@ -57,18 +68,21 @@ class _SettingsPageState extends State<SettingsPage> {
             icon: Icons.menu_book_rounded,
             initiallyExpanded: true,
             children: <Widget>[
-              const SettingsSwitch(
+              SettingsSwitch(
                 title: "Card View",
                 subtitle: "Displays each verse separately, or all in one page.",
                 settingsKey: "viewMode",
+                onChanged: (_) => setState(() {}),
               ),
-              const SettingsSwitch(
-                title: "Enable Translation",
-                subtitle: "Enables translation for each verse.",
-                settingsKey: "enableTranslation",
-              ),
-              _buildTranslationTile(context),
-              const FontSlider(),
+              if (cardViewEnabled)
+                SettingsSwitch(
+                  title: "Enable Translation",
+                  subtitle: "Enables translation for each verse.",
+                  settingsKey: "enableTranslation",
+                  onChanged: (_) => setState(() {}),
+                ),
+              if (showTranslationControls) _buildTranslationTile(context),
+              FontSlider(showTranslationControls: showTranslationControls),
             ],
           ),
           _buildSettingsGroup(
