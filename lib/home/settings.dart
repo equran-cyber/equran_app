@@ -103,13 +103,6 @@ class _SettingsPageState extends State<SettingsPage> {
               _buildClearFavouritesTile(context),
             ],
           ),
-          _buildSettingsGroup(
-            context: context,
-            title: "About",
-            subtitle: "App version",
-            icon: Icons.info_outline_rounded,
-            children: <Widget>[_buildVersionTile(context)],
-          ),
         ],
       ),
     );
