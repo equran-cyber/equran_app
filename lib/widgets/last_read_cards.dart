@@ -17,8 +17,7 @@ class LastReadCard extends StatelessWidget {
   }
 
   List<ReadingEntry> displayReadingHistory() {
-    final rawEntries = BookmarkDB()
-        .box
+    final rawEntries = BookmarkDB().box
         .toMap()
         .values
         .whereType<ReadingEntry>()
@@ -45,7 +44,7 @@ class LastReadCard extends StatelessWidget {
     const double threshold = 450.0;
 
     if (width > threshold) {
-      double scaledWidth = (width - threshold) / 900;
+      double scaledWidth = (width - threshold) / 1100;
       viewportFraction = 1.0 * exp(-scaledWidth);
     } else {
       viewportFraction = 1;
@@ -58,33 +57,55 @@ class LastReadCard extends StatelessWidget {
         ReadingEntry entry = entries[itemIndex];
         int keySurah = entry.surah;
         int verse = entry.verse;
+        final ThemeData theme = Theme.of(context);
+        final ColorScheme colorScheme = theme.colorScheme;
+        final bool isLight = theme.brightness == Brightness.light;
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          elevation: 2,
+          elevation: isLight ? 4 : 2,
           color: Colors.transparent,
           clipBehavior: Clip.antiAlias,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadii.medium),
+            side: BorderSide(
+              color: isLight
+                  ? colorScheme.primary.withAlpha(50)
+                  : colorScheme.outlineVariant,
+            ),
           ),
           child: InkWell(
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (context) => ReadPage(
-                      chapter: keySurah,
-                      startVerse: verse,
-                    ))),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) =>
+                    ReadPage(chapter: keySurah, startVerse: verse),
+              ),
+            ),
             child: Ink(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: <Color>[
-                    Theme.of(context).colorScheme.primaryContainer.withOpacity(1),
-                    Theme.of(context).colorScheme.tertiaryContainer.withOpacity(1),
+                    isLight
+                        ? Color.alphaBlend(
+                            colorScheme.primary.withAlpha(28),
+                            colorScheme.primaryContainer,
+                          )
+                        : colorScheme.primaryContainer,
+                    isLight
+                        ? Color.alphaBlend(
+                            colorScheme.tertiary.withAlpha(24),
+                            colorScheme.tertiaryContainer,
+                          )
+                        : colorScheme.tertiaryContainer,
                   ],
                 ),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -94,7 +115,8 @@ class LastReadCard extends StatelessWidget {
                         Expanded(
                           child: Text(
                             'Last Read',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(
                                   fontWeight: FontWeight.w700,
                                   fontSize: 24,
                                 ),
@@ -103,18 +125,19 @@ class LastReadCard extends StatelessWidget {
                         PopupMenuButton<String>(
                           tooltip: 'More options',
                           icon: const Icon(Icons.more_vert_rounded),
-                          onSelected: (value) => _handleMenuAction(value, entry),
+                          onSelected: (value) =>
+                              _handleMenuAction(value, entry),
                           itemBuilder: (BuildContext context) =>
                               const <PopupMenuEntry<String>>[
-                            PopupMenuItem<String>(
-                              value: 'delete',
-                              child: ListTile(
-                                leading: Icon(Icons.delete_outline_rounded),
-                                title: Text('Delete'),
-                                contentPadding: EdgeInsets.zero,
-                              ),
-                            ),
-                          ],
+                                PopupMenuItem<String>(
+                                  value: 'delete',
+                                  child: ListTile(
+                                    leading: Icon(Icons.delete_outline_rounded),
+                                    title: Text('Delete'),
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                ),
+                              ],
                         ),
                       ],
                     ),
@@ -122,18 +145,18 @@ class LastReadCard extends StatelessWidget {
                     Text(
                       getSurahName(keySurah),
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 18,
-                          ),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 18,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       'Ayah $verse',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            fontSize: 15,
-                          ),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 15,
+                      ),
                     ),
                   ],
                 ),
@@ -143,9 +166,10 @@ class LastReadCard extends StatelessWidget {
         );
       },
       options: ExpandableCarouselOptions(
-          showIndicator: true,
-          viewportFraction: viewportFraction,
-          initialPage: 0),
+        showIndicator: true,
+        viewportFraction: viewportFraction,
+        initialPage: 0,
+      ),
     );
   }
 }
