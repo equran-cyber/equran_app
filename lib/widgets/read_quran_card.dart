@@ -1,5 +1,6 @@
 import 'package:equran/backend/favourites_db.dart';
 import 'package:equran/backend/library.dart' show SettingsDB;
+import 'package:equran/utils/app_radii.dart';
 import 'package:equran/widgets/library.dart';
 import 'package:flutter/material.dart';
 import 'package:like_button/like_button.dart';
@@ -115,6 +116,9 @@ class ReadQuranCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Size screenSize = MediaQuery.of(context).size;
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final bool isLight = theme.brightness == Brightness.light;
 
     double marginValue;
     if (screenSize.width > 1200) {
@@ -126,43 +130,75 @@ class ReadQuranCard extends StatelessWidget {
     }
 
     return Card(
-      elevation: 4,
+      elevation: isLight ? 5 : 4,
+      color: isLight ? Colors.transparent : null,
+      surfaceTintColor: Colors.transparent,
+      clipBehavior: Clip.antiAlias,
       margin: EdgeInsets.symmetric(horizontal: marginValue, vertical: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          children: <Widget>[
-            _buildHeader(context),
-            if (basmala != null)
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadii.medium),
+        side: BorderSide(
+          color: isLight
+              ? colorScheme.primary.withAlpha(38)
+              : colorScheme.outlineVariant.withAlpha(90),
+        ),
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: isLight
+              ? LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: <Color>[
+                    Color.alphaBlend(
+                      colorScheme.primary.withAlpha(12),
+                      colorScheme.surfaceContainerLow,
+                    ),
+                    Color.alphaBlend(
+                      colorScheme.tertiary.withAlpha(10),
+                      colorScheme.surfaceContainerLowest,
+                    ),
+                  ],
+                )
+              : null,
+          color: isLight ? null : colorScheme.surface,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            children: <Widget>[
+              _buildHeader(context),
+              if (basmala != null)
+                Text(
+                  basmala!,
+                  textDirection: TextDirection.rtl,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    height: 2,
+                    fontFamily: 'Hafs',
+                    fontSize: fontSize,
+                  ),
+                ),
               Text(
-                basmala!,
+                verse,
                 textDirection: TextDirection.rtl,
+                textAlign: TextAlign.justify,
                 style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  height: 2,
                   fontFamily: 'Hafs',
+                  height: 1.65,
                   fontSize: fontSize,
                 ),
               ),
-            Text(
-              verse,
-              textDirection: TextDirection.rtl,
-              textAlign: TextAlign.justify,
-              style: TextStyle(
-                fontFamily: 'Hafs',
-                height: 1.65,
-                fontSize: fontSize,
-              ),
-            ),
-            if (SettingsDB().get("enableTranslation", defaultValue: true))
-              Text(
-                translation,
-                textAlign: TextAlign.justify,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(fontSize: fontSizeTranslation),
-              ),
-          ],
+              if (SettingsDB().get("enableTranslation", defaultValue: true))
+                Text(
+                  translation,
+                  textAlign: TextAlign.justify,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontSize: fontSizeTranslation,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
