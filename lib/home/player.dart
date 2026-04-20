@@ -11,6 +11,7 @@ import 'package:equran/backend/library.dart'
         DownloadNotifications,
         SettingsDB;
 import 'package:equran/utils/app_radii.dart';
+import 'package:equran/utils/responsive_nav.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart' as ja;
@@ -887,7 +888,11 @@ class _PlayerPageState extends State<PlayerPage> {
               Builder(
                 builder: (context) => IconButton(
                   onPressed: () => Scaffold.of(context).openDrawer(),
-                  icon: const Icon(Icons.menu_rounded),
+                  style: ResponsiveNav.iconButtonStyle(context),
+                  icon: Icon(
+                    Icons.menu_rounded,
+                    size: ResponsiveNav.iconSize(context),
+                  ),
                 ),
               ),
             ],
