@@ -7,6 +7,10 @@ class ResponsiveNav {
     return MediaQuery.sizeOf(context).shortestSide >= 600;
   }
 
+  static bool isLargeTablet(BuildContext context) {
+    return MediaQuery.sizeOf(context).shortestSide >= 800;
+  }
+
   static double toolbarHeight(BuildContext context) {
     return isTablet(context) ? 66 : kToolbarHeight;
   }
@@ -24,7 +28,7 @@ class ResponsiveNav {
   }
 
   static double appTextScale(BuildContext context) {
-    return isTablet(context) ? 1.08 : 1.0;
+    return isLargeTablet(context) ? 1.08 : 1.0;
   }
 
   static TextStyle? drawerLabelStyle(BuildContext context) {

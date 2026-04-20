@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui' show ImageFilter;
+import 'dart:ui' show ImageFilter, TextBox;
 import 'dart:math';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -230,11 +230,7 @@ class _ReadPageState extends State<ReadPage> {
       final double localY = (viewportTop + 24 - textGlobalTopLeft.dy)
           .clamp(0.0, textRenderObject.size.height)
           .toDouble();
-      final double localX = max(0.0, textRenderObject.size.width - 1);
-      final TextPosition textPosition = textRenderObject.getPositionForOffset(
-        Offset(localX, localY),
-      );
-      return _verseForTextOffset(textPosition.offset);
+      return _verseForLocalTextY(textRenderObject, localY);
     }
 
     _ensureVerseTextMetrics();
@@ -265,12 +261,15 @@ class _ReadPageState extends State<ReadPage> {
     return low.clamp(1, _totalVerses).toInt();
   }
 
-  void _syncCurrentVerseWithVisibleText() {
+  void _syncCurrentVerseWithVisibleText({bool persist = false}) {
     if (_viewMode) return;
 
     final int visibleVerse = _verseForCurrentScrollOffset();
     if (visibleVerse == _currentVerse) return;
     _currentVerse = visibleVerse;
+    if (persist) {
+      _updateDB();
+    }
   }
 
   void _highlightInlineVerseBriefly(
@@ -302,38 +301,27 @@ class _ReadPageState extends State<ReadPage> {
         ?.findRenderObject();
 
     final ScrollPosition position = _scrollController.position;
-    if (textRenderObject is! RenderBox || viewportRenderObject is! RenderBox) {
+    if (textRenderObject is! RenderParagraph ||
+        viewportRenderObject is! RenderBox) {
       return _estimatedScrollOffsetForVerse(verse);
     }
 
-    final double fontSize = SettingsDB().get("fontSize", defaultValue: 38.0);
-    final TextPainter textPainter = TextPainter(
-      text: _buildInlineSurahTextSpan(fontSize, Theme.of(context).colorScheme),
-      textAlign: TextAlign.justify,
-      textDirection: TextDirection.rtl,
-      textScaler: MediaQuery.textScalerOf(context),
-    );
-
-    try {
-      textPainter.layout(maxWidth: textRenderObject.size.width);
-      final int textOffset = _textOffsetForVerse(verse);
-      final Offset caretOffset = textPainter.getOffsetForCaret(
-        TextPosition(offset: textOffset),
-        Rect.zero,
-      );
-      final double verseGlobalY = textRenderObject
-          .localToGlobal(Offset(0, caretOffset.dy))
-          .dy;
-      final double viewportTop = viewportRenderObject
-          .localToGlobal(Offset.zero)
-          .dy;
-
-      return (position.pixels + verseGlobalY - viewportTop - 12)
-          .clamp(position.minScrollExtent, position.maxScrollExtent)
-          .toDouble();
-    } finally {
-      textPainter.dispose();
+    final List<TextBox> boxes = _textBoxesForVerse(textRenderObject, verse);
+    if (boxes.isEmpty) {
+      return _estimatedScrollOffsetForVerse(verse);
     }
+
+    final double verseTop = boxes.map((TextBox box) => box.top).reduce(min);
+    final double verseGlobalY = textRenderObject
+        .localToGlobal(Offset(0, verseTop))
+        .dy;
+    final double viewportTop = viewportRenderObject
+        .localToGlobal(Offset.zero)
+        .dy;
+
+    return (position.pixels + verseGlobalY - viewportTop - 12)
+        .clamp(position.minScrollExtent, position.maxScrollExtent)
+        .toDouble();
   }
 
   double _estimatedScrollOffsetForVerse(int verse) {
@@ -350,12 +338,54 @@ class _ReadPageState extends State<ReadPage> {
         .toDouble();
   }
 
-  int _textOffsetForVerse(int verse) {
+  ({int start, int end}) _textRangeForVerse(int verse) {
     _ensureVerseTextMetrics();
     final List<int> lengths = _verseTextCumulativeLengths ?? <int>[0];
     final int safeVerse = verse.clamp(1, _totalVerses).toInt();
-    if (lengths.length <= safeVerse) return 0;
-    return lengths[safeVerse - 1] + 1;
+    if (lengths.length <= safeVerse) return (start: 0, end: 0);
+
+    final int start = (lengths[safeVerse - 1] + 1)
+        .clamp(0, _verseTextTotalLength)
+        .toInt();
+    final int end = (lengths[safeVerse] - 3)
+        .clamp(start, _verseTextTotalLength)
+        .toInt();
+    return (start: start, end: end);
+  }
+
+  List<TextBox> _textBoxesForVerse(RenderParagraph paragraph, int verse) {
+    final range = _textRangeForVerse(verse);
+    if (range.start >= range.end) return const <TextBox>[];
+
+    return paragraph.getBoxesForSelection(
+      TextSelection(baseOffset: range.start, extentOffset: range.end),
+    );
+  }
+
+  int _verseForLocalTextY(RenderParagraph paragraph, double localY) {
+    int closestVerse = 1;
+    double closestTop = double.negativeInfinity;
+
+    for (int verse = 1; verse <= _totalVerses; verse++) {
+      final List<TextBox> boxes = _textBoxesForVerse(paragraph, verse);
+      if (boxes.isEmpty) continue;
+
+      for (final TextBox box in boxes) {
+        if (localY >= box.top - 0.5 && localY <= box.bottom + 0.5) {
+          return verse;
+        }
+      }
+
+      final double verseTop = boxes.map((TextBox box) => box.top).reduce(min);
+      if (verseTop <= localY && verseTop >= closestTop) {
+        closestVerse = verse;
+        closestTop = verseTop;
+      } else if (verseTop > localY && closestTop.isFinite) {
+        break;
+      }
+    }
+
+    return closestVerse.clamp(1, _totalVerses).toInt();
   }
 
   int _verseForTextOffset(int textOffset) {
@@ -561,6 +591,10 @@ class _ReadPageState extends State<ReadPage> {
   }
 
   Future<void> _showJumpToVerseDialog(BuildContext context) async {
+    if (!_viewMode) {
+      _syncCurrentVerseWithVisibleText(persist: true);
+    }
+
     int picker = _currentVerse;
 
     await showDialog<void>(
@@ -823,6 +857,10 @@ class _ReadPageState extends State<ReadPage> {
   }
 
   void _togglePageViewPlayback() {
+    if (!_viewMode) {
+      _syncCurrentVerseWithVisibleText(persist: true);
+    }
+
     if (_isVersePlaying && _playingVerse == _currentVerse) {
       unawaited(_toggleBottomPlayer());
       return;
@@ -1990,7 +2028,7 @@ class _ReadPageState extends State<ReadPage> {
                         ),
                         fontSizeTranslation: SettingsDB().get(
                           "fontSizeTranslation",
-                          defaultValue: 20.0,
+                          defaultValue: 18.0,
                         ),
                         onPlayRequested: (surah, ayah) => _playVerse(
                           surah,
