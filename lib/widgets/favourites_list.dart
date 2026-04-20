@@ -8,10 +8,7 @@ import 'package:quran/quran.dart' as quran;
 const int _favouriteNoteMaxLength = 80;
 
 class FavouritesList extends StatefulWidget {
-  const FavouritesList({
-    super.key,
-    required this.searchQuery,
-  });
+  const FavouritesList({super.key, required this.searchQuery});
 
   final String searchQuery;
 
@@ -41,13 +38,7 @@ class _FavouritesListState extends State<FavouritesList> {
         final List<_SavedAyah> items = _savedAyahs(widget.searchQuery);
 
         if (items.isEmpty) {
-          return Center(
-            child: Text(
-              widget.searchQuery.trim().isEmpty
-                  ? 'No saved ayahs yet.'
-                  : 'No saved ayah results found.',
-            ),
-          );
+          return _buildEmptyState(context);
         }
 
         return Scrollbar(
@@ -58,7 +49,7 @@ class _FavouritesListState extends State<FavouritesList> {
             controller: scrollController,
             physics: const BouncingScrollPhysics(),
             itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 6),
+            separatorBuilder: (_, _) => const SizedBox(height: 6),
             itemBuilder: (context, index) {
               final _SavedAyah ayah = items[index];
               return _SavedAyahTile(
@@ -70,6 +61,50 @@ class _FavouritesListState extends State<FavouritesList> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final bool isSearching = widget.searchQuery.trim().isNotEmpty;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(
+              isSearching
+                  ? Icons.search_off_rounded
+                  : Icons.favorite_border_rounded,
+              size: 42,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              isSearching
+                  ? 'No saved ayah results found.'
+                  : 'No saved ayahs yet.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            if (!isSearching) ...<Widget>[
+              const SizedBox(height: 8),
+              Text(
+                'In page view, long-press an ayah and choose Favourite. In card view, tap the like button on the ayah card.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -179,7 +214,9 @@ class _SavedAyahTileState extends State<_SavedAyahTile> {
             },
             onHorizontalDragEnd: (_) {
               setState(() {
-                _dragOffset = _dragOffset >= _revealWidth / 2 ? _revealWidth : 0;
+                _dragOffset = _dragOffset >= _revealWidth / 2
+                    ? _revealWidth
+                    : 0;
               });
             },
             child: SizedBox(
@@ -289,8 +326,12 @@ class _SavedAyah {
   }
 }
 
-void _showEditNoteDialog(BuildContext context, String key, String initialNote,
-    TextEditingController controller) {
+void _showEditNoteDialog(
+  BuildContext context,
+  String key,
+  String initialNote,
+  TextEditingController controller,
+) {
   controller.text = initialNote;
   showDialog(
     context: context,
