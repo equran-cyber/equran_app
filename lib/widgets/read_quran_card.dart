@@ -1,7 +1,6 @@
 import 'package:equran/backend/favourites_db.dart';
 import 'package:equran/backend/library.dart' show SettingsDB;
 import 'package:equran/utils/app_radii.dart';
-import 'package:equran/widgets/library.dart';
 import 'package:flutter/material.dart';
 import 'package:like_button/like_button.dart';
 
@@ -15,13 +14,17 @@ class ReadQuranCard extends StatelessWidget {
 
   final String translation;
   final String verse;
-  final Future<String> url;
   final String? basmala;
 
   final double fontSize;
   final double fontSizeTranslation;
-  final Future<void> Function(int surah, int ayah)? onPlayRequested;
   final bool showActions;
+
+  final VoidCallback? onPlay;
+  final VoidCallback? onDownload;
+  final bool isPlaying;
+  final bool isDownloading;
+  final bool isDownloaded;
 
   const ReadQuranCard({
     super.key,
@@ -34,9 +37,12 @@ class ReadQuranCard extends StatelessWidget {
     required this.translation,
     this.basmala,
     required this.verse,
-    required this.url,
-    this.onPlayRequested,
     this.showActions = true,
+    this.onPlay,
+    this.onDownload,
+    this.isPlaying = false,
+    this.isDownloading = false,
+    this.isDownloaded = false,
   });
 
   String get _favouriteKey {
@@ -49,21 +55,36 @@ class ReadQuranCard extends StatelessWidget {
       await showDialog<void>(
         context: context,
         builder: (context) {
+          final theme = Theme.of(context);
+
           return AlertDialog(
-            title: const Text('Enter a note:'),
+            title: const Text('Favourite ayah'),
             content: TextField(
               maxLength: _favouriteNoteMaxLength,
               maxLines: null,
               controller: textController,
-              decoration: const InputDecoration(hintText: "Optional..."),
+              decoration: const InputDecoration(
+                hintText: 'Optional note...',
+              ),
             ),
             actions: <Widget>[
               TextButton(
-                child: const Text('OK'),
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
                 onPressed: () {
-                  FavouritesDB().put(_favouriteKey, textController.text);
+                  FavouritesDB().put(_favouriteKey, textController.text.trim());
                   Navigator.of(context).pop();
                 },
+                style: FilledButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: const Text(
+                  'Save',
+                ),
               ),
             ],
           );
@@ -75,41 +96,152 @@ class ReadQuranCard extends StatelessWidget {
   }
 
   Widget _buildHeader(BuildContext context) {
-    final TextStyle? labelStyle = Theme.of(context).textTheme.bodyLarge;
-    final String label = "Juz' $juzNumber • $currentVerse/$totalVerses";
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
-    if (!showActions) {
-      return Text(
-        label,
-        style: labelStyle?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
-      );
-    }
+    final mutedStyle = theme.textTheme.labelMedium?.copyWith(
+      color: colorScheme.onSurfaceVariant,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.2,
+    );
 
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: <Widget>[
-        PlayButton(
-          key: ValueKey('$currentChapter-$currentVerse'),
-          url: url,
-          surah: currentChapter,
-          ayah: currentVerse,
-          onPlayRequested: onPlayRequested,
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: colorScheme.primary.withAlpha(20),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: colorScheme.primary.withAlpha(36),
+            ),
+          ),
+          child: Text(
+            "Juz' $juzNumber",
+            style: mutedStyle,
+          ),
         ),
-        Text(label, style: labelStyle),
-        LikeButton(
-          isLiked: FavouritesDB().contains(_favouriteKey),
-          onTap: (bool isLiked) async {
-            if (!isLiked) {
-              await _showInputPrompt(context);
-            } else {
-              FavouritesDB().delete(_favouriteKey);
-            }
-            return !isLiked;
-          },
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Ayah $currentVerse of $totalVerses',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: mutedStyle?.copyWith(
+              color: colorScheme.onSurfaceVariant.withAlpha(190),
+            ),
+          ),
         ),
       ],
+    );
+  }
+
+  Widget _buildActionButton({
+    required BuildContext context,
+    required Widget child,
+    required String tooltip,
+    required VoidCallback? onPressed,
+    bool isPrimary = false,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: isPrimary
+          ? colorScheme.primary.withAlpha(24)
+          : colorScheme.surfaceContainerHighest.withAlpha(140),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(18),
+        child: Tooltip(
+          message: tooltip,
+          child: SizedBox(
+            height: 48,
+            width: 56,
+            child: Center(child: child),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomActions(BuildContext context) {
+    if (!showActions) return const SizedBox.shrink();
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final bool isFavourite = FavouritesDB().contains(_favouriteKey);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 18),
+      child: Column(
+        children: <Widget>[
+          Divider(
+            height: 1,
+            color: colorScheme.outlineVariant.withAlpha(90),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: <Widget>[
+              _buildActionButton(
+                context: context,
+                tooltip: isPlaying ? 'Pause' : 'Play',
+                onPressed: onPlay,
+                isPrimary: true,
+                child: Icon(
+                  isPlaying
+                      ? Icons.pause_rounded
+                      : Icons.play_arrow_rounded,
+                  size: 28,
+                  color: colorScheme.primary,
+                ),
+              ),
+              _buildActionButton(
+                context: context,
+                tooltip: isDownloaded
+                    ? 'All ayahs downloaded'
+                    : isDownloading
+                    ? 'Downloading'
+                    : 'Download all ayahs',
+                onPressed: isDownloading ? null : onDownload,
+                child: isDownloading
+                    ? SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: colorScheme.onSurface.withAlpha(185),
+                        ),
+                      )
+                    : Icon(
+                        isDownloaded
+                            ? Icons.offline_pin_rounded
+                            : Icons.download_rounded,
+                        size: 22,
+                        color: colorScheme.onSurface.withAlpha(185),
+                      ),
+              ),
+              _buildActionButton(
+                context: context,
+                tooltip: isFavourite ? 'Remove favourite' : 'Favourite',
+                onPressed: null,
+                child: LikeButton(
+                  size: 22,
+                  isLiked: isFavourite,
+                  onTap: (bool liked) async {
+                    if (!liked) {
+                      await _showInputPrompt(context);
+                    } else {
+                      FavouritesDB().delete(_favouriteKey);
+                    }
+                    return !liked;
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -119,8 +251,12 @@ class ReadQuranCard extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
     final bool isLight = theme.brightness == Brightness.light;
-    final Color pageViewCardColor =
-        theme.cardTheme.color ?? colorScheme.surfaceContainerLow;
+
+    final Color resolvedCardColor =
+        theme.cardTheme.color ??
+        (isLight
+            ? colorScheme.surfaceContainerLow
+            : colorScheme.surfaceContainer);
 
     double marginValue;
     if (screenSize.width > 1200) {
@@ -132,7 +268,7 @@ class ReadQuranCard extends StatelessWidget {
     }
 
     return Card(
-      elevation: isLight ? 5 : 4,
+      elevation: isLight ? 3 : 0,
       color: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       clipBehavior: Clip.antiAlias,
@@ -141,46 +277,73 @@ class ReadQuranCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadii.medium),
         side: BorderSide(
           color: isLight
-              ? colorScheme.primary.withAlpha(38)
-              : colorScheme.outlineVariant.withAlpha(90),
+              ? colorScheme.primary.withAlpha(28)
+              : colorScheme.outlineVariant.withAlpha(80),
         ),
       ),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: isLight ? colorScheme.surfaceContainerLow : pageViewCardColor,
+          borderRadius: BorderRadius.circular(AppRadii.medium),
+          color: resolvedCardColor,
           gradient: isLight
               ? LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: <Color>[
                     Color.alphaBlend(
-                      colorScheme.primary.withAlpha(12),
-                      colorScheme.surfaceContainerLow,
+                      colorScheme.primary.withAlpha(10),
+                      resolvedCardColor,
                     ),
                     Color.alphaBlend(
-                      colorScheme.tertiary.withAlpha(10),
-                      colorScheme.surfaceContainerLowest,
+                      colorScheme.tertiary.withAlpha(8),
+                      resolvedCardColor,
                     ),
                   ],
                 )
-              : null,
+              : LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: <Color>[
+                    Color.alphaBlend(
+                      colorScheme.primary.withAlpha(14),
+                      resolvedCardColor,
+                    ),
+                    Color.alphaBlend(
+                      colorScheme.secondary.withAlpha(8),
+                      resolvedCardColor,
+                    ),
+                  ],
+                ),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withAlpha(isLight ? 10 : 20),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
         child: Padding(
-          padding: const EdgeInsets.all(12.0),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               _buildHeader(context),
-              if (basmala != null)
+              const SizedBox(height: 18),
+              if (basmala != null) ...[
                 Text(
                   basmala!,
                   textDirection: TextDirection.rtl,
+                  textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    height: 2,
+                    fontWeight: FontWeight.w700,
+                    height: 1.9,
                     fontFamily: 'Hafs',
                     fontSize: fontSize,
+                    color: colorScheme.onSurface,
                   ),
                 ),
+                const SizedBox(height: 8),
+              ],
               Text(
                 verse,
                 textDirection: TextDirection.rtl,
@@ -189,21 +352,37 @@ class ReadQuranCard extends StatelessWidget {
                   fontFamily: 'Hafs',
                   height: 1.65,
                   fontSize: fontSize,
+                  color: colorScheme.onSurface,
                 ),
               ),
               if (SettingsDB().get(
                 "enableTranslation",
                 defaultValue: true,
               )) ...[
-                const SizedBox(height: 12),
-                Text(
-                  translation,
-                  textAlign: TextAlign.justify,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontSize: fontSizeTranslation,
+                const SizedBox(height: 18),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest.withAlpha(
+                      isLight ? 115 : 90,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    translation,
+                    textAlign: TextAlign.start,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontSize: fontSizeTranslation,
+                      height: 1.6,
+                      color: colorScheme.onSurface.withAlpha(210),
+                    ),
                   ),
                 ),
               ],
+              _buildBottomActions(context),
             ],
           ),
         ),

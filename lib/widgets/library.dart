@@ -1,3 +1,4 @@
+export 'app_selection_dialog.dart';
 export 'favourites_list.dart';
 export 'font_slider.dart';
 export 'juz_card.dart';
