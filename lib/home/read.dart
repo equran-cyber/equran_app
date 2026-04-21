@@ -556,61 +556,129 @@ class _ReadPageState extends State<ReadPage> {
     });
   }
 
-  Future<void> _showJumpToVerseDialog(BuildContext context) async {
-    if (!_viewMode) {
-      _syncCurrentVerseWithVisibleText(persist: true);
-    }
-
-    int picker = _currentVerse;
-
-    await showDialog<void>(
-      context: context,
-      builder: (BuildContext context) => AlertDialog(
-        title: const Text('Select Verse'),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () {
-              _reset();
-              _updateDB();
-              if (!_viewMode) {
-                _scrollToInlineVerse(1, highlight: true);
-              } else {
-                _scrollUp();
-              }
-              Navigator.of(context).pop();
-            },
-            child: const Text('RESET'),
-          ),
-          TextButton(
-            onPressed: () {
-              _setVerse(picker);
-              if (!_viewMode) {
-                _scrollToInlineVerse(picker, highlight: true);
-              }
-              _updateDB();
-              Navigator.of(context).pop();
-            },
-            child: const Text('CONFIRM'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('CANCEL'),
-          ),
-        ],
-        content: StatefulBuilder(
-          builder: (context, sBsetState) => NumberPicker(
-            minValue: 1,
-            maxValue: _totalVerses,
-            value: picker,
-            onChanged: (int value) {
-              setState(() => picker = value);
-              sBsetState(() => picker = value);
-            },
-          ),
-        ),
-      ),
-    );
+Future<void> _showJumpToVerseDialog(BuildContext context) async {
+  if (!_viewMode) {
+    _syncCurrentVerseWithVisibleText(persist: true);
   }
+
+  final TextEditingController controller = TextEditingController(
+    text: _currentVerse.toString(),
+  );
+  final FocusNode focusNode = FocusNode();
+  String? errorText;
+
+  await showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (sheetContext) {
+      final theme = Theme.of(sheetContext);
+      final colorScheme = theme.colorScheme;
+
+      Future<void> submit(StateSetter setSheetState) async {
+        final int? value = int.tryParse(controller.text.trim());
+
+        if (value == null || value < 1 || value > _totalVerses) {
+          setSheetState(() {
+            errorText = 'Enter a verse between 1 and $_totalVerses';
+          });
+          return;
+        }
+
+        _setVerse(value);
+        if (!_viewMode) {
+          _scrollToInlineVerse(value, highlight: true);
+        } else {
+          _scrollUp();
+        }
+        _updateDB();
+
+        if (Navigator.of(sheetContext).canPop()) {
+          Navigator.of(sheetContext).pop();
+        }
+      }
+
+      return StatefulBuilder(
+        builder: (context, setSheetState) {
+          return SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+    20,
+    8,
+    20,
+    MediaQuery.of(sheetContext).viewInsets.bottom + 20,
+  ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Text(
+                  'Jump to verse',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Enter a verse number from 1 to $_totalVerses',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  autofocus: true,
+                  keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.go,
+                  textAlign: TextAlign.center,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                  ],
+                  decoration: InputDecoration(
+                    hintText: 'Verse number',
+                    errorText: errorText,
+                    filled: true,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 16,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onChanged: (_) {
+                    if (errorText != null) {
+                      setSheetState(() {
+                        errorText = null;
+                      });
+                    }
+                  },
+                  onSubmitted: (_) => submit(setSheetState),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () => submit(setSheetState),
+                  child: const Text('Go'),
+                ),
+                const SizedBox(height: 4),
+                TextButton(
+                  onPressed: () => Navigator.of(sheetContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    },
+  );
+
+  controller.dispose();
+  focusNode.dispose();
+}
 
   Future<void> _saveProgressOnExit() async {
     if (_hasSavedOnExit) return;
