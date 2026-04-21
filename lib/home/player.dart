@@ -142,6 +142,29 @@ class PlayerPage extends StatefulWidget {
   State<PlayerPage> createState() => _PlayerPageState();
 }
 
+class _FullWidthSliderTrackShape extends RoundedRectSliderTrackShape {
+  const _FullWidthSliderTrackShape();
+
+  @override
+  Rect getPreferredRect({
+    required RenderBox parentBox,
+    Offset offset = Offset.zero,
+    required SliderThemeData sliderTheme,
+    bool isEnabled = false,
+    bool isDiscrete = false,
+  }) {
+    final double trackHeight = sliderTheme.trackHeight ?? 2;
+    final double trackTop =
+        offset.dy + (parentBox.size.height - trackHeight) / 2;
+    return Rect.fromLTWH(
+      offset.dx,
+      trackTop,
+      parentBox.size.width,
+      trackHeight,
+    );
+  }
+}
+
 class _PlayerPageState extends State<PlayerPage> {
   final ja.AudioPlayer _justAudio = ja.AudioPlayer();
   final ap.AudioPlayer _fallbackAudio = ap.AudioPlayer();
@@ -171,10 +194,12 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _shuffleEnabled = false;
   bool _loopEnabled = false;
   bool _isCompletingTrack = false;
+  bool _showProgressThumb = false;
 
   double _playbackRate = 1.0;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  Timer? _progressThumbTimer;
 
   @override
   void initState() {
@@ -401,7 +426,7 @@ class _PlayerPageState extends State<PlayerPage> {
           id: 'surah-$surah-${playOffline ? "offline" : "stream"}',
           album: 'eQuran',
           title: _surahName(surah),
-          artist: playOffline ? 'Offline MP3' : 'Streaming',
+          artist: '',
           displayDescription: 'Surah $surah',
         ),
       ),
@@ -508,6 +533,53 @@ class _PlayerPageState extends State<PlayerPage> {
     await _seekCurrentTrack(Duration(milliseconds: ms));
   }
 
+  void _revealProgressThumb() {
+    _progressThumbTimer?.cancel();
+    if (!_showProgressThumb && mounted) {
+      setState(() {
+        _showProgressThumb = true;
+      });
+    }
+  }
+
+  void _hideProgressThumbSoon() {
+    _progressThumbTimer?.cancel();
+    _progressThumbTimer = Timer(const Duration(milliseconds: 1400), () {
+      if (!mounted) return;
+      setState(() {
+        _showProgressThumb = false;
+      });
+    });
+  }
+
+  Widget _buildProgressSlider({
+    required BuildContext context,
+    required double progress,
+  }) {
+    final SliderThemeData baseTheme = SliderTheme.of(context);
+    return SliderTheme(
+      data: baseTheme.copyWith(
+        trackHeight: 8.0,
+        trackShape: const _FullWidthSliderTrackShape(),
+        thumbShape: _showProgressThumb
+            ? const RoundSliderThumbShape(enabledThumbRadius: 7)
+            : SliderComponentShape.noThumb,
+        overlayShape: _showProgressThumb
+            ? const RoundSliderOverlayShape(overlayRadius: 16)
+            : SliderComponentShape.noOverlay,
+      ),
+      child: Slider(
+        value: progress,
+        onChangeStart: (_) => _revealProgressThumb(),
+        onChanged: (value) {
+          _revealProgressThumb();
+          _seek(value);
+        },
+        onChangeEnd: (_) => _hideProgressThumbSoon(),
+      ),
+    );
+  }
+
   Future<void> _selectSurah(int? surah) async {
     if (surah == null) return;
     await _playSurah(surah, forceRestart: true);
@@ -517,8 +589,10 @@ class _PlayerPageState extends State<PlayerPage> {
     required ThemeData theme,
     required ColorScheme colorScheme,
     required bool closeOnSelect,
+    ScrollController? scrollController,
   }) {
     return ListView.builder(
+      controller: scrollController,
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
       itemCount: 114,
@@ -626,6 +700,8 @@ class _PlayerPageState extends State<PlayerPage> {
     final ColorScheme colorScheme = theme.colorScheme;
     final int? selectedSurah = await showModalBottomSheet<int>(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       backgroundColor: colorScheme.surfaceContainer,
       shape: const RoundedRectangleBorder(
@@ -634,15 +710,19 @@ class _PlayerPageState extends State<PlayerPage> {
         ),
       ),
       builder: (context) {
-        final double maxHeight = min(
-          MediaQuery.sizeOf(context).height * 0.72,
-          620,
-        );
-        return SafeArea(
-          child: Material(
-            color: colorScheme.surfaceContainer,
-            child: SizedBox(
-              height: maxHeight,
+        final double screenHeight = MediaQuery.sizeOf(context).height;
+        final double initialSize = min(
+          0.62,
+          520 / screenHeight,
+        ).clamp(0.42, 0.62).toDouble();
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: initialSize,
+          minChildSize: 0.32,
+          maxChildSize: 0.94,
+          builder: (context, scrollController) {
+            return Material(
+              color: colorScheme.surfaceContainer,
               child: Column(
                 children: <Widget>[
                   ListTile(
@@ -660,12 +740,13 @@ class _PlayerPageState extends State<PlayerPage> {
                       theme: theme,
                       colorScheme: colorScheme,
                       closeOnSelect: true,
+                      scrollController: scrollController,
                     ),
                   ),
                 ],
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
@@ -790,6 +871,7 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void dispose() {
     unawaited(AndroidAudioDisplayMode.setAudioPlaybackActive(false));
+    _progressThumbTimer?.cancel();
     _positionSubscription?.cancel();
     _durationSubscription?.cancel();
     _stateSubscription?.cancel();
@@ -846,16 +928,19 @@ class _PlayerPageState extends State<PlayerPage> {
               feature.type == DisplayFeatureType.fold;
         });
         final bool isFoldableLayout = hasFoldableDisplayFeature && width >= 720;
-        final bool isIpadAirSizedTablet =
-            !hasFoldableDisplayFeature && mediaSize.shortestSide >= 820;
-        final bool isLandscapeTablet =
+        final bool isLargeLandscapeTablet =
             !hasFoldableDisplayFeature &&
-            mediaSize.shortestSide >= 600 &&
+            mediaSize.shortestSide >= 720 &&
+            mediaSize.longestSide >= 1180 &&
             mediaSize.width > mediaSize.height;
+        final bool isExtraLargeTablet =
+            !hasFoldableDisplayFeature &&
+            mediaSize.shortestSide >= 900 &&
+            width >= 1100;
         final bool isDesktop =
             !isFoldableLayout &&
-            (width >= 1100 || isLandscapeTablet || isIpadAirSizedTablet);
-        final bool isCompactWidescreenLayout = isDesktop && width < 1100;
+            (width >= 1250 || isLargeLandscapeTablet || isExtraLargeTablet);
+        final bool isCompactWidescreenLayout = isDesktop && width < 1250;
         final double desktopHeightScale = isDesktop
             ? ((height - 540) / 260).clamp(0.78, 1.0).toDouble()
             : 1.0;
@@ -903,30 +988,43 @@ class _PlayerPageState extends State<PlayerPage> {
         final double bottomBarArtworkSize =
             (isCompactWidescreenLayout ? 64 : 84) * desktopHeightScale;
         final double bottomBarCenterGap =
-            (isCompactWidescreenLayout ? 96 : 220) * desktopHeightScale;
-        final double desktopCenterWidth = min(
-          (isCompactWidescreenLayout ? 300.0 : 640.0) * desktopHeightScale,
-          max(
-            (isCompactWidescreenLayout ? 280.0 : 320.0) * desktopHeightScale,
-            width - 760,
-          ),
+            (isCompactWidescreenLayout ? 56 : 150) * desktopHeightScale;
+        final double desktopCenterWidth = isCompactWidescreenLayout
+            ? (width * 0.54).clamp(380.0, 500.0).toDouble()
+            : (width * 0.45).clamp(600.0, 740.0).toDouble();
+        final double desktopMetadataMaxWidth = max(
+          isCompactWidescreenLayout ? 128.0 : 220.0,
+          ((width - desktopCenterWidth) / 2) -
+              bottomBarArtworkSize -
+              (isCompactWidescreenLayout ? 12 : 18) -
+              56,
         );
+        final double effectiveContentWidth = min(maxContentWidth, width);
+        final double headerLeftOffset =
+            -(((width - effectiveContentWidth) / 2).clamp(
+                  0.0,
+                  double.infinity,
+                ) +
+                16);
 
         final header = Padding(
           padding: EdgeInsets.only(bottom: isDesktop ? 24 : 16),
-          child: Row(
-            children: <Widget>[
-              Builder(
-                builder: (context) => IconButton(
-                  onPressed: () => Scaffold.of(context).openDrawer(),
-                  style: ResponsiveNav.iconButtonStyle(context),
-                  icon: Icon(
-                    Icons.menu_rounded,
-                    size: ResponsiveNav.iconSize(context),
+          child: Transform.translate(
+            offset: Offset(headerLeftOffset, 0),
+            child: Row(
+              children: <Widget>[
+                Builder(
+                  builder: (context) => IconButton(
+                    onPressed: () => Scaffold.of(context).openDrawer(),
+                    style: ResponsiveNav.iconButtonStyle(context),
+                    icon: Icon(
+                      Icons.menu_rounded,
+                      size: ResponsiveNav.iconSize(context),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
 
@@ -1112,27 +1210,28 @@ class _PlayerPageState extends State<PlayerPage> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Surah $_selectedSurah • ${_isDownloaded ? "Offline MP3" : "Streaming"}',
+                  'Surah $_selectedSurah',
                   style: theme.textTheme.bodyLarge?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Slider(value: progress, onChanged: (value) => _seek(value)),
+            const SizedBox(height: 16),
+            _buildProgressSlider(context: context, progress: progress),
+            const SizedBox(height: 6),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: <Widget>[
                 Text(
                   _time(_position),
-                  style: theme.textTheme.bodySmall?.copyWith(
+                  style: theme.textTheme.bodyMedium?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
                 ),
                 Text(
                   _time(_duration),
-                  style: theme.textTheme.bodySmall?.copyWith(
+                  style: theme.textTheme.bodyMedium?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
                 ),
@@ -1263,7 +1362,7 @@ class _PlayerPageState extends State<PlayerPage> {
                           Flexible(
                             child: ConstrainedBox(
                               constraints: BoxConstraints(
-                                maxWidth: isCompactWidescreenLayout ? 240 : 320,
+                                maxWidth: desktopMetadataMaxWidth,
                               ),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -1273,23 +1372,23 @@ class _PlayerPageState extends State<PlayerPage> {
                                     _surahName(_selectedSurah),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.headlineSmall
-                                        ?.copyWith(fontWeight: FontWeight.w800),
+                                    style: theme.textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                    ),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
                                     _selectedReciterName(),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.titleMedium
-                                        ?.copyWith(
-                                          color: colorScheme.onSurfaceVariant,
-                                          fontWeight: FontWeight.w600,
-                                        ),
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    'Surah $_selectedSurah • ${_isDownloaded ? "Offline MP3" : "Streaming"}',
+                                    'Surah $_selectedSurah',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: theme.textTheme.bodyMedium?.copyWith(
@@ -1349,12 +1448,14 @@ class _PlayerPageState extends State<PlayerPage> {
                                     ? colorScheme.primary
                                     : colorScheme.onSurfaceVariant,
                               ),
+                              const SizedBox(width: 6),
                               IconButton(
                                 tooltip: 'Previous',
                                 onPressed: _playPrevious,
                                 icon: const Icon(Icons.skip_previous_rounded),
                                 iconSize: playerControlIconSize,
                               ),
+                              const SizedBox(width: 6),
                               FilledButton(
                                 onPressed: _togglePlayPause,
                                 style: FilledButton.styleFrom(
@@ -1377,12 +1478,14 @@ class _PlayerPageState extends State<PlayerPage> {
                                         size: playerControlIconSize,
                                       ),
                               ),
+                              const SizedBox(width: 6),
                               IconButton(
                                 tooltip: 'Next',
                                 onPressed: _playNext,
                                 icon: const Icon(Icons.skip_next_rounded),
                                 iconSize: playerControlIconSize,
                               ),
+                              const SizedBox(width: 6),
                               IconButton(
                                 tooltip: 'Loop',
                                 onPressed: () {
@@ -1397,38 +1500,34 @@ class _PlayerPageState extends State<PlayerPage> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 14),
                           Row(
                             children: <Widget>[
-                              SizedBox(
-                                width: 64,
-                                child: Text(
-                                  _time(_position),
-                                  maxLines: 1,
-                                  softWrap: false,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: colorScheme.onSurfaceVariant,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                              Text(
+                                _time(_position),
+                                maxLines: 1,
+                                softWrap: false,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
+                              const SizedBox(width: 8),
                               Expanded(
-                                child: Slider(
-                                  value: progress,
-                                  onChanged: (value) => _seek(value),
+                                child: _buildProgressSlider(
+                                  context: context,
+                                  progress: progress,
                                 ),
                               ),
-                              SizedBox(
-                                width: 64,
-                                child: Text(
-                                  _time(_duration),
-                                  maxLines: 1,
-                                  softWrap: false,
-                                  textAlign: TextAlign.right,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: colorScheme.onSurfaceVariant,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _time(_duration),
+                                maxLines: 1,
+                                softWrap: false,
+                                textAlign: TextAlign.right,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ],
@@ -1471,78 +1570,69 @@ class _PlayerPageState extends State<PlayerPage> {
                 .clamp(4.0, 16.0)
                 .toDouble();
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Flexible(
-                  fit: FlexFit.loose,
-                  child: Center(
-                    child: buildArtworkSquare(
-                      panelArtSize: mobileArtSize,
-                      panelIconSize: min(130, mobileArtSize * 0.42),
+            return Transform.translate(
+              offset: const Offset(0, -12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Flexible(
+                    fit: FlexFit.loose,
+                    child: Center(
+                      child: buildArtworkSquare(
+                        panelArtSize: mobileArtSize,
+                        panelIconSize: min(130, mobileArtSize * 0.42),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                buildArtworkActions(),
-                SizedBox(height: mobileGap),
-                playbackPanel,
-              ],
+                  const SizedBox(height: 6),
+                  buildArtworkActions(),
+                  SizedBox(height: mobileGap),
+                  playbackPanel,
+                ],
+              ),
             );
           },
         );
 
         final Widget bodyContent = isDesktop
-            ? Column(
-                children: <Widget>[
-                  Expanded(
-                    child: SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Column(
-                          children: <Widget>[
-                            Center(
-                              child: Container(
-                                width: artSize,
-                                height: artSize,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(
-                                    AppRadii.medium,
-                                  ),
-                                  gradient: LinearGradient(
-                                    colors: <Color>[
-                                      colorScheme.primaryContainer,
-                                      colorScheme.tertiaryContainer,
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                  boxShadow: <BoxShadow>[
-                                    BoxShadow(
-                                      color: colorScheme.shadow.withValues(
-                                        alpha: 0.18,
-                                      ),
-                                      blurRadius: 26,
-                                      offset: const Offset(0, 14),
-                                    ),
-                                  ],
-                                ),
-                                child: Icon(
-                                  Icons.graphic_eq_rounded,
-                                  size: artIconSize,
-                                  color: colorScheme.onPrimaryContainer,
-                                ),
-                              ),
+            ? LayoutBuilder(
+                builder: (context, bodyConstraints) {
+                  final double bottomBarEstimatedHeight =
+                      desktopBottomBarMinHeight +
+                      (desktopBottomBarVerticalPadding * 2);
+                  final double availableArtworkHeight =
+                      (bodyConstraints.maxHeight -
+                              bottomBarEstimatedHeight -
+                              28)
+                          .clamp(72.0, double.infinity)
+                          .toDouble();
+                  final double fittedArtSize = min(
+                    artSize,
+                    availableArtworkHeight,
+                  );
+                  final double fittedArtIconSize = min(
+                    170 * desktopHeightScale,
+                    fittedArtSize * 0.38,
+                  );
+
+                  return Column(
+                    children: <Widget>[
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Center(
+                            child: buildArtworkSquare(
+                              panelArtSize: fittedArtSize,
+                              panelIconSize: fittedArtIconSize,
                             ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  desktopBottomBar,
-                ],
+                      const SizedBox(height: 20),
+                      desktopBottomBar,
+                    ],
+                  );
+                },
               )
             : isFoldableLayout
             ? Row(
