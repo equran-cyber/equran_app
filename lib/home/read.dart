@@ -14,7 +14,9 @@ import 'package:equran/backend/library.dart'
         SettingsDB;
 import 'package:equran/utils/app_radii.dart';
 import 'package:equran/utils/responsive_nav.dart';
-import 'package:equran/widgets/library.dart' show ReadQuranCard;
+import 'package:equran/utils/translation_display.dart';
+import 'package:equran/widgets/library.dart'
+    show AppSelectionDialog, AppSelectionOption, ReadQuranCard;
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
@@ -469,44 +471,36 @@ class _ReadPageState extends State<ReadPage> {
               title: Text(quran.getSurahName(_currentChapter)),
               centerTitle: true,
               actions: <Widget>[
-                if (!_viewMode)
-                  IconButton(
-                    tooltip: _isVersePlaying && _playingVerse == _currentVerse
-                        ? 'Pause'
-                        : 'Play current ayah',
-                    onPressed: _togglePageViewPlayback,
-                    icon: Icon(
-                      _isVersePlaying && _playingVerse == _currentVerse
-                          ? Icons.pause_circle_rounded
-                          : Icons.play_circle_rounded,
-                    ),
-                  ),
-                if (!_viewMode)
-                  IconButton(
-                    tooltip: _hasDownloadedSurahAyahs
-                        ? 'All ayahs downloaded'
-                        : 'Download all ayahs',
-                    onPressed: _isDownloadingSurahAyahs
-                        ? null
-                        : _downloadCurrentSurahAyahs,
-                    icon: _isDownloadingSurahAyahs
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(
-                            _hasDownloadedSurahAyahs
-                                ? Icons.offline_pin_rounded
-                                : Icons.download_for_offline_rounded,
-                          ),
-                  ),
-                if (_viewMode)
-                  IconButton(
-                    tooltip: 'Reset',
-                    onPressed: () => _showResetDialog(context),
-                    icon: const Icon(Icons.refresh_rounded),
-                  ),
+                // IconButton(
+                //   tooltip: _isVersePlaying && _playingVerse == _currentVerse
+                //       ? 'Pause'
+                //       : 'Play current ayah',
+                //   onPressed: _togglePageViewPlayback,
+                //   icon: Icon(
+                //     _isVersePlaying && _playingVerse == _currentVerse
+                //         ? Icons.pause_circle_rounded
+                //         : Icons.play_circle_rounded,
+                //   ),
+                // ),
+                // IconButton(
+                //   tooltip: _hasDownloadedSurahAyahs
+                //       ? 'All ayahs downloaded'
+                //       : 'Download all ayahs',
+                //   onPressed: _isDownloadingSurahAyahs
+                //       ? null
+                //       : _downloadCurrentSurahAyahs,
+                //   icon: _isDownloadingSurahAyahs
+                //       ? const SizedBox(
+                //           width: 22,
+                //           height: 22,
+                //           child: CircularProgressIndicator(strokeWidth: 2),
+                //         )
+                //       : Icon(
+                //           _hasDownloadedSurahAyahs
+                //               ? Icons.offline_pin_rounded
+                //               : Icons.download_for_offline_rounded,
+                //         ),
+                // ),
                 IconButton(
                   tooltip: 'Jump to verse',
                   onPressed: () => _showJumpToVerseDialog(context),
@@ -562,34 +556,6 @@ class _ReadPageState extends State<ReadPage> {
     });
   }
 
-  Future<void> _showResetDialog(BuildContext context) async {
-    await showDialog<void>(
-      context: context,
-      builder: (BuildContext context) => AlertDialog(
-        icon: const Icon(Icons.warning_amber),
-        title: const Text('Reset'),
-        content: const Text('Would you like to start over?'),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('CANCEL'),
-          ),
-          TextButton(
-            onPressed: () {
-              _reset();
-              _updateDB();
-              if (!SettingsDB().get("viewMode", defaultValue: true)) {
-                _scrollUp();
-              }
-              Navigator.of(context).pop();
-            },
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _showJumpToVerseDialog(BuildContext context) async {
     if (!_viewMode) {
       _syncCurrentVerseWithVisibleText(persist: true);
@@ -602,6 +568,19 @@ class _ReadPageState extends State<ReadPage> {
       builder: (BuildContext context) => AlertDialog(
         title: const Text('Select Verse'),
         actions: <Widget>[
+          TextButton(
+            onPressed: () {
+              _reset();
+              _updateDB();
+              if (!_viewMode) {
+                _scrollToInlineVerse(1, highlight: true);
+              } else {
+                _scrollUp();
+              }
+              Navigator.of(context).pop();
+            },
+            child: const Text('RESET'),
+          ),
           TextButton(
             onPressed: () {
               _setVerse(picker);
@@ -866,7 +845,13 @@ class _ReadPageState extends State<ReadPage> {
       return;
     }
 
-    unawaited(_playVerse(_currentChapter, _currentVerse, continuous: true));
+    final bool continuous = !_viewMode;
+    if (_viewMode) {
+      _continuousPlayback = false;
+    }
+    unawaited(
+      _playVerse(_currentChapter, _currentVerse, continuous: continuous),
+    );
   }
 
   Future<void> _downloadCurrentSurahAyahs() async {
@@ -2006,50 +1991,45 @@ class _ReadPageState extends State<ReadPage> {
                     SizedBox(
                       width: MediaQuery.of(context).size.width,
                       child: ReadQuranCard(
-                        currentChapter: _currentChapter,
-                        currentVerse: _currentVerse,
-                        totalVerses: _totalVerses,
-                        juzNumber: quran.getJuzNumber(
-                          _currentChapter,
-                          _currentVerse,
-                        ),
-                        basmala:
-                            _currentChapter != 1 &&
-                                _currentVerse == 1 &&
-                                _currentChapter != 9
-                            ? quran.basmala
-                            : null,
-                        verse: _buildCardVerseText(
-                          _currentChapter,
-                          _currentVerse,
-                        ),
-                        translation: quran.getVerseTranslation(
-                          _currentChapter,
-                          _currentVerse,
-                          translation:
-                              quran.Translation.values[SettingsDB().get(
-                                "translation",
-                                defaultValue: 0,
-                              )],
-                        ),
-                        url: QuranAudioService().getAyahUrl(
-                          _currentChapter,
-                          _currentVerse,
-                        ),
-                        fontSize: SettingsDB().get(
-                          "fontSize",
-                          defaultValue: 38.0,
-                        ),
-                        fontSizeTranslation: SettingsDB().get(
-                          "fontSizeTranslation",
-                          defaultValue: 18.0,
-                        ),
-                        onPlayRequested: (surah, ayah) => _playVerse(
-                          surah,
-                          ayah,
-                          continuous: _continuousPlayback,
-                        ),
-                      ),
+  currentChapter: _currentChapter,
+  currentVerse: _currentVerse,
+  totalVerses: _totalVerses,
+  juzNumber: quran.getJuzNumber(
+    _currentChapter,
+    _currentVerse,
+  ),
+  basmala:
+      _currentChapter != 1 &&
+          _currentVerse == 1 &&
+          _currentChapter != 9
+      ? quran.basmala
+      : null,
+  verse: _buildCardVerseText(
+    _currentChapter,
+    _currentVerse,
+  ),
+  translation: quran.getVerseTranslation(
+    _currentChapter,
+    _currentVerse,
+    translation: quran.Translation.values[SettingsDB().get(
+      "translation",
+      defaultValue: 0,
+    )],
+  ),
+  fontSize: SettingsDB().get(
+    "fontSize",
+    defaultValue: 38.0,
+  ),
+  fontSizeTranslation: SettingsDB().get(
+    "fontSizeTranslation",
+    defaultValue: 18.0,
+  ),
+  onPlay: _togglePageViewPlayback,
+  onDownload: _downloadCurrentSurahAyahs,
+  isPlaying: _isVersePlaying && _playingVerse == _currentVerse,
+  isDownloading: _isDownloadingSurahAyahs,
+  isDownloaded: _hasDownloadedSurahAyahs,
+),
                     ),
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 260),
@@ -2277,9 +2257,13 @@ class _ReadPageState extends State<ReadPage> {
                       : Icons.favorite_border_rounded,
                 ),
                 title: Text(isFavourite ? 'Remove favourite' : 'Favourite'),
-                onTap: () {
+                onTap: () async {
                   Navigator.of(context).pop();
-                  _toggleFavourite(verse, isFavourite: isFavourite);
+                  if (isFavourite) {
+                    _toggleFavourite(verse, isFavourite: true);
+                  } else {
+                    await _showFavouriteNotePrompt(verse);
+                  }
                 },
               ),
             ],
@@ -2294,39 +2278,179 @@ class _ReadPageState extends State<ReadPage> {
   }
 
   Future<void> _showTranslationSheet(int verse) async {
-    final String translation = quran.getVerseTranslation(
-      _currentChapter,
-      verse,
-      translation: quran
-          .Translation
-          .values[SettingsDB().get("translation", defaultValue: 0)],
-    );
+    int selectedTranslation = _selectedTranslationIndex();
 
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
+      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width),
       builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  '${quran.getSurahName(_currentChapter)} • Ayah $verse',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final String translation = quran.getVerseTranslation(
+              _currentChapter,
+              verse,
+              translation: quran.Translation.values[selectedTranslation],
+            );
+            final Size sheetSize = MediaQuery.sizeOf(context);
+            final TextStyle translationStyle =
+                Theme.of(context).textTheme.bodyLarge ??
+                const TextStyle(fontSize: 16);
+            final double fontSize = MediaQuery.textScalerOf(
+              context,
+            ).scale(translationStyle.fontSize ?? 16);
+            final double charsPerLine = max(
+              18.0,
+              (sheetSize.width - 40) / (fontSize * 0.55),
+            );
+            final double estimatedLineCount = max(
+              1.0,
+              translation.length / charsPerLine,
+            );
+            final double estimatedContentHeight =
+                104 + (estimatedLineCount * fontSize * 1.45);
+            final double initialSheetSize =
+                (estimatedContentHeight / sheetSize.height)
+                    .clamp(0.28, 0.58)
+                    .toDouble();
+
+            return DraggableScrollableSheet(
+              expand: false,
+              initialChildSize: initialSheetSize,
+              minChildSize: 0.25,
+              maxChildSize: 0.92,
+              builder: (context, scrollController) {
+                return SizedBox(
+                  width: double.infinity,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: Text(
+                                '${quran.getSurahName(_currentChapter)} • Ayah $verse',
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                            IconButton.filledTonal(
+                              tooltip: 'Switch translation',
+                              icon: const Icon(Icons.language_rounded),
+                              onPressed: () async {
+                                final int? value =
+                                    await _showTranslationPickerDialog(
+                                      selectedTranslation,
+                                    );
+                                if (value == null || !mounted) return;
+                                SettingsDB().put("translation", value);
+                                setSheetState(() {
+                                  selectedTranslation = value;
+                                });
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            controller: scrollController,
+                            physics: const BouncingScrollPhysics(),
+                            child: Text(
+                              translation,
+                              textAlign: TextAlign.justify,
+                              style: translationStyle,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Text(translation, textAlign: TextAlign.justify),
-              ],
-            ),
-          ),
+                );
+              },
+            );
+          },
         );
       },
     );
+  }
+
+  Future<int?> _showTranslationPickerDialog(int selectedTranslation) {
+    return showDialog<int>(
+      context: context,
+      builder: (context) => AppSelectionDialog<int>(
+        title: 'Translation Language',
+        icon: Icons.translate_rounded,
+        selectedValue: selectedTranslation,
+        maxWidth: 420,
+        maxHeight: 520,
+        options:
+            quran.Translation.values
+                .asMap()
+                .entries
+                .map(
+                  (entry) => AppSelectionOption<int>(
+                    value: entry.key,
+                    title: translationDisplayName(entry.value),
+                  ),
+                )
+                .toList()
+              ..sort((a, b) => a.title.compareTo(b.title)),
+      ),
+    );
+  }
+
+  int _selectedTranslationIndex() {
+    final dynamic savedTranslation = SettingsDB().get(
+      "translation",
+      defaultValue: 0,
+    );
+    if (savedTranslation is int &&
+        savedTranslation >= 0 &&
+        savedTranslation < quran.Translation.values.length) {
+      return savedTranslation;
+    }
+    return 0;
+  }
+
+  Future<void> _showFavouriteNotePrompt(int verse) async {
+    final TextEditingController textController = TextEditingController();
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('Favourite ayah'),
+            content: TextField(
+              maxLength: 80,
+              maxLines: null,
+              controller: textController,
+              decoration: const InputDecoration(hintText: 'Optional note...'),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('CANCEL'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final String key = _favouriteKey(_currentChapter, verse);
+                  FavouritesDB().put(key, textController.text.trim());
+                  Navigator.of(context).pop();
+                },
+                child: const Text('SAVE'),
+              ),
+            ],
+          );
+        },
+      );
+    } finally {
+      textController.dispose();
+    }
   }
 
   void _toggleFavourite(int verse, {required bool isFavourite}) {
