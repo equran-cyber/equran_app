@@ -23,33 +23,59 @@ class _FontSliderState extends State<FontSlider> {
       children: [
         ListTile(
           title: const Center(child: Text("Font Size")),
-          subtitle: Slider(
-            value: fontSize,
-            min: 25.0,
-            max: 65.0,
-            label: (fontSize / 2).round().toString(),
-            onChanged: (double value) {
-              setState(() {
-                fontSize = value;
-                SettingsDB().put("fontSize", value);
-              });
-            },
+          subtitle: Row(
+            children: <Widget>[
+              Expanded(
+                child: Slider(
+                  value: fontSize,
+                  min: 25.0,
+                  max: 65.0,
+                  label: fontSize.round().toString(),
+                  onChanged: (double value) {
+                    setState(() {
+                      fontSize = value;
+                      SettingsDB().put("fontSize", value);
+                    });
+                  },
+                ),
+              ),
+              SizedBox(
+                width: 42,
+                child: Text(
+                  fontSize.round().toString(),
+                  textAlign: TextAlign.end,
+                ),
+              ),
+            ],
           ),
         ),
         if (widget.showTranslationControls)
           ListTile(
             title: const Center(child: Text("Translation Font Size")),
-            subtitle: Slider(
-              value: fontSizeTranslation,
-              min: 10.0,
-              max: 30.0,
-              label: (fontSizeTranslation / 2).round().toString(),
-              onChanged: (double value) {
-                setState(() {
-                  fontSizeTranslation = value;
-                  SettingsDB().put("fontSizeTranslation", value);
-                });
-              },
+            subtitle: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Slider(
+                    value: fontSizeTranslation,
+                    min: 10.0,
+                    max: 30.0,
+                    label: fontSizeTranslation.round().toString(),
+                    onChanged: (double value) {
+                      setState(() {
+                        fontSizeTranslation = value;
+                        SettingsDB().put("fontSizeTranslation", value);
+                      });
+                    },
+                  ),
+                ),
+                SizedBox(
+                  width: 42,
+                  child: Text(
+                    fontSizeTranslation.round().toString(),
+                    textAlign: TextAlign.end,
+                  ),
+                ),
+              ],
             ),
           ),
         _FontPreview(
