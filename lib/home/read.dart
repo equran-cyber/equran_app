@@ -218,6 +218,11 @@ class _ReadPageState extends State<ReadPage> {
     _inlineSurahTextCache = null;
   }
 
+  Future<void> _loadChapterTransliterations() async {
+    // Warm the transliteration cache so chapter changes stay responsive.
+    await QuranTransliterationService.instance.versesForSurah(_currentChapter);
+  }
+
   int _verseForCurrentScrollOffset() {
     if (!_scrollController.hasClients) {
       return _currentVerse;
@@ -634,59 +639,53 @@ class _ReadPageState extends State<ReadPage> {
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Enter a verse number from 1 to $_totalVerses',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  autofocus: true,
+                  keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.go,
+                  textAlign: TextAlign.center,
+                  inputFormatters: <TextInputFormatter>[
+                    FilteringTextInputFormatter.digitsOnly,
+                  ],
+                  decoration: InputDecoration(
+                    hintText: 'Verse number',
+                    errorText: errorText,
+                    filled: true,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 16,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: controller,
-                    focusNode: focusNode,
-                    autofocus: true,
-                    keyboardType: TextInputType.number,
-                    textInputAction: TextInputAction.go,
-                    textAlign: TextAlign.center,
-                    inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.digitsOnly,
-                    ],
-                    decoration: InputDecoration(
-                      hintText: 'Verse number',
-                      errorText: errorText,
-                      filled: true,
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 16,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    onChanged: (_) {
-                      if (errorText != null) {
-                        setSheetState(() {
-                          errorText = null;
-                        });
-                      }
-                    },
-                    onSubmitted: (_) => submit(setSheetState),
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: () => submit(setSheetState),
-                    child: const Text('Go'),
-                  ),
-                  const SizedBox(height: 4),
-                  TextButton(
-                    onPressed: () => Navigator.of(sheetContext).pop(),
-                    child: const Text('Cancel'),
-                  ),
-                ],
-              ),
-            );
+                  onChanged: (_) {
+                    if (errorText != null) {
+                      setSheetState(() {
+                        errorText = null;
+                      });
+                    }
+                  },
+                  onSubmitted: (_) => submit(setSheetState),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () => submit(setSheetState),
+                  child: const Text('Go'),
+                ),
+                const SizedBox(height: 4),
+                TextButton(
+                  onPressed: () => Navigator.of(sheetContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+              ],
+            ),
+          );
           },
         );
       },
@@ -926,6 +925,21 @@ class _ReadPageState extends State<ReadPage> {
       _currentChapter,
       targetVerse,
       continuous: _continuousPlayback,
+    );
+  }
+
+  Future<void> _playAdjacentPageViewAyah(int direction) async {
+    if (_isVerseLoading) return;
+
+    final int currentVerse = _playingVerse ?? _currentVerse;
+    final int targetVerse = currentVerse + direction;
+    if (targetVerse < 1 || targetVerse > _totalVerses) return;
+
+    await _playVerse(
+      _currentChapter,
+      targetVerse,
+      continuous: _continuousPlayback,
+      smoothScroll: true,
     );
   }
 

@@ -235,6 +235,14 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Widget _buildTransliterationToggle() {
+    return const SettingsSwitch(
+      title: "Display Transliteration",
+      subtitle: "Show transliteration for each verse in card view.",
+      settingsKey: "showTransliteration",
+    );
+  }
+
 
   Widget _buildTafsirSourceTile(BuildContext context) {
     final String saved = SettingsDB().get(

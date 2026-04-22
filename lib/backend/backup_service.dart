@@ -40,6 +40,7 @@ class BackupService {
     'showLastRead',
     'viewMode',
     'enableTranslation',
+    'showTransliteration',
   };
   static const Set<String> _allowedSettings = <String>{
     ..._boolSettings,
@@ -225,7 +226,8 @@ class BackupService {
         'vibration' ||
         'showLastRead' ||
         'viewMode' ||
-        'enableTranslation' => _requireBool(entry.key, entry.value),
+        'enableTranslation' ||
+        'showTransliteration' => _requireBool(entry.key, entry.value),
         'translation' => _requireIntInRange(
           entry.key,
           entry.value,
