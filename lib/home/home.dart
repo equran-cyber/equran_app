@@ -1,5 +1,6 @@
 import 'package:adaptive_theme/adaptive_theme.dart';
 import 'package:equran/backend/library.dart' show SettingsDB;
+import 'package:equran/home/daily_guidance.dart';
 import 'package:equran/home/downloads.dart';
 import 'package:equran/home/main_page.dart';
 import 'package:equran/home/player.dart';
@@ -84,6 +85,27 @@ class _HomePageState extends State<HomePage> {
                 ),
               );
             }),
+            const SizedBox(height: 8),
+            const Divider(indent: 18, endIndent: 18),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+              child: ListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+                leading: Icon(
+                  theme.brightness == Brightness.dark
+                      ? Icons.light_mode_rounded
+                      : Icons.dark_mode_rounded,
+                  size: navIconSize,
+                ),
+                title: const Text('Theme'),
+                trailing: Switch.adaptive(
+                  value: theme.brightness == Brightness.dark,
+                  onChanged: (_) => _toggleQuickTheme(),
+                ),
+                onTap: _toggleQuickTheme,
+              ),
+            ),
           ],
         ),
       ),

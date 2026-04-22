@@ -10,8 +10,11 @@ import 'package:equran/backend/library.dart'
         AudioDownloadService,
         DownloadNotifications,
         FavouritesDB,
+        QuranTransliterationService,
         QuranAudioService,
-        SettingsDB;
+        SettingsDB,
+        TafsirService,
+        TafsirSource;
 import 'package:equran/utils/app_radii.dart';
 import 'package:equran/utils/app_slider_theme.dart';
 import 'package:equran/utils/responsive_nav.dart';
@@ -71,6 +74,7 @@ class _ReadPageState extends State<ReadPage> {
   bool _isVersePlaying = false;
   bool _isVerseLoading = false;
   bool _isDownloadingSurahAyahs = false;
+  bool _isDownloadingCurrentAyah = false;
   bool _hasDownloadedSurahAyahs = false;
   bool _hasDownloadedCurrentAyah = false;
   bool _continuousPlayback = false;
@@ -562,52 +566,52 @@ class _ReadPageState extends State<ReadPage> {
     });
   }
 
-Future<void> _showJumpToVerseDialog(BuildContext context) async {
-  if (!_viewMode) {
-    _syncCurrentVerseWithVisibleText(persist: true);
-  }
+  Future<void> _showJumpToVerseDialog(BuildContext context) async {
+    if (!_viewMode) {
+      _syncCurrentVerseWithVisibleText(persist: true);
+    }
 
-  final TextEditingController controller = TextEditingController(
-    text: _currentVerse.toString(),
-  );
-  final FocusNode focusNode = FocusNode();
-  String? errorText;
+    final TextEditingController controller = TextEditingController(
+      text: _currentVerse.toString(),
+    );
+    final FocusNode focusNode = FocusNode();
+    String? errorText;
 
-  await showModalBottomSheet<void>(
-    context: context,
-    useSafeArea: true,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (sheetContext) {
-      final theme = Theme.of(sheetContext);
-      final colorScheme = theme.colorScheme;
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final ThemeData theme = Theme.of(sheetContext);
+        final ColorScheme colorScheme = theme.colorScheme;
 
-      Future<void> submit(StateSetter setSheetState) async {
-        final int? value = int.tryParse(controller.text.trim());
+        Future<void> submit(StateSetter setSheetState) async {
+          final int? value = int.tryParse(controller.text.trim());
 
-        if (value == null || value < 1 || value > _totalVerses) {
-          setSheetState(() {
-            errorText = 'Enter a verse between 1 and $_totalVerses';
-          });
-          return;
+          if (value == null || value < 1 || value > _totalVerses) {
+            setSheetState(() {
+              errorText = 'Enter a verse between 1 and $_totalVerses';
+            });
+            return;
+          }
+
+          _setVerse(value);
+          if (!_viewMode) {
+            _scrollToInlineVerse(value, highlight: true);
+          } else {
+            _scrollUp();
+          }
+          _updateDB();
+
+          if (Navigator.of(sheetContext).canPop()) {
+            Navigator.of(sheetContext).pop();
+          }
         }
 
-        _setVerse(value);
-        if (!_viewMode) {
-          _scrollToInlineVerse(value, highlight: true);
-        } else {
-          _scrollUp();
-        }
-        _updateDB();
-
-        if (Navigator.of(sheetContext).canPop()) {
-          Navigator.of(sheetContext).pop();
-        }
-      }
-
-      return StatefulBuilder(
-        builder: (context, setSheetState) {
-          return SingleChildScrollView(
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(
     20,
     8,
@@ -630,61 +634,67 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  autofocus: true,
-                  keyboardType: TextInputType.number,
-                  textInputAction: TextInputAction.go,
-                  textAlign: TextAlign.center,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                  ],
-                  decoration: InputDecoration(
-                    hintText: 'Verse number',
-                    errorText: errorText,
-                    filled: true,
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 16,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Enter a verse number from 1 to $_totalVerses',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
-                  onChanged: (_) {
-                    if (errorText != null) {
-                      setSheetState(() {
-                        errorText = null;
-                      });
-                    }
-                  },
-                  onSubmitted: (_) => submit(setSheetState),
-                ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () => submit(setSheetState),
-                  child: const Text('Go'),
-                ),
-                const SizedBox(height: 4),
-                TextButton(
-                  onPressed: () => Navigator.of(sheetContext).pop(),
-                  child: const Text('Cancel'),
-                ),
-              ],
-            ),
-          );
-        },
-      );
-    },
-  );
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    autofocus: true,
+                    keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.go,
+                    textAlign: TextAlign.center,
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.digitsOnly,
+                    ],
+                    decoration: InputDecoration(
+                      hintText: 'Verse number',
+                      errorText: errorText,
+                      filled: true,
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    onChanged: (_) {
+                      if (errorText != null) {
+                        setSheetState(() {
+                          errorText = null;
+                        });
+                      }
+                    },
+                    onSubmitted: (_) => submit(setSheetState),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: () => submit(setSheetState),
+                    child: const Text('Go'),
+                  ),
+                  const SizedBox(height: 4),
+                  TextButton(
+                    onPressed: () => Navigator.of(sheetContext).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
 
-  controller.dispose();
-  focusNode.dispose();
-}
+    controller.dispose();
+    focusNode.dispose();
+  }
 
   Future<void> _saveProgressOnExit() async {
     if (_hasSavedOnExit) return;
@@ -905,8 +915,8 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
     );
   }
 
-  Future<void> _playAdjacentPageViewAyah(int direction) async {
-    if (_viewMode || _isVerseLoading) return;
+  Future<void> _playAdjacentAyah(int direction) async {
+    if (_isVerseLoading) return;
 
     final int currentVerse = _playingVerse ?? _currentVerse;
     final int targetVerse = currentVerse + direction;
@@ -1324,6 +1334,7 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
       _hasDownloadedSurahAyahs = false;
     });
     unawaited(_refreshSurahAyahDownloadState());
+    unawaited(_loadChapterTransliterations());
     _updateDB();
   }
 
@@ -1343,6 +1354,7 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
       _hasDownloadedSurahAyahs = false;
     });
     unawaited(_refreshSurahAyahDownloadState());
+    unawaited(_loadChapterTransliterations());
     _updateDB();
   }
 
@@ -1383,6 +1395,7 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
     setState(() {
       _currentChapter++;
     });
+    unawaited(_loadChapterTransliterations());
   }
 
   void _resetChapter() {
@@ -1390,6 +1403,7 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
     setState(() {
       _currentChapter = 1;
     });
+    unawaited(_loadChapterTransliterations());
   }
 
   void _vibrate() async {
@@ -2389,6 +2403,14 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
                 },
               ),
               ListTile(
+                leading: const Icon(Icons.chrome_reader_mode_rounded),
+                title: const Text('Show tafsir'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _showTafsirSheet(verse);
+                },
+              ),
+              ListTile(
                 leading: Icon(
                   isFavourite
                       ? Icons.favorite_rounded
@@ -2553,6 +2575,141 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
       return savedTranslation;
     }
     return 0;
+  }
+
+
+  TafsirSource _selectedTafsirSource() {
+    final String saved = SettingsDB().get(
+      'tafsirSource',
+      defaultValue: TafsirSource.jalalayn.key,
+    );
+    return TafsirSource.values.firstWhere(
+      (source) => source.key == saved,
+      orElse: () => TafsirSource.jalalayn,
+    );
+  }
+
+  Future<void> _showTafsirSheet(int verse) async {
+    TafsirSource selectedSource = _selectedTafsirSource();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return FutureBuilder<String>(
+              future: TafsirService.instance.verseTafsir(
+                source: selectedSource,
+                surah: _currentChapter,
+                ayah: verse,
+              ),
+              builder: (context, tafsirSnapshot) {
+                final String tafsirText = tafsirSnapshot.data?.trim() ?? '';
+                return DraggableScrollableSheet(
+                  expand: false,
+                  initialChildSize: 0.56,
+                  minChildSize: 0.28,
+                  maxChildSize: 0.92,
+                  builder: (context, scrollController) {
+                    return SizedBox(
+                      width: double.infinity,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Row(
+                              children: <Widget>[
+                                Expanded(
+                                  child: Text(
+                                    '${quran.getSurahName(_currentChapter)} • Ayah $verse',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(fontWeight: FontWeight.w700),
+                                  ),
+                                ),
+                                IconButton.filledTonal(
+                                  tooltip: 'Switch tafsir source',
+                                  icon: const Icon(Icons.layers_outlined),
+                                  onPressed: () async {
+                                    final TafsirSource? value =
+                                        await _showTafsirSourceDialog(
+                                      selectedSource,
+                                    );
+                                    if (value == null || !mounted) return;
+                                    SettingsDB().put('tafsirSource', value.key);
+                                    setSheetState(() {
+                                      selectedSource = value;
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              selectedSource.displayName,
+                              style: Theme.of(context).textTheme.labelLarge,
+                            ),
+                            const SizedBox(height: 12),
+                            Expanded(
+                              child: tafsirSnapshot.connectionState !=
+                                      ConnectionState.done
+                                  ? const Center(
+                                      child: CircularProgressIndicator(),
+                                    )
+                                  : SingleChildScrollView(
+                                      controller: scrollController,
+                                      physics: const BouncingScrollPhysics(),
+                                      child: Text(
+                                        tafsirText.isEmpty
+                                            ? 'No tafsir text available for this ayah in the selected source.'
+                                            : tafsirText,
+                                        textAlign: TextAlign.start,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyLarge
+                                            ?.copyWith(height: 1.6),
+                                      ),
+                                    ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<TafsirSource?> _showTafsirSourceDialog(TafsirSource selectedSource) {
+    return showDialog<TafsirSource>(
+      context: context,
+      builder: (context) => AppSelectionDialog<TafsirSource>(
+        title: 'Tafsir Source',
+        icon: Icons.chrome_reader_mode_rounded,
+        selectedValue: selectedSource,
+        maxWidth: 420,
+        maxHeight: 460,
+        options: TafsirSource.values
+            .map(
+              (source) => AppSelectionOption<TafsirSource>(
+                value: source,
+                title: source.displayName,
+              ),
+            )
+            .toList(),
+      ),
+    );
   }
 
   Future<void> _showFavouriteNotePrompt(int verse) async {

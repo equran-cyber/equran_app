@@ -3,7 +3,7 @@ description: "Application for reading the Holy Quran"
 
 publish_to: "none" # Remove this line if you wish to publish to pub.dev
 
-version: 2.7.0-beta.2+34
+version: 2.7.0-beta.4+36
 environment:
   sdk: ">=3.10.3 <4.0.0"
   flutter: ">=3.38.4"
@@ -65,6 +65,9 @@ flutter:
   assets:
     - assets/index.json
     - assets/images/quran.svg
+    - assets/transliteration/quran_json_en_transliteration.json
+    - assets/content/daily_hadith_duas.json
+    - assets/tafsir/en_al_jalalayn/
 
   fonts:
     - family: Hafs

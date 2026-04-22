@@ -10,13 +10,24 @@ Experience the Quran with clarity, focus, and ease.
 
 ---
 
+## 🆕 What’s New in Beta 3
+
+- 🌐 **Fully offline English transliteration** for ayahs in Card View
+- ⚙️ New **Display transliteration** toggle in Reading settings
+- 🎛️ Cleaner Card View hierarchy with improved action placement
+- ▶️ Unified media control bar behavior between reading modes
+- 🌙 Quick **theme toggle integrated in the sidebar**
+- 📱 Ongoing UI polish and interaction refinements for a smoother reading/listening flow
+
+---
+
 ## ✨ Why You’ll Love eQuran
 
-- 📖 Effortless reading with a clean, distraction-free design  
-- 🎧 Smooth audio playback for both Surahs and individual ayahs  
-- 🔄 Instantly resume where you left off  
-- 📱 Works beautifully across phones, tablets, and desktops  
-- 🌙 Built for daily recitation, memorization, and reflection  
+- 📖 Effortless reading with a clean, distraction-free design
+- 🎧 Smooth audio playback for both Surahs and individual ayahs
+- 🔄 Instantly resume where you left off
+- 📱 Works beautifully across phones, tablets, and desktops
+- 🌙 Built for daily recitation, memorization, and reflection
 
 ---
 
@@ -39,48 +50,48 @@ Experience the Quran with clarity, focus, and ease.
 
 ## 🎧 Powerful Audio Experience
 
-- Stream high-quality recitations instantly  
-- Play **individual ayahs directly from the page**  
-- Download Surahs for **offline listening**  
-- Automatically switches to offline audio when available  
+- Stream high-quality recitations instantly
+- Play **individual ayahs directly from the page**
+- Download Surahs for **offline listening**
+- Automatically switches to offline audio when available
 
 **Playback controls:**
-- Play, pause, next, previous  
-- Shuffle and loop modes  
-- Adjustable playback speed  
+- Play, pause, next, previous
+- Shuffle and loop modes
+- Adjustable playback speed
 
 ---
 
 ## 🎙️ Multiple Reciters
 
-- Mishary Rashid Al Afasy  
-- Abu Bakr Al Shatri  
-- Nasser Al Qatami  
-- Yasser Al Dosari  
-- Hani Ar Rifai  
+- Mishary Rashid Al Afasy
+- Abu Bakr Al Shatri
+- Nasser Al Qatami
+- Yasser Al Dosari
+- Hani Ar Rifai
 
 ---
 
 ## 🎵 Background Playback
 
-- Listen while using other apps  
-- Control playback from system media controls  
+- Listen while using other apps
+- Control playback from system media controls
 
 ---
 
 ## ⭐ Favorites & Personalization
 
-- Save important ayahs for quick access  
-- Theme-aware design  
-- Modern Material 3 interface  
+- Save important ayahs for quick access
+- Theme-aware design
+- Modern Material 3 interface
 
 ---
 
 ## 📱 Built for Every Device
 
-- Optimized for phones, tablets, foldables, and desktops  
-- Adaptive layouts for reading and playback  
-- Improved readability on larger screens  
+- Optimized for phones, tablets, foldables, and desktops
+- Adaptive layouts for reading and playback
+- Improved readability on larger screens
 
 ---
 

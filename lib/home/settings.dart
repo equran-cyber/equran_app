@@ -1,6 +1,6 @@
 import 'package:adaptive_theme/adaptive_theme.dart';
 import 'package:equran/backend/library.dart'
-    show BookmarkDB, FavouritesDB, SettingsDB;
+    show BookmarkDB, FavouritesDB, SettingsDB, TafsirSource;
 import 'package:equran/backend/backup_service.dart';
 import 'package:equran/utils/app_theme.dart';
 import 'package:equran/utils/app_radii.dart';
@@ -107,7 +107,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   settingsKey: "enableTranslation",
                   onChanged: (_) => setState(() {}),
                 ),
+              if (cardViewEnabled) _buildTransliterationToggle(),
               _buildTranslationTile(context),
+              _buildTafsirSourceTile(context),
               FontSlider(showTranslationControls: showTranslationControls),
             ],
           ),
@@ -230,6 +232,42 @@ class _SettingsPageState extends State<SettingsPage> {
         selectedValue: selectedValue,
         options: options,
       ),
+    );
+  }
+
+
+  Widget _buildTafsirSourceTile(BuildContext context) {
+    final String saved = SettingsDB().get(
+      'tafsirSource',
+      defaultValue: TafsirSource.jalalayn.key,
+    );
+    final TafsirSource selected = TafsirSource.values.firstWhere(
+      (source) => source.key == saved,
+      orElse: () => TafsirSource.jalalayn,
+    );
+
+    return ListTile(
+      title: const Text('English Tafsir'),
+      subtitle: Text(selected.displayName),
+      onTap: () async {
+        final TafsirSource? value = await _showSelectionDialog<TafsirSource>(
+          context: context,
+          title: 'Tafsir Source',
+          icon: Icons.chrome_reader_mode_rounded,
+          selectedValue: selected,
+          options: TafsirSource.values
+              .map(
+                (source) => AppSelectionOption<TafsirSource>(
+                  value: source,
+                  title: source.displayName,
+                ),
+              )
+              .toList(),
+        );
+        if (value == null) return;
+        SettingsDB().put('tafsirSource', value.key);
+        if (mounted) setState(() {});
+      },
     );
   }
 

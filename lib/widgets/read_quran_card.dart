@@ -13,17 +13,20 @@ class ReadQuranCard extends StatelessWidget {
   final int juzNumber;
 
   final String translation;
+  final String transliteration;
   final String verse;
   final String? basmala;
 
   final double fontSize;
   final double fontSizeTranslation;
   final bool showActions;
+  final bool showTransliteration;
 
   final VoidCallback? onPlay;
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
   final VoidCallback? onDownload;
+  final VoidCallback? onTafsir;
   final bool isPlaying;
   final bool isDownloading;
   final bool isDownloaded;
@@ -37,20 +40,23 @@ class ReadQuranCard extends StatelessWidget {
     required this.fontSizeTranslation,
     required this.juzNumber,
     required this.translation,
+    this.transliteration = '',
     this.basmala,
     required this.verse,
     this.showActions = true,
+    this.showTransliteration = false,
     this.onPlay,
     this.onPrevious,
     this.onNext,
     this.onDownload,
+    this.onTafsir,
     this.isPlaying = false,
     this.isDownloading = false,
     this.isDownloaded = false,
   });
 
   String get _favouriteKey {
-    return "$currentChapter-${currentVerse.toString().padLeft(3, "0")}";
+    return '$currentChapter-${currentVerse.toString().padLeft(3, '0')}';
   }
 
   Future<void> _showInputPrompt(BuildContext context) async {
@@ -59,17 +65,13 @@ class ReadQuranCard extends StatelessWidget {
       await showDialog<void>(
         context: context,
         builder: (context) {
-          final theme = Theme.of(context);
-
           return AlertDialog(
             title: const Text('Favourite ayah'),
             content: TextField(
               maxLength: _favouriteNoteMaxLength,
               maxLines: null,
               controller: textController,
-              decoration: const InputDecoration(
-                hintText: 'Optional note...',
-              ),
+              decoration: const InputDecoration(hintText: 'Optional note...'),
             ),
             actions: <Widget>[
               TextButton(
@@ -86,9 +88,7 @@ class ReadQuranCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-                child: const Text(
-                  'Save',
-                ),
+                child: const Text('Save'),
               ),
             ],
           );
@@ -100,10 +100,10 @@ class ReadQuranCard extends StatelessWidget {
   }
 
   Widget _buildHeader(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
 
-    final mutedStyle = theme.textTheme.labelMedium?.copyWith(
+    final TextStyle? mutedStyle = theme.textTheme.labelMedium?.copyWith(
       color: colorScheme.onSurfaceVariant,
       fontWeight: FontWeight.w600,
       letterSpacing: 0.2,
@@ -111,31 +111,36 @@ class ReadQuranCard extends StatelessWidget {
 
     return Row(
       children: <Widget>[
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: colorScheme.primary.withAlpha(20),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: colorScheme.primary.withAlpha(36),
-            ),
-          ),
-          child: Text(
-            "Juz' $juzNumber",
-            style: mutedStyle,
-          ),
-        ),
-        const SizedBox(width: 8),
         Expanded(
-          child: Text(
-            'Ayah $currentVerse of $totalVerses',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: mutedStyle?.copyWith(
-              color: colorScheme.onSurfaceVariant.withAlpha(190),
-            ),
+          child: Row(
+            children: <Widget>[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withAlpha(20),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: colorScheme.primary.withAlpha(36)),
+                ),
+                child: Text("Juz' $juzNumber", style: mutedStyle),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Ayah $currentVerse of $totalVerses',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: mutedStyle?.copyWith(
+                    color: colorScheme.onSurfaceVariant.withAlpha(190),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
+        if (showActions) ...<Widget>[
+          const SizedBox(width: 8),
+          _buildHeaderActions(context),
+        ],
       ],
     );
   }
@@ -147,41 +152,40 @@ class ReadQuranCard extends StatelessWidget {
     required VoidCallback? onPressed,
     bool isPrimary = false,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
 
     return Material(
       color: isPrimary
           ? colorScheme.primary.withAlpha(24)
           : colorScheme.surfaceContainerHighest.withAlpha(140),
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         child: Tooltip(
           message: tooltip,
-          child: SizedBox(
-            height: 48,
-            width: 56,
-            child: Center(child: child),
-          ),
+          child: SizedBox(height: 42, width: 42, child: Center(child: child)),
         ),
       ),
     );
   }
 
-  Widget _buildBottomActions(BuildContext context) {
-    if (!showActions) return const SizedBox.shrink();
-
-    final colorScheme = Theme.of(context).colorScheme;
+  Widget _buildHeaderActions(BuildContext context) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
     final bool isFavourite = FavouritesDB().contains(_favouriteKey);
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 18),
-      child: Column(
-        children: <Widget>[
-          Divider(
-            height: 1,
-            color: colorScheme.outlineVariant.withAlpha(90),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        _buildActionButton(
+          context: context,
+          tooltip: isPlaying ? 'Pause' : 'Play',
+          onPressed: onPlay,
+          isPrimary: true,
+          child: Icon(
+            isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            size: 22,
+            color: colorScheme.primary,
           ),
           const SizedBox(height: 14),
           Row(
@@ -261,11 +265,37 @@ class ReadQuranCard extends StatelessWidget {
                     return !liked;
                   },
                 ),
-              ),
-            ],
+        ),
+        const SizedBox(width: 6),
+        _buildActionButton(
+          context: context,
+          tooltip: 'Tafsir',
+          onPressed: onTafsir,
+          child: Icon(
+            Icons.chrome_reader_mode_rounded,
+            size: 19,
+            color: colorScheme.onSurface.withAlpha(185),
           ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 6),
+        _buildActionButton(
+          context: context,
+          tooltip: isFavourite ? 'Remove favourite' : 'Favourite',
+          onPressed: null,
+          child: LikeButton(
+            size: 19,
+            isLiked: isFavourite,
+            onTap: (bool liked) async {
+              if (!liked) {
+                await _showInputPrompt(context);
+              } else {
+                FavouritesDB().delete(_favouriteKey);
+              }
+              return !liked;
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -342,71 +372,73 @@ class ReadQuranCard extends StatelessWidget {
             BoxShadow(
               color: Colors.black.withAlpha(isLight ? 10 : 20),
               blurRadius: 18,
-              offset: const Offset(0, 8),
+              offset: const Offset(0, 6),
             ),
           ],
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               _buildHeader(context),
-              const SizedBox(height: 18),
-              if (basmala != null) ...[
-                Text(
-                  basmala!,
-                  textDirection: TextDirection.rtl,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    height: 1.9,
-                    fontFamily: 'Hafs',
-                    fontSize: fontSize,
-                    color: colorScheme.onSurface,
+              const SizedBox(height: 16),
+              if (basmala != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Text(
+                    basmala!,
+                    textDirection: TextDirection.rtl,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontFamily: 'Hafs',
+                      fontSize: fontSize,
+                      height: 1.7,
+                      color: colorScheme.primary,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 8),
-              ],
               Text(
                 verse,
                 textDirection: TextDirection.rtl,
-                textAlign: TextAlign.justify,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontFamily: 'Hafs',
-                  height: 1.65,
+                  height: 1.85,
                   fontSize: fontSize,
                   color: colorScheme.onSurface,
                 ),
               ),
-              if (SettingsDB().get(
-                "enableTranslation",
-                defaultValue: true,
-              )) ...[
-                const SizedBox(height: 18),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest.withAlpha(
-                      isLight ? 115 : 90,
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
+              if (showTransliteration && transliteration.trim().isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
                   child: Text(
-                    translation,
+                    transliteration,
                     textAlign: TextAlign.start,
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      fontSize: fontSizeTranslation,
-                      height: 1.6,
-                      color: colorScheme.onSurface.withAlpha(210),
+                      fontSize: (fontSizeTranslation - 1)
+                          .clamp(12.0, 20.0)
+                          .toDouble(),
+                      color: colorScheme.onSurfaceVariant.withAlpha(220),
+                      height: 1.5,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.1,
                     ),
                   ),
                 ),
-              ],
-              _buildBottomActions(context),
+              if (SettingsDB().get("enableTranslation", defaultValue: true))
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Text(
+                    translation,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      fontSize: fontSizeTranslation,
+                      color: colorScheme.onSurfaceVariant,
+                      height: 1.55,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
