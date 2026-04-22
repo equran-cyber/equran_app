@@ -6,13 +6,15 @@ class SettingsSwitch extends StatefulWidget {
   final String settingsKey;
   final String? subtitle;
   final ValueChanged<bool>? onChanged;
+  final bool defaultValue;
 
   const SettingsSwitch(
       {super.key,
       required this.title,
       required this.settingsKey,
       this.subtitle,
-      this.onChanged});
+      this.onChanged,
+      this.defaultValue = true});
 
   @override
   State<SettingsSwitch> createState() => _SettingsSwitchState();
@@ -29,7 +31,7 @@ class _SettingsSwitchState extends State<SettingsSwitch> {
   @override
   Widget build(BuildContext context) {
     final bool currentValue =
-        SettingsDB().get(widget.settingsKey, defaultValue: true);
+        SettingsDB().get(widget.settingsKey, defaultValue: widget.defaultValue);
 
     return ListTile(
       onTap: () => _setValue(!currentValue),

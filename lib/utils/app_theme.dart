@@ -52,17 +52,47 @@ class AppTheme {
   }
 
   static ThemeData buildDarkTheme(Color seedColor) {
-    final TextTheme textTheme = GoogleFonts.interTextTheme(
-      ThemeData(brightness: Brightness.dark).textTheme,
+    final ColorScheme baseScheme = ColorScheme.fromSeed(
+      seedColor: seedColor,
+      brightness: Brightness.dark,
     );
+    final ColorScheme colorScheme = baseScheme.copyWith(
+      surface: const Color(0xFF101113),
+      surfaceContainerLowest: const Color(0xFF090A0C),
+      surfaceContainerLow: const Color(0xFF17191C),
+      surfaceContainer: const Color(0xFF1C1E22),
+      surfaceContainerHigh: const Color(0xFF24272B),
+      surfaceContainerHighest: const Color(0xFF2E3237),
+      onSurface: const Color(0xFFE8EAED),
+      onSurfaceVariant: const Color(0xFFC2C7CF),
+      outline: const Color(0xFF8B929B),
+      outlineVariant: const Color(0xFF3F454D),
+    );
+
+    final TextTheme textTheme =
+        GoogleFonts.interTextTheme(
+          ThemeData(brightness: Brightness.dark).textTheme,
+        ).apply(
+          bodyColor: colorScheme.onSurface,
+          displayColor: colorScheme.onSurface,
+        );
     return ThemeData(
       useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: seedColor,
-        brightness: Brightness.dark,
-      ),
+      colorScheme: colorScheme,
       textTheme: textTheme,
       primaryTextTheme: textTheme,
+      scaffoldBackgroundColor: colorScheme.surface,
+      canvasColor: colorScheme.surface,
+      cardTheme: CardThemeData(
+        color: colorScheme.surfaceContainerLow,
+        surfaceTintColor: Colors.transparent,
+      ),
+      searchBarTheme: SearchBarThemeData(
+        backgroundColor: WidgetStatePropertyAll(
+          colorScheme.surfaceContainerLow,
+        ),
+        surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+      ),
     );
   }
 }

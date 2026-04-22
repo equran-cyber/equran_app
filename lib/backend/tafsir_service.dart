@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/services.dart' show rootBundle;
 
 enum TafsirSource {
-  jalalayn('en_jalalayn', 'Tafsir al-Jalalayn (EN)');
+  mukhtasar('en_al_mukhtasar', 'Abridged Explanation of the Quran');
 
   const TafsirSource(this.key, this.displayName);
 
@@ -16,38 +16,40 @@ class TafsirService {
 
   static final TafsirService instance = TafsirService._();
 
-  final Map<String, Map<int, String>> _cache = <String, Map<int, String>>{};
+  static const String _assetPath =
+      'assets/tafsir/en_al_mukhtasar/abridged-explanation-of-the-quran.json';
 
-  String _assetPath(TafsirSource source, int surah) {
-    switch (source) {
-      case TafsirSource.jalalayn:
-        return 'assets/tafsir/en_al_jalalayn/$surah.json';
-    }
-  }
+  Map<String, String>? _cache;
 
-  Future<Map<int, String>> _loadSurah({
-    required TafsirSource source,
-    required int surah,
-  }) async {
-    final String cacheKey = '${source.key}_$surah';
-    final Map<int, String>? cached = _cache[cacheKey];
+  Future<Map<String, String>> _loadAll() async {
+    final Map<String, String>? cached = _cache;
     if (cached != null) return cached;
 
-    final String raw = await rootBundle.loadString(_assetPath(source, surah));
-    final Map<String, dynamic> decoded = jsonDecode(raw) as Map<String, dynamic>;
-    final List<dynamic> ayahs = decoded['ayahs'] as List<dynamic>? ?? <dynamic>[];
-    final Map<int, String> mapped = <int, String>{};
+    final String raw = await rootBundle.loadString(_assetPath);
+    final Map<String, dynamic> decoded =
+        jsonDecode(raw) as Map<String, dynamic>;
+    final Map<String, String> mapped = <String, String>{};
 
-    for (final dynamic ayahRaw in ayahs) {
-      if (ayahRaw is! Map<String, dynamic>) continue;
-      final int? ayah = ayahRaw['ayah'] as int?;
-      final String text = (ayahRaw['text'] as String? ?? '').trim();
-      if (ayah != null && text.isNotEmpty) {
-        mapped[ayah] = text;
+    String resolveText(String key, [Set<String>? seen]) {
+      final Set<String> visited = seen ?? <String>{};
+      if (!visited.add(key)) return '';
+
+      final dynamic rawValue = decoded[key];
+      if (rawValue is String) {
+        return resolveText(rawValue, visited);
       }
+      if (rawValue is Map<String, dynamic>) {
+        return (rawValue['text'] as String? ?? '').trim();
+      }
+      return '';
     }
 
-    _cache[cacheKey] = mapped;
+    for (final String key in decoded.keys) {
+      final String text = resolveText(key);
+      if (text.isNotEmpty) mapped[key] = text;
+    }
+
+    _cache = mapped;
     return mapped;
   }
 
@@ -56,10 +58,7 @@ class TafsirService {
     required int surah,
     required int ayah,
   }) async {
-    final Map<int, String> surahTafsir = await _loadSurah(
-      source: source,
-      surah: surah,
-    );
-    return surahTafsir[ayah] ?? '';
+    final Map<String, String> tafsir = await _loadAll();
+    return tafsir['$surah:$ayah'] ?? '';
   }
 }

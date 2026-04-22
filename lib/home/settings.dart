@@ -1,6 +1,6 @@
 import 'package:adaptive_theme/adaptive_theme.dart';
 import 'package:equran/backend/library.dart'
-    show BookmarkDB, FavouritesDB, SettingsDB, TafsirSource;
+    show BookmarkDB, FavouritesDB, SettingsDB;
 import 'package:equran/backend/backup_service.dart';
 import 'package:equran/utils/app_theme.dart';
 import 'package:equran/utils/app_radii.dart';
@@ -106,10 +106,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   subtitle: "Display translation for each verse in card view.",
                   settingsKey: "enableTranslation",
                   onChanged: (_) => setState(() {}),
+                  defaultValue: false,
                 ),
               if (cardViewEnabled) _buildTransliterationToggle(),
               _buildTranslationTile(context),
-              _buildTafsirSourceTile(context),
               FontSlider(showTranslationControls: showTranslationControls),
             ],
           ),
@@ -240,42 +240,7 @@ class _SettingsPageState extends State<SettingsPage> {
       title: "Display Transliteration",
       subtitle: "Show transliteration for each verse in card view.",
       settingsKey: "showTransliteration",
-    );
-  }
-
-
-  Widget _buildTafsirSourceTile(BuildContext context) {
-    final String saved = SettingsDB().get(
-      'tafsirSource',
-      defaultValue: TafsirSource.jalalayn.key,
-    );
-    final TafsirSource selected = TafsirSource.values.firstWhere(
-      (source) => source.key == saved,
-      orElse: () => TafsirSource.jalalayn,
-    );
-
-    return ListTile(
-      title: const Text('English Tafsir'),
-      subtitle: Text(selected.displayName),
-      onTap: () async {
-        final TafsirSource? value = await _showSelectionDialog<TafsirSource>(
-          context: context,
-          title: 'Tafsir Source',
-          icon: Icons.chrome_reader_mode_rounded,
-          selectedValue: selected,
-          options: TafsirSource.values
-              .map(
-                (source) => AppSelectionOption<TafsirSource>(
-                  value: source,
-                  title: source.displayName,
-                ),
-              )
-              .toList(),
-        );
-        if (value == null) return;
-        SettingsDB().put('tafsirSource', value.key);
-        if (mounted) setState(() {});
-      },
+      defaultValue: false,
     );
   }
 
@@ -805,7 +770,9 @@ class _FeedbackContactPage extends StatelessWidget {
               if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
                   context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Unable to open issue tracker.')),
+                  const SnackBar(
+                    content: Text('Unable to open issue tracker.'),
+                  ),
                 );
               }
             },

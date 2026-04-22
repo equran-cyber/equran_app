@@ -15,10 +15,10 @@ class FontSlider extends StatefulWidget {
 class _FontSliderState extends State<FontSlider> {
   @override
   Widget build(BuildContext context) {
-    double fontSize = SettingsDB().get('fontSize', defaultValue: 38.0);
+    double fontSize = SettingsDB().get('fontSize', defaultValue: 31.0);
     double fontSizeTranslation = SettingsDB().get(
       'fontSizeTranslation',
-      defaultValue: 15.0,
+      defaultValue: 12.0,
     );
 
     return Column(
@@ -26,7 +26,6 @@ class _FontSliderState extends State<FontSlider> {
         _buildSliderRow(
           context: context,
           title: 'Arabic text size',
-          subtitle: 'Controls Quran Arabic script size in reading screens.',
           value: fontSize,
           min: 25,
           max: 65,
@@ -41,7 +40,6 @@ class _FontSliderState extends State<FontSlider> {
           _buildSliderRow(
             context: context,
             title: 'Translation text size',
-            subtitle: 'Controls translated verse text size in card view.',
             value: fontSizeTranslation,
             min: 10,
             max: 30,
@@ -64,7 +62,6 @@ class _FontSliderState extends State<FontSlider> {
   Widget _buildSliderRow({
     required BuildContext context,
     required String title,
-    required String subtitle,
     required double value,
     required double min,
     required double max,
@@ -75,9 +72,11 @@ class _FontSliderState extends State<FontSlider> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Text(title, style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 2),
-          Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
           const SizedBox(height: 4),
           Row(
             children: <Widget>[
@@ -134,9 +133,13 @@ class _FontPreview extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
 
-    final int translationIndex = SettingsDB().get('translation', defaultValue: 0);
-    final quran.Translation selectedTranslation = quran.Translation.values[
-        translationIndex.clamp(0, quran.Translation.values.length - 1)];
+    final int translationIndex = SettingsDB().get(
+      'translation',
+      defaultValue: 0,
+    );
+    final quran.Translation selectedTranslation = quran
+        .Translation
+        .values[translationIndex.clamp(0, quran.Translation.values.length - 1)];
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 18),

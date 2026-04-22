@@ -11,7 +11,12 @@ import 'package:flutter/material.dart';
 const EdgeInsets _drawerTilePadding = EdgeInsets.symmetric(horizontal: 12);
 
 class Destinations {
-  const Destinations(this.label, this.icon, this.selectedIcon, this.destination);
+  const Destinations(
+    this.label,
+    this.icon,
+    this.selectedIcon,
+    this.destination,
+  );
 
   final String label;
   final Widget icon;
@@ -31,7 +36,12 @@ class _HomePageState extends State<HomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   final List<Destinations> _pageDestinations = const <Destinations>[
-    Destinations('Home', Icon(Icons.home_outlined), Icon(Icons.home_rounded), MainPage()),
+    Destinations(
+      'Home',
+      Icon(Icons.home_outlined),
+      Icon(Icons.home_rounded),
+      MainPage(),
+    ),
     Destinations(
       'Player',
       Icon(Icons.library_music_outlined),
@@ -44,7 +54,12 @@ class _HomePageState extends State<HomePage> {
       Icon(Icons.download_done_rounded),
       DownloadsPage(),
     ),
-    Destinations('Settings', Icon(Icons.settings_outlined), Icon(Icons.settings), SettingsPage()),
+    Destinations(
+      'Settings',
+      Icon(Icons.settings_outlined),
+      Icon(Icons.settings),
+      SettingsPage(),
+    ),
   ];
 
   @override
@@ -58,10 +73,16 @@ class _HomePageState extends State<HomePage> {
       key: _scaffoldKey,
       drawer: NavigationDrawerTheme(
         data: NavigationDrawerTheme.of(context).copyWith(
-          labelTextStyle: WidgetStatePropertyAll(ResponsiveNav.drawerLabelStyle(context)),
+          labelTextStyle: WidgetStatePropertyAll(
+            ResponsiveNav.drawerLabelStyle(context),
+          ),
           tileHeight: ResponsiveNav.drawerTileHeight(context),
-          indicatorColor: colorScheme.secondaryContainer.withValues(alpha: 0.45),
-          indicatorShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          indicatorColor: colorScheme.secondaryContainer.withValues(
+            alpha: 0.45,
+          ),
+          indicatorShape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
         ),
         child: NavigationDrawer(
           onDestinationSelected: (index) {
@@ -76,11 +97,17 @@ class _HomePageState extends State<HomePage> {
               return NavigationDrawerDestination(
                 label: Text(destination.label),
                 icon: IconTheme(
-                  data: IconThemeData(color: colorScheme.onSurfaceVariant, size: navIconSize),
+                  data: IconThemeData(
+                    color: colorScheme.onSurfaceVariant,
+                    size: navIconSize,
+                  ),
                   child: destination.icon,
                 ),
                 selectedIcon: IconTheme(
-                  data: IconThemeData(color: colorScheme.onSecondaryContainer, size: navIconSize),
+                  data: IconThemeData(
+                    color: colorScheme.onSecondaryContainer,
+                    size: navIconSize,
+                  ),
                   child: destination.selectedIcon,
                 ),
               );
@@ -114,19 +141,11 @@ class _HomePageState extends State<HomePage> {
               toolbarHeight: ResponsiveNav.toolbarHeight(context),
               title: Text(_pageDestinations[_selectedIndex].label),
               centerTitle: true,
-              iconTheme: IconThemeData(color: colorScheme.onSurface, size: navIconSize),
-              actions: <Widget>[
-                IconButton(
-                  tooltip: 'Toggle theme',
-                  onPressed: _toggleQuickTheme,
-                  icon: Icon(
-                    theme.brightness == Brightness.dark
-                        ? Icons.light_mode_rounded
-                        : Icons.dark_mode_rounded,
-                  ),
-                ),
-                const SizedBox(width: 6),
-              ],
+              iconTheme: IconThemeData(
+                color: colorScheme.onSurface,
+                size: navIconSize,
+              ),
+              actions: <Widget>[],
             )
           : null,
       body: _pageDestinations[_selectedIndex].destination,
@@ -142,8 +161,12 @@ class _HomePageState extends State<HomePage> {
   Future<void> _toggleQuickTheme() async {
     final ThemeData theme = Theme.of(context);
     final AdaptiveThemeMode mode = AdaptiveTheme.of(context).mode;
-    final bool isDark = mode.isSystem ? theme.brightness == Brightness.dark : mode.isDark;
-    final AdaptiveThemeMode nextMode = isDark ? AdaptiveThemeMode.light : AdaptiveThemeMode.dark;
+    final bool isDark = mode.isSystem
+        ? theme.brightness == Brightness.dark
+        : mode.isDark;
+    final AdaptiveThemeMode nextMode = isDark
+        ? AdaptiveThemeMode.light
+        : AdaptiveThemeMode.dark;
 
     await SettingsDB().put('themeMode', nextMode.isDark ? 'dark' : 'light');
     if (!mounted) return;

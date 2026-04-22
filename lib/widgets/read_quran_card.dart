@@ -1,10 +1,12 @@
+import 'dart:async' show unawaited;
+
 import 'package:equran/backend/favourites_db.dart';
-import 'package:equran/backend/library.dart' show SettingsDB;
 import 'package:equran/utils/app_radii.dart';
 import 'package:flutter/material.dart';
-import 'package:like_button/like_button.dart';
 
 const int _favouriteNoteMaxLength = 80;
+
+enum _CardOverflowAction { download, favourite, share }
 
 class ReadQuranCard extends StatelessWidget {
   final int currentChapter;
@@ -21,11 +23,14 @@ class ReadQuranCard extends StatelessWidget {
   final double fontSizeTranslation;
   final bool showActions;
   final bool showTransliteration;
+  final bool showTranslation;
+  final bool shareImageMode;
 
   final VoidCallback? onPlay;
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
   final VoidCallback? onDownload;
+  final VoidCallback? onShare;
   final VoidCallback? onTafsir;
   final bool isPlaying;
   final bool isDownloading;
@@ -45,10 +50,13 @@ class ReadQuranCard extends StatelessWidget {
     required this.verse,
     this.showActions = true,
     this.showTransliteration = false,
+    this.showTranslation = true,
+    this.shareImageMode = false,
     this.onPlay,
     this.onPrevious,
     this.onNext,
     this.onDownload,
+    this.onShare,
     this.onTafsir,
     this.isPlaying = false,
     this.isDownloading = false,
@@ -103,11 +111,15 @@ class ReadQuranCard extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
 
-    final TextStyle? mutedStyle = theme.textTheme.labelMedium?.copyWith(
-      color: colorScheme.onSurfaceVariant,
-      fontWeight: FontWeight.w600,
-      letterSpacing: 0.2,
-    );
+    final TextStyle? mutedStyle =
+        (shareImageMode
+                ? theme.textTheme.labelLarge
+                : theme.textTheme.labelMedium)
+            ?.copyWith(
+              color: colorScheme.onSurfaceVariant.withAlpha(205),
+              fontSize: shareImageMode ? 24 : null,
+              fontWeight: FontWeight.w600,
+            );
 
     return Row(
       children: <Widget>[
@@ -115,11 +127,11 @@ class ReadQuranCard extends StatelessWidget {
           child: Row(
             children: <Widget>[
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
                 decoration: BoxDecoration(
-                  color: colorScheme.primary.withAlpha(20),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: colorScheme.primary.withAlpha(36)),
+                  color: colorScheme.primary.withAlpha(14),
+                  borderRadius: BorderRadius.circular(AppRadii.medium),
+                  border: Border.all(color: colorScheme.primary.withAlpha(24)),
                 ),
                 child: Text("Juz' $juzNumber", style: mutedStyle),
               ),
@@ -137,8 +149,8 @@ class ReadQuranCard extends StatelessWidget {
             ],
           ),
         ),
-        if (showActions) ...<Widget>[
-          const SizedBox(width: 8),
+        if (showActions && !shareImageMode) ...<Widget>[
+          const SizedBox(width: 10),
           _buildHeaderActions(context),
         ],
       ],
@@ -156,15 +168,15 @@ class ReadQuranCard extends StatelessWidget {
 
     return Material(
       color: isPrimary
-          ? colorScheme.primary.withAlpha(24)
-          : colorScheme.surfaceContainerHighest.withAlpha(140),
-      borderRadius: BorderRadius.circular(16),
+          ? colorScheme.primary.withAlpha(20)
+          : colorScheme.surfaceContainerHighest.withAlpha(72),
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         child: Tooltip(
           message: tooltip,
-          child: SizedBox(height: 42, width: 42, child: Center(child: child)),
+          child: SizedBox(height: 36, width: 36, child: Center(child: child)),
         ),
       ),
     );
@@ -173,6 +185,7 @@ class ReadQuranCard extends StatelessWidget {
   Widget _buildHeaderActions(BuildContext context) {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
     final bool isFavourite = FavouritesDB().contains(_favouriteKey);
+    final double actionGap = MediaQuery.sizeOf(context).width >= 700 ? 8 : 4;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -184,70 +197,112 @@ class ReadQuranCard extends StatelessWidget {
           isPrimary: true,
           child: Icon(
             isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-            size: 22,
+            size: 21,
             color: colorScheme.primary,
           ),
         ),
-        
-        const SizedBox(width: 6),
-        _buildActionButton(
-          context: context,
-          tooltip: isDownloading
-              ? 'Downloading'
-              : isDownloaded
-              ? 'Current ayah downloaded'
-              : 'Download current ayah',
-          onPressed: isDownloading ? null : onDownload,
-          child: isDownloading
-              ? SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.2,
-                    color: colorScheme.onSurface.withAlpha(185),
-                  ),
-                )
-              : Icon(
-                  isDownloaded
-                      ? Icons.offline_pin_rounded
-                      : Icons.download_rounded,
-                  size: 22,
-                  color: colorScheme.onSurface.withAlpha(185),
-                ),
-        ),
-        
+
         if (onTafsir != null) ...<Widget>[
-          const SizedBox(width: 6),
+          SizedBox(width: actionGap),
           _buildActionButton(
             context: context,
             tooltip: 'Tafsir',
             onPressed: onTafsir,
             child: Icon(
               Icons.chrome_reader_mode_rounded,
-              size: 19,
+              size: 18,
               color: colorScheme.onSurface.withAlpha(185),
             ),
           ),
         ],
-        const SizedBox(width: 6),
-        _buildActionButton(
-          context: context,
-          tooltip: isFavourite ? 'Remove favourite' : 'Favourite',
-          onPressed: null,
-          child: LikeButton(
-            size: 19,
-            isLiked: isFavourite,
-            onTap: (bool liked) async {
-              if (!liked) {
-                await _showInputPrompt(context);
-              } else {
-                FavouritesDB().delete(_favouriteKey);
-              }
-              return !liked;
-            },
+        SizedBox(width: actionGap),
+        _buildOverflowMenu(context: context, isFavourite: isFavourite),
+      ],
+    );
+  }
+
+  Widget _buildOverflowMenu({
+    required BuildContext context,
+    required bool isFavourite,
+  }) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: colorScheme.surfaceContainerHighest.withAlpha(72),
+      borderRadius: BorderRadius.circular(12),
+      child: PopupMenuButton<_CardOverflowAction>(
+        tooltip: 'More actions',
+        position: PopupMenuPosition.under,
+        padding: EdgeInsets.zero,
+        icon: Icon(
+          Icons.more_horiz_rounded,
+          size: 20,
+          color: colorScheme.onSurface.withAlpha(185),
+        ),
+        style: IconButton.styleFrom(
+          fixedSize: const Size(36, 36),
+          minimumSize: const Size(36, 36),
+          padding: EdgeInsets.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
-      ],
+        onSelected: (action) {
+          switch (action) {
+            case _CardOverflowAction.download:
+              onDownload?.call();
+              break;
+            case _CardOverflowAction.favourite:
+              if (isFavourite) {
+                FavouritesDB().delete(_favouriteKey);
+              } else {
+                unawaited(_showInputPrompt(context));
+              }
+              break;
+            case _CardOverflowAction.share:
+              onShare?.call();
+              break;
+          }
+        },
+        itemBuilder: (context) {
+          return <PopupMenuEntry<_CardOverflowAction>>[
+            PopupMenuItem<_CardOverflowAction>(
+              value: _CardOverflowAction.download,
+              enabled: !isDownloading && onDownload != null,
+              child: _OverflowMenuItem(
+                icon: isDownloading
+                    ? Icons.downloading_rounded
+                    : isDownloaded
+                    ? Icons.offline_pin_rounded
+                    : Icons.download_rounded,
+                label: isDownloading
+                    ? 'Downloading'
+                    : isDownloaded
+                    ? 'Downloaded'
+                    : 'Download',
+              ),
+            ),
+            PopupMenuItem<_CardOverflowAction>(
+              value: _CardOverflowAction.favourite,
+              child: _OverflowMenuItem(
+                icon: isFavourite
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+                label: isFavourite ? 'Remove favourite' : 'Favourite',
+              ),
+            ),
+            if (onShare != null)
+              const PopupMenuItem<_CardOverflowAction>(
+                value: _CardOverflowAction.share,
+                child: _OverflowMenuItem(
+                  icon: Icons.ios_share_rounded,
+                  label: 'Share image',
+                ),
+              ),
+          ];
+        },
+      ),
     );
   }
 
@@ -263,6 +318,13 @@ class ReadQuranCard extends StatelessWidget {
         (isLight
             ? colorScheme.surfaceContainerLow
             : colorScheme.surfaceContainer);
+    final String trimmedTransliteration = transliteration.trim();
+    final bool hasTransliteration =
+        showTransliteration && trimmedTransliteration.isNotEmpty;
+    final bool hasTranslation =
+        showTranslation && translation.trim().isNotEmpty;
+    final bool compactShareContent =
+        shareImageMode && verse.runes.length <= 140;
 
     double marginValue;
     if (screenSize.width > 1200) {
@@ -329,15 +391,22 @@ class ReadQuranCard extends StatelessWidget {
           ],
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+          padding: EdgeInsets.fromLTRB(
+            18,
+            compactShareContent ? 14 : 16,
+            18,
+            shareImageMode ? (compactShareContent ? 14 : 16) : 18,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               _buildHeader(context),
-              const SizedBox(height: 16),
+              SizedBox(height: compactShareContent ? 14 : 18),
               if (basmala != null)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
+                  padding: EdgeInsets.only(
+                    bottom: compactShareContent ? 12 : 14,
+                  ),
                   child: Text(
                     basmala!,
                     textDirection: TextDirection.rtl,
@@ -353,37 +422,47 @@ class ReadQuranCard extends StatelessWidget {
               Text(
                 verse,
                 textDirection: TextDirection.rtl,
-                textAlign: TextAlign.center,
+                textAlign: TextAlign.justify,
                 style: TextStyle(
                   fontFamily: 'Hafs',
-                  height: 1.85,
+                  height: 1.78,
                   fontSize: fontSize,
                   color: colorScheme.onSurface,
                 ),
               ),
-              if (showTransliteration && transliteration.trim().isNotEmpty)
+              if (hasTransliteration)
                 Padding(
-                  padding: const EdgeInsets.only(top: 16),
+                  padding: EdgeInsets.only(top: compactShareContent ? 12 : 14),
                   child: Text(
-                    transliteration,
+                    trimmedTransliteration,
                     textAlign: TextAlign.start,
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      fontSize: (fontSizeTranslation - 1)
-                          .clamp(12.0, 20.0)
+                      fontSize: (fontSizeTranslation - 2)
+                          .clamp(12.0, 18.0)
                           .toDouble(),
-                      color: colorScheme.onSurfaceVariant.withAlpha(220),
-                      height: 1.5,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: 0.1,
+                      color: colorScheme.onSurfaceVariant.withAlpha(178),
+                      height: 1.45,
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
                 ),
-              if (SettingsDB().get("enableTranslation", defaultValue: true))
+              if (hasTranslation) ...[
                 Padding(
-                  padding: const EdgeInsets.only(top: 16),
+                  padding: EdgeInsets.only(
+                    top: hasTransliteration
+                        ? (compactShareContent ? 14 : 16)
+                        : (compactShareContent ? 16 : 18),
+                  ),
+                  child: Divider(
+                    height: 1,
+                    color: colorScheme.outlineVariant.withAlpha(118),
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.only(top: compactShareContent ? 14 : 16),
                   child: Text(
                     translation,
-                    textAlign: TextAlign.center,
+                    textAlign: TextAlign.justify,
                     style: theme.textTheme.bodyLarge?.copyWith(
                       fontSize: fontSizeTranslation,
                       color: colorScheme.onSurfaceVariant,
@@ -391,10 +470,60 @@ class ReadQuranCard extends StatelessWidget {
                     ),
                   ),
                 ),
+              ],
+              if (shareImageMode) ...<Widget>[
+                SizedBox(height: compactShareContent ? 14 : 18),
+                Divider(
+                  height: 1,
+                  color: colorScheme.outlineVariant.withAlpha(90),
+                ),
+                SizedBox(height: compactShareContent ? 8 : 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: <Widget>[
+                    Text(
+                      'eQuran',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant.withAlpha(150),
+                        fontSize: 22,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      '$currentChapter:$currentVerse',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant.withAlpha(140),
+                        fontSize: 20,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _OverflowMenuItem extends StatelessWidget {
+  const _OverflowMenuItem({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Icon(icon, size: 19, color: colorScheme.onSurface.withAlpha(190)),
+        const SizedBox(width: 12),
+        Text(label),
+      ],
     );
   }
 }
