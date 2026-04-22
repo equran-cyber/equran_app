@@ -23,6 +23,8 @@ class ReadQuranCard extends StatelessWidget {
   final bool showTransliteration;
 
   final VoidCallback? onPlay;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
   final VoidCallback? onDownload;
   final VoidCallback? onTafsir;
   final bool isPlaying;
@@ -44,6 +46,8 @@ class ReadQuranCard extends StatelessWidget {
     this.showActions = true,
     this.showTransliteration = false,
     this.onPlay,
+    this.onPrevious,
+    this.onNext,
     this.onDownload,
     this.onTafsir,
     this.isPlaying = false,
@@ -183,31 +187,83 @@ class ReadQuranCard extends StatelessWidget {
             size: 22,
             color: colorScheme.primary,
           ),
-        ),
-        const SizedBox(width: 6),
-        _buildActionButton(
-          context: context,
-          tooltip: isDownloaded
-              ? 'Current ayah downloaded'
-              : isDownloading
-              ? 'Downloading'
-              : 'Download current ayah',
-          onPressed: isDownloading ? null : onDownload,
-          child: isDownloading
-              ? SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: colorScheme.onSurface.withAlpha(185),
-                  ),
-                )
-              : Icon(
-                  isDownloaded
-                      ? Icons.offline_pin_rounded
-                      : Icons.download_rounded,
-                  size: 19,
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: <Widget>[
+              _buildActionButton(
+                context: context,
+                tooltip: 'Previous ayah',
+                onPressed: onPrevious,
+                child: Icon(
+                  Icons.skip_previous_rounded,
+                  size: 24,
                   color: colorScheme.onSurface.withAlpha(185),
+                ),
+              ),
+              _buildActionButton(
+                context: context,
+                tooltip: isPlaying ? 'Pause' : 'Play',
+                onPressed: onPlay,
+                isPrimary: true,
+                child: Icon(
+                  isPlaying
+                      ? Icons.pause_rounded
+                      : Icons.play_arrow_rounded,
+                  size: 28,
+                  color: colorScheme.primary,
+                ),
+              ),
+              _buildActionButton(
+                context: context,
+                tooltip: isDownloaded
+                    ? 'Current ayah downloaded'
+                    : isDownloading
+                    ? 'Downloading'
+                    : 'Download current ayah',
+                onPressed: isDownloading ? null : onDownload,
+                child: isDownloading
+                    ? SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: colorScheme.onSurface.withAlpha(185),
+                        ),
+                      )
+                    : Icon(
+                        isDownloaded
+                            ? Icons.offline_pin_rounded
+                            : Icons.download_rounded,
+                        size: 22,
+                        color: colorScheme.onSurface.withAlpha(185),
+                      ),
+              ),
+              _buildActionButton(
+                context: context,
+                tooltip: 'Next ayah',
+                onPressed: onNext,
+                child: Icon(
+                  Icons.skip_next_rounded,
+                  size: 24,
+                  color: colorScheme.onSurface.withAlpha(185),
+                ),
+              ),
+              _buildActionButton(
+                context: context,
+                tooltip: isFavourite ? 'Remove favourite' : 'Favourite',
+                onPressed: null,
+                child: LikeButton(
+                  size: 22,
+                  isLiked: isFavourite,
+                  onTap: (bool liked) async {
+                    if (!liked) {
+                      await _showInputPrompt(context);
+                    } else {
+                      FavouritesDB().delete(_favouriteKey);
+                    }
+                    return !liked;
+                  },
                 ),
         ),
         const SizedBox(width: 6),

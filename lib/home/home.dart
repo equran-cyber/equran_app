@@ -44,12 +44,6 @@ class _HomePageState extends State<HomePage> {
       Icon(Icons.download_done_rounded),
       DownloadsPage(),
     ),
-    Destinations(
-      'Hadith & Duas',
-      Icon(Icons.auto_stories_outlined),
-      Icon(Icons.auto_stories_rounded),
-      DailyGuidancePage(),
-    ),
     Destinations('Settings', Icon(Icons.settings_outlined), Icon(Icons.settings), SettingsPage()),
   ];
 
@@ -121,6 +115,18 @@ class _HomePageState extends State<HomePage> {
               title: Text(_pageDestinations[_selectedIndex].label),
               centerTitle: true,
               iconTheme: IconThemeData(color: colorScheme.onSurface, size: navIconSize),
+              actions: <Widget>[
+                IconButton(
+                  tooltip: 'Toggle theme',
+                  onPressed: _toggleQuickTheme,
+                  icon: Icon(
+                    theme.brightness == Brightness.dark
+                        ? Icons.light_mode_rounded
+                        : Icons.dark_mode_rounded,
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
             )
           : null,
       body: _pageDestinations[_selectedIndex].destination,
