@@ -187,96 +187,68 @@ class ReadQuranCard extends StatelessWidget {
             size: 22,
             color: colorScheme.primary,
           ),
-          const SizedBox(height: 14),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: <Widget>[
-              _buildActionButton(
-                context: context,
-                tooltip: 'Previous ayah',
-                onPressed: onPrevious,
-                child: Icon(
-                  Icons.skip_previous_rounded,
-                  size: 24,
-                  color: colorScheme.onSurface.withAlpha(185),
-                ),
-              ),
-              _buildActionButton(
-                context: context,
-                tooltip: isPlaying ? 'Pause' : 'Play',
-                onPressed: onPlay,
-                isPrimary: true,
-                child: Icon(
-                  isPlaying
-                      ? Icons.pause_rounded
-                      : Icons.play_arrow_rounded,
-                  size: 28,
-                  color: colorScheme.primary,
-                ),
-              ),
-              _buildActionButton(
-                context: context,
-                tooltip: isDownloaded
-                    ? 'Current ayah downloaded'
-                    : isDownloading
-                    ? 'Downloading'
-                    : 'Download current ayah',
-                onPressed: isDownloading ? null : onDownload,
-                child: isDownloading
-                    ? SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.2,
-                          color: colorScheme.onSurface.withAlpha(185),
-                        ),
-                      )
-                    : Icon(
-                        isDownloaded
-                            ? Icons.offline_pin_rounded
-                            : Icons.download_rounded,
-                        size: 22,
-                        color: colorScheme.onSurface.withAlpha(185),
-                      ),
-              ),
-              _buildActionButton(
-                context: context,
-                tooltip: 'Next ayah',
-                onPressed: onNext,
-                child: Icon(
-                  Icons.skip_next_rounded,
-                  size: 24,
-                  color: colorScheme.onSurface.withAlpha(185),
-                ),
-              ),
-              _buildActionButton(
-                context: context,
-                tooltip: isFavourite ? 'Remove favourite' : 'Favourite',
-                onPressed: null,
-                child: LikeButton(
+        ),
+        const SizedBox(width: 6),
+        _buildActionButton(
+          context: context,
+          tooltip: 'Previous ayah',
+          onPressed: onPrevious,
+          child: Icon(
+            Icons.skip_previous_rounded,
+            size: 24,
+            color: colorScheme.onSurface.withAlpha(185),
+          ),
+        ),
+        const SizedBox(width: 6),
+        _buildActionButton(
+          context: context,
+          tooltip: isDownloading
+              ? 'Downloading'
+              : isDownloaded
+              ? 'Current ayah downloaded'
+              : 'Download current ayah',
+          onPressed: isDownloading ? null : onDownload,
+          child: isDownloading
+              ? SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    color: colorScheme.onSurface.withAlpha(185),
+                  ),
+                )
+              : Icon(
+                  isDownloaded
+                      ? Icons.offline_pin_rounded
+                      : Icons.download_rounded,
                   size: 22,
-                  isLiked: isFavourite,
-                  onTap: (bool liked) async {
-                    if (!liked) {
-                      await _showInputPrompt(context);
-                    } else {
-                      FavouritesDB().delete(_favouriteKey);
-                    }
-                    return !liked;
-                  },
+                  color: colorScheme.onSurface.withAlpha(185),
                 ),
         ),
         const SizedBox(width: 6),
         _buildActionButton(
           context: context,
-          tooltip: 'Tafsir',
-          onPressed: onTafsir,
+          tooltip: 'Next ayah',
+          onPressed: onNext,
           child: Icon(
-            Icons.chrome_reader_mode_rounded,
-            size: 19,
+            Icons.skip_next_rounded,
+            size: 24,
             color: colorScheme.onSurface.withAlpha(185),
           ),
         ),
+        if (onTafsir != null) ...<Widget>[
+          const SizedBox(width: 6),
+          _buildActionButton(
+            context: context,
+            tooltip: 'Tafsir',
+            onPressed: onTafsir,
+            child: Icon(
+              Icons.chrome_reader_mode_rounded,
+              size: 19,
+              color: colorScheme.onSurface.withAlpha(185),
+            ),
+          ),
+        ],
         const SizedBox(width: 6),
         _buildActionButton(
           context: context,
