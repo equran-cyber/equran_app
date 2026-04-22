@@ -519,7 +519,7 @@ class _ReadPageState extends State<ReadPage> {
                 IconButton(
                   tooltip: 'Go to ayah',
                   onPressed: () => _showJumpToVerseDialog(context),
-                  icon: const Icon(Icons.my_location_rounded),
+                  icon: const Icon(Icons.double_arrow_outlined),
                 ),
                 const SizedBox(width: 6),
               ],
@@ -1863,7 +1863,7 @@ class _ReadPageState extends State<ReadPage> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: <Widget>[
                               _buildAutoPlaybackButton(colorScheme),
-                              const SizedBox(width: 10),
+                             
                               if (!_viewMode)
                                 _buildPageViewAyahNavButton(
                                   icon: Icons.skip_previous_rounded,

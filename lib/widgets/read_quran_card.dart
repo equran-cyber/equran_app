@@ -188,17 +188,7 @@ class ReadQuranCard extends StatelessWidget {
             color: colorScheme.primary,
           ),
         ),
-        const SizedBox(width: 6),
-        _buildActionButton(
-          context: context,
-          tooltip: 'Previous ayah',
-          onPressed: onPrevious,
-          child: Icon(
-            Icons.skip_previous_rounded,
-            size: 24,
-            color: colorScheme.onSurface.withAlpha(185),
-          ),
-        ),
+        
         const SizedBox(width: 6),
         _buildActionButton(
           context: context,
@@ -225,17 +215,7 @@ class ReadQuranCard extends StatelessWidget {
                   color: colorScheme.onSurface.withAlpha(185),
                 ),
         ),
-        const SizedBox(width: 6),
-        _buildActionButton(
-          context: context,
-          tooltip: 'Next ayah',
-          onPressed: onNext,
-          child: Icon(
-            Icons.skip_next_rounded,
-            size: 24,
-            color: colorScheme.onSurface.withAlpha(185),
-          ),
-        ),
+        
         if (onTafsir != null) ...<Widget>[
           const SizedBox(width: 6),
           _buildActionButton(

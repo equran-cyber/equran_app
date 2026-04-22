@@ -158,16 +158,6 @@ class _MainPageState extends State<MainPage>
             key: ValueKey<bool>(_showSearch),
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              if (!_showSearch)
-                IconButton(
-                  tooltip: 'Toggle theme',
-                  onPressed: _toggleQuickTheme,
-                  icon: Icon(
-                    theme.brightness == Brightness.dark
-                        ? Icons.light_mode_rounded
-                        : Icons.dark_mode_rounded,
-                  ),
-                ),
               _showSearch
                   ? const SizedBox(
                       key: ValueKey<String>('search-button-hidden'),
