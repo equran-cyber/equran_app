@@ -41,6 +41,12 @@ class AudioDownloadEntry {
       ? 'Surah $surah, ${quran.getVerseCount(surah)} ayahs'
       : 'Surah $surah, Ayah $ayah';
 
+  int get ayahCount => type == AudioDownloadType.surah
+      ? 0
+      : type == AudioDownloadType.ayahSurah
+      ? quran.getVerseCount(surah)
+      : 1;
+
   List<File> get files => <File>[file, ...additionalFiles];
 }
 
@@ -62,6 +68,11 @@ class AudioDownloadsSummary {
 
   int get totalSizeBytes =>
       allDownloads.fold<int>(0, (total, entry) => total + entry.sizeBytes);
+
+  int get surahCount => surahDownloads.length;
+
+  int get ayahCount =>
+      ayahDownloads.fold<int>(0, (total, entry) => total + entry.ayahCount);
 }
 
 class AudioDownloadService {

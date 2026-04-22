@@ -25,6 +25,9 @@ class _ReciterDownloadsGroup {
       .where((entry) => entry.type != AudioDownloadType.surah)
       .toList(growable: false);
 
+  int get ayahCount =>
+      ayahs.fold<int>(0, (total, entry) => total + entry.ayahCount);
+
   int get sizeBytes =>
       entries.fold<int>(0, (total, entry) => total + entry.sizeBytes);
 }
@@ -174,7 +177,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              '${summary.surahDownloads.length} surahs • ${summary.ayahDownloads.length} ayahs',
+              '${summary.surahCount} surahs • ${summary.ayahCount} ayahs',
               style: theme.textTheme.bodyLarge?.copyWith(
                 color: colorScheme.onPrimaryContainer,
               ),
@@ -284,14 +287,14 @@ class _DownloadsPageState extends State<DownloadsPage> {
                 ),
               ),
               subtitle: Text(
-                '${surahs.length} surahs • ${ayahs.length} ayahs • ${AudioDownloadService.formatBytes(group.sizeBytes)}',
+                '${surahs.length} surahs • ${group.ayahCount} ayahs • ${AudioDownloadService.formatBytes(group.sizeBytes)}',
               ),
             ),
             const Divider(height: 1),
             if (surahs.isNotEmpty) _buildGroupHeader('Surahs', surahs.length),
             ...surahs.map(_buildDownloadTile),
             if (surahs.isNotEmpty && ayahs.isNotEmpty) const Divider(height: 1),
-            if (ayahs.isNotEmpty) _buildGroupHeader('Ayahs', ayahs.length),
+            if (ayahs.isNotEmpty) _buildGroupHeader('Ayahs', group.ayahCount),
             ...ayahs.map(_buildDownloadTile),
           ],
         ),

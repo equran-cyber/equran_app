@@ -6,7 +6,12 @@ import 'package:flutter/material.dart';
 
 const int _favouriteNoteMaxLength = 80;
 
-enum _CardOverflowAction { download, favourite, share }
+enum _CardOverflowAction {
+  downloadOrDelete,
+  favourite,
+  share,
+  switchTranslation,
+}
 
 class ReadQuranCard extends StatelessWidget {
   final int currentChapter;
@@ -30,8 +35,10 @@ class ReadQuranCard extends StatelessWidget {
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
   final VoidCallback? onDownload;
+  final VoidCallback? onDeleteDownload;
   final VoidCallback? onShare;
   final VoidCallback? onTafsir;
+  final VoidCallback? onSwitchTranslation;
   final bool isPlaying;
   final bool isDownloading;
   final bool isDownloaded;
@@ -56,8 +63,10 @@ class ReadQuranCard extends StatelessWidget {
     this.onPrevious,
     this.onNext,
     this.onDownload,
+    this.onDeleteDownload,
     this.onShare,
     this.onTafsir,
+    this.onSwitchTranslation,
     this.isPlaying = false,
     this.isDownloading = false,
     this.isDownloaded = false,
@@ -246,19 +255,14 @@ class ReadQuranCard extends StatelessWidget {
           size: 20,
           color: colorScheme.onSurface.withAlpha(185),
         ),
-        style: IconButton.styleFrom(
-          fixedSize: const Size(36, 36),
-          minimumSize: const Size(36, 36),
-          padding: EdgeInsets.zero,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
         onSelected: (action) {
           switch (action) {
-            case _CardOverflowAction.download:
-              onDownload?.call();
+            case _CardOverflowAction.downloadOrDelete:
+              if (isDownloaded) {
+                onDeleteDownload?.call();
+              } else {
+                onDownload?.call();
+              }
               break;
             case _CardOverflowAction.favourite:
               if (isFavourite) {
@@ -270,24 +274,36 @@ class ReadQuranCard extends StatelessWidget {
             case _CardOverflowAction.share:
               onShare?.call();
               break;
+            case _CardOverflowAction.switchTranslation:
+              onSwitchTranslation?.call();
+              break;
           }
         },
         itemBuilder: (context) {
           return <PopupMenuEntry<_CardOverflowAction>>[
             PopupMenuItem<_CardOverflowAction>(
-              value: _CardOverflowAction.download,
-              enabled: !isDownloading && onDownload != null,
+              value: _CardOverflowAction.downloadOrDelete,
+              enabled: !isDownloading &&
+                  (isDownloaded ? onDeleteDownload != null : onDownload != null),
               child: _OverflowMenuItem(
                 icon: isDownloading
                     ? Icons.downloading_rounded
                     : isDownloaded
-                    ? Icons.offline_pin_rounded
-                    : Icons.download_rounded,
+                        ? Icons.delete_outline_rounded
+                        : Icons.download_rounded,
                 label: isDownloading
                     ? 'Downloading'
                     : isDownloaded
-                    ? 'Downloaded'
-                    : 'Download',
+                        ? 'Delete downloaded ayah'
+                        : 'Download ayah',
+              ),
+            ),
+            PopupMenuItem<_CardOverflowAction>(
+              value: _CardOverflowAction.switchTranslation,
+              enabled: onSwitchTranslation != null,
+              child: const _OverflowMenuItem(
+                icon: Icons.language_rounded,
+                label: 'Translation language',
               ),
             ),
             PopupMenuItem<_CardOverflowAction>(

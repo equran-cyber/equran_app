@@ -81,61 +81,9 @@ class LastReadCard extends StatelessWidget {
       },
       options: ExpandableCarouselOptions(
         showIndicator: true,
-        slideIndicator: _LastReadPillIndicator(),
         viewportFraction: viewportFraction,
         initialPage: 0,
       ),
-    );
-  }
-}
-
-class _LastReadPillIndicator extends SlideIndicator {
-  static const double _dotSize = 7;
-  static const double _activeWidth = 20;
-  static const double _spacing = 7;
-
-  @override
-
-  Widget build(int currentPage, double pageDelta, int itemCount) {
-    if (itemCount <= 1) return const SizedBox.shrink();
-
-    return Builder(
-      builder: (context) {
-        final ColorScheme colorScheme = Theme.of(context).colorScheme;
-        final Color activeColor = colorScheme.primary.withAlpha(190);
-        final Color inactiveColor = colorScheme.onSurfaceVariant.withAlpha(84);
-        final double transition = pageDelta.clamp(0.0, 1.0);
-        final int nextPage = (currentPage + 1) % itemCount;
-
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List<Widget>.generate(itemCount, (index) {
-            final double targetFocus = index == currentPage
-                ? 1 - transition
-                : index == nextPage
-                ? transition
-                : 0;
-
-            return TweenAnimationBuilder<double>(
-              tween: Tween<double>(end: targetFocus),
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              builder: (context, focus, _) {
-                return Container(
-                  width: _dotSize + ((_activeWidth - _dotSize) * focus),
-                  height: _dotSize,
-                  margin: const EdgeInsets.symmetric(horizontal: _spacing / 2),
-                  decoration: BoxDecoration(
-                    color: Color.lerp(inactiveColor, activeColor, focus),
-                    borderRadius: BorderRadius.circular(_dotSize),
-                  ),
-                );
-              },
-            );
-          }),
-        );
-      },
     );
   }
 }

@@ -1086,10 +1086,10 @@ class _ReadPageState extends State<ReadPage> {
   }
 
   Future<void> _downloadCurrentAyah() async {
-    if (_isDownloadingSurahAyahs) return;
+    if (_isDownloadingCurrentAyah) return;
     try {
       setState(() {
-        _isDownloadingSurahAyahs = true;
+        _isDownloadingCurrentAyah = true;
       });
       await AudioDownloadService().downloadAyah(_currentChapter, _currentVerse);
       if (!mounted) return;
@@ -1106,10 +1106,56 @@ class _ReadPageState extends State<ReadPage> {
     } finally {
       if (mounted) {
         setState(() {
-          _isDownloadingSurahAyahs = false;
+          _isDownloadingCurrentAyah = false;
         });
       }
       unawaited(_refreshCurrentAyahDownloadState());
+    }
+  }
+
+  Future<void> _confirmDeleteCurrentAyahDownload() async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.warning_amber_rounded),
+        title: const Text('Delete Downloaded Ayah?'),
+        content: Text(
+          'This will remove ayah $_currentChapter:$_currentVerse from offline storage.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+    await _deleteCurrentAyahDownload();
+  }
+
+  Future<void> _deleteCurrentAyahDownload() async {
+    try {
+      await AudioDownloadService().deleteAyah(_currentChapter, _currentVerse);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Deleted ayah $_currentChapter:$_currentVerse audio'),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to delete downloaded ayah.')),
+      );
+    } finally {
+      await _refreshCurrentAyahDownloadState();
+      await _refreshSurahAyahDownloadState();
     }
   }
 
@@ -1394,6 +1440,8 @@ class _ReadPageState extends State<ReadPage> {
     if (_currentVerse != 1) {
       _decrementVerse();
       _updateDB();
+    } else {
+      _goToPreviousSurah();
     }
   }
 
@@ -1419,21 +1467,24 @@ class _ReadPageState extends State<ReadPage> {
   }
 
   void _goToPreviousSurah() {
+    if (_currentChapter == 1) return;
     if (_playerMounted || _playingVerse != null) {
       unawaited(_stopBottomPlayer());
     }
     _clearVerseTextMetrics();
+    final int previousChapter = _currentChapter - 1;
     setState(() {
-      _currentChapter = _currentChapter == 1 ? 114 : _currentChapter - 1;
-      _currentVerse = 1;
+      _currentChapter = previousChapter;
       _totalVerses = quran.getVerseCount(_currentChapter);
-      _repeatStartVerse = 1;
-      _repeatEndVerse = 1;
+      _currentVerse = _totalVerses;
+      _repeatStartVerse = _currentVerse;
+      _repeatEndVerse = _currentVerse;
       _isDownloadingSurahAyahs = AudioDownloadService()
           .isSurahAyahsDownloadInProgress(_currentChapter);
       _hasDownloadedSurahAyahs = false;
     });
     unawaited(_refreshSurahAyahDownloadState());
+    unawaited(_refreshCurrentAyahDownloadState());
     unawaited(_loadChapterTransliterations());
     _updateDB();
   }
@@ -2499,7 +2550,11 @@ class _ReadPageState extends State<ReadPage> {
                             ),
                             onPlay: _togglePageViewPlayback,
                             onDownload: _downloadCurrentAyah,
+                            onDeleteDownload:
+                                _confirmDeleteCurrentAyahDownload,
                             onShare: _shareCurrentAyahImage,
+                            onSwitchTranslation:
+                                _showCardTranslationLanguagePicker,
                             onTafsir: () => _showTafsirSheet(_currentVerse),
                             onPrevious: _currentVerse > 1
                                 ? () {
@@ -2518,7 +2573,7 @@ class _ReadPageState extends State<ReadPage> {
                             isPlaying:
                                 _isVersePlaying &&
                                 _playingVerse == _currentVerse,
-                            isDownloading: _isDownloadingSurahAyahs,
+                            isDownloading: _isDownloadingCurrentAyah,
                             isDownloaded: _hasDownloadedCurrentAyah,
                           ),
                         ),
@@ -2911,6 +2966,19 @@ class _ReadPageState extends State<ReadPage> {
               ..sort((a, b) => a.title.compareTo(b.title)),
       ),
     );
+  }
+
+  void _showCardTranslationLanguagePicker() {
+    unawaited(_openCardTranslationLanguagePicker());
+  }
+
+  Future<void> _openCardTranslationLanguagePicker() async {
+    final int? value = await _showTranslationPickerDialog(
+      _selectedTranslationIndex(),
+    );
+    if (value == null || !mounted) return;
+    SettingsDB().put("translation", value);
+    setState(() {});
   }
 
   int _selectedTranslationIndex() {
