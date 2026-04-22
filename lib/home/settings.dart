@@ -106,7 +106,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   subtitle: "Display translation for each verse in card view.",
                   settingsKey: "enableTranslation",
                   onChanged: (_) => setState(() {}),
-                  defaultValue: false,
+                  defaultValue: true,
                 ),
               if (cardViewEnabled) _buildTransliterationToggle(),
               _buildTranslationTile(context),

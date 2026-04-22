@@ -8,8 +8,14 @@ import 'package:flutter/material.dart';
 class QuranCard extends StatelessWidget {
   final Surah surah;
   final bool compact;
+  final bool reduceTitleSize;
 
-  const QuranCard({super.key, required this.surah, this.compact = false});
+  const QuranCard({
+    super.key,
+    required this.surah,
+    this.compact = false,
+    this.reduceTitleSize = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -19,6 +25,16 @@ class QuranCard extends StatelessWidget {
     final double verticalPadding = compact
         ? (tabletLayout ? 12 : 10)
         : (tabletLayout ? 14 : 12);
+    final TextStyle? titleStyle =
+        (compact && !reduceTitleSize
+                ? theme.textTheme.titleLarge
+                : theme.textTheme.titleMedium)
+            ?.copyWith(fontWeight: FontWeight.w600);
+    final TextStyle? arabicTitleStyle =
+        (compact && !reduceTitleSize
+                ? theme.textTheme.titleLarge
+                : theme.textTheme.titleMedium)
+            ?.copyWith(color: colorScheme.onSurfaceVariant);
 
     return Card(
       margin: EdgeInsets.zero,
@@ -48,11 +64,7 @@ class QuranCard extends StatelessWidget {
                       surah.transliteration,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style:
-                          (compact
-                                  ? theme.textTheme.titleLarge
-                                  : theme.textTheme.titleMedium)
-                              ?.copyWith(fontWeight: FontWeight.w600),
+                      style: titleStyle,
                     ),
                     const SizedBox(height: 2),
                     Row(
@@ -72,14 +84,7 @@ class QuranCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Text(
-                surah.name,
-                style:
-                    (compact
-                            ? theme.textTheme.titleLarge
-                            : theme.textTheme.titleMedium)
-                        ?.copyWith(color: colorScheme.onSurfaceVariant),
-              ),
+              Text(surah.name, style: arabicTitleStyle),
             ],
           ),
         ),

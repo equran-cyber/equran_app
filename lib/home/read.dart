@@ -26,7 +26,13 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart'
-    show RenderParagraph, RenderRepaintBoundary, ScrollDirection;
+    show
+        PipelineOwner,
+        RenderParagraph,
+        RenderRepaintBoundary,
+        RenderView,
+        ScrollDirection,
+        ViewConfiguration;
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:numberpicker/numberpicker.dart';
@@ -615,6 +621,7 @@ class _ReadPageState extends State<ReadPage> {
     String? errorText;
     bool sheetOpen = true;
     bool initialFocusRequested = false;
+    bool isSubmitting = false;
 
     AndroidAudioDisplayMode.notifyUserActivity();
     unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(true));
@@ -644,6 +651,7 @@ class _ReadPageState extends State<ReadPage> {
           }
 
           Future<void> submit(StateSetter setSheetState) async {
+            if (isSubmitting) return;
             final int? value = int.tryParse(controller.text.trim());
 
             if (value == null || value < 1 || value > _totalVerses) {
@@ -653,6 +661,8 @@ class _ReadPageState extends State<ReadPage> {
               return;
             }
 
+            isSubmitting = true;
+            focusNode.unfocus();
             _setVerse(value);
             if (!_viewMode) {
               _scrollToInlineVerse(value, highlight: true);
@@ -743,9 +753,10 @@ class _ReadPageState extends State<ReadPage> {
       );
     } finally {
       sheetOpen = false;
+      unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
+      await WidgetsBinding.instance.endOfFrame;
       controller.dispose();
       focusNode.dispose();
-      unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
     }
   }
 
@@ -2228,59 +2239,75 @@ class _ReadPageState extends State<ReadPage> {
   }
 
   Future<Uint8List> _renderShareImagePng() async {
-    final OverlayState? overlay = Overlay.maybeOf(context, rootOverlay: true);
-    if (overlay == null) {
-      throw StateError('No overlay available for share image.');
-    }
-
-    final GlobalKey boundaryKey = GlobalKey();
-    final OverlayEntry entry = OverlayEntry(
-      builder: (_) => _buildShareImageCanvas(boundaryKey),
+    final RenderRepaintBoundary repaintBoundary = RenderRepaintBoundary();
+    final PipelineOwner pipelineOwner = PipelineOwner();
+    final BuildOwner buildOwner = BuildOwner(focusManager: FocusManager());
+    final RenderView renderView = RenderView(
+      view: View.of(context),
+      configuration: ViewConfiguration(
+        logicalConstraints: BoxConstraints.tight(_shareImageSize),
+        physicalConstraints: BoxConstraints.tight(_shareImageSize),
+        devicePixelRatio: 1,
+      ),
+      child: repaintBoundary,
     );
 
-    overlay.insert(entry);
+    pipelineOwner.rootNode = renderView;
+    renderView.prepareInitialFrame();
+
+    final RenderObjectToWidgetElement<RenderBox> rootElement =
+        RenderObjectToWidgetAdapter<RenderBox>(
+          container: repaintBoundary,
+          child: _buildShareImageWidget(),
+        ).attachToRenderTree(buildOwner);
+
     try {
-      final RenderRepaintBoundary renderObject =
-          await _waitForShareImageBoundary(boundaryKey);
-      final image = await renderObject.toImage(pixelRatio: 1);
-      final ByteData? byteData = await image.toByteData(
-        format: ImageByteFormat.png,
+      return _captureShareImagePng(
+        repaintBoundary,
+        pipelineOwner: pipelineOwner,
+        buildOwner: buildOwner,
+        rootElement: rootElement,
       );
-      image.dispose();
-      if (byteData == null) {
-        throw StateError('Unable to render share image.');
-      }
-      return byteData.buffer.asUint8List();
     } finally {
-      entry.remove();
+      pipelineOwner.rootNode = null;
     }
   }
 
-  Future<RenderRepaintBoundary> _waitForShareImageBoundary(
-    GlobalKey boundaryKey,
-  ) async {
-    RenderObject? renderObject;
+  Future<Uint8List> _captureShareImagePng(
+    RenderRepaintBoundary repaintBoundary, {
+    required PipelineOwner pipelineOwner,
+    required BuildOwner buildOwner,
+    required RenderObjectToWidgetElement<RenderBox> rootElement,
+  }) async {
+    Object? lastError;
 
-    for (int attempt = 0; attempt < 20; attempt++) {
-      await WidgetsBinding.instance.endOfFrame;
-      await Future<void>.delayed(const Duration(milliseconds: 16));
+    for (int attempt = 0; attempt < 12; attempt++) {
+      buildOwner.buildScope(rootElement);
+      buildOwner.finalizeTree();
+      pipelineOwner.flushLayout();
+      pipelineOwner.flushCompositingBits();
+      pipelineOwner.flushPaint();
 
-      final BuildContext? boundaryContext = boundaryKey.currentContext;
-      renderObject = boundaryContext?.findRenderObject();
-      if (renderObject is! RenderRepaintBoundary) {
-        continue;
-      }
-
-      if (!renderObject.debugNeedsPaint) {
-        return renderObject;
+      try {
+        final image = await repaintBoundary.toImage(pixelRatio: 1);
+        try {
+          final ByteData? byteData = await image.toByteData(
+            format: ImageByteFormat.png,
+          );
+          if (byteData == null) {
+            throw StateError('Unable to encode share image.');
+          }
+          return byteData.buffer.asUint8List();
+        } finally {
+          image.dispose();
+        }
+      } catch (error) {
+        lastError = error;
+        await Future<void>.delayed(const Duration(milliseconds: 16));
       }
     }
 
-    throw StateError(
-      renderObject is RenderRepaintBoundary
-          ? 'Share image did not finish painting.'
-          : 'Share image is not ready.',
-    );
+    throw StateError('Unable to render share image: $lastError');
   }
 
   double _shareArabicFontSize() {
@@ -2295,7 +2322,7 @@ class _ReadPageState extends State<ReadPage> {
     return _shareImageArabicFontSize;
   }
 
-  Widget _buildShareImageCanvas(GlobalKey boundaryKey) {
+  Widget _buildShareImageWidget() {
     final ThemeData theme = Theme.of(context);
     final bool showTransliteration =
         SettingsDB().get("showTransliteration", defaultValue: false) == true;
@@ -2303,91 +2330,77 @@ class _ReadPageState extends State<ReadPage> {
         SettingsDB().get("enableTranslation", defaultValue: true) == true;
     final Color backgroundColor = theme.scaffoldBackgroundColor;
 
-    return Positioned.fill(
-      child: IgnorePointer(
-        child: Center(
-          child: Transform.scale(
-            scale: 0.01,
-            child: UnconstrainedBox(
-              child: Opacity(
-                opacity: 0.01,
-                child: RepaintBoundary(
-                  key: boundaryKey,
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          size: _shareImageSize,
+          devicePixelRatio: 1,
+          textScaler: TextScaler.noScaling,
+        ),
+        child: Theme(
+          data: theme,
+          child: SizedBox(
+            width: _shareImageSize.width,
+            height: _shareImageSize.height,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: backgroundColor,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: <Color>[
+                    Color.alphaBlend(
+                      theme.colorScheme.primary.withAlpha(18),
+                      backgroundColor,
+                    ),
+                    backgroundColor,
+                    Color.alphaBlend(
+                      theme.colorScheme.tertiary.withAlpha(14),
+                      backgroundColor,
+                    ),
+                  ],
+                ),
+              ),
+              child: Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
                   child: SizedBox(
                     width: _shareImageSize.width,
-                    height: _shareImageSize.height,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: backgroundColor,
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: <Color>[
-                            Color.alphaBlend(
-                              theme.colorScheme.primary.withAlpha(18),
-                              backgroundColor,
-                            ),
-                            backgroundColor,
-                            Color.alphaBlend(
-                              theme.colorScheme.tertiary.withAlpha(14),
-                              backgroundColor,
-                            ),
-                          ],
-                        ),
+                    child: ReadQuranCard(
+                      currentChapter: _currentChapter,
+                      currentVerse: _currentVerse,
+                      totalVerses: _totalVerses,
+                      juzNumber: quran.getJuzNumber(
+                        _currentChapter,
+                        _currentVerse,
                       ),
-                      child: MediaQuery(
-                        data: MediaQuery.of(context).copyWith(
-                          size: _shareImageSize,
-                          devicePixelRatio: 1,
-                          textScaler: TextScaler.noScaling,
-                        ),
-                        child: Center(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: SizedBox(
-                              width: _shareImageSize.width,
-                              child: ReadQuranCard(
-                                currentChapter: _currentChapter,
-                                currentVerse: _currentVerse,
-                                totalVerses: _totalVerses,
-                                juzNumber: quran.getJuzNumber(
-                                  _currentChapter,
-                                  _currentVerse,
-                                ),
-                                basmala:
-                                    _currentChapter != 1 &&
-                                        _currentVerse == 1 &&
-                                        _currentChapter != 9
-                                    ? quran.basmala
-                                    : null,
-                                verse: _buildCardVerseText(
-                                  _currentChapter,
-                                  _currentVerse,
-                                ),
-                                translation: quran.getVerseTranslation(
-                                  _currentChapter,
-                                  _currentVerse,
-                                  translation:
-                                      quran.Translation.values[SettingsDB().get(
-                                        "translation",
-                                        defaultValue: 0,
-                                      )],
-                                ),
-                                transliteration: _transliterationForVerse(
-                                  _currentVerse,
-                                ),
-                                showActions: false,
-                                showTransliteration: showTransliteration,
-                                showTranslation: showTranslation,
-                                shareImageMode: true,
-                                fontSize: _shareArabicFontSize(),
-                                fontSizeTranslation:
-                                    _shareImageTranslationFontSize,
-                              ),
-                            ),
-                          ),
-                        ),
+                      basmala:
+                          _currentChapter != 1 &&
+                              _currentVerse == 1 &&
+                              _currentChapter != 9
+                          ? quran.basmala
+                          : null,
+                      verse: _buildCardVerseText(
+                        _currentChapter,
+                        _currentVerse,
                       ),
+                      translation: quran.getVerseTranslation(
+                        _currentChapter,
+                        _currentVerse,
+                        translation:
+                            quran.Translation.values[SettingsDB().get(
+                              "translation",
+                              defaultValue: 0,
+                            )],
+                      ),
+                      transliteration: _transliterationForVerse(_currentVerse),
+                      showActions: false,
+                      showTransliteration: showTransliteration,
+                      showTranslation: showTranslation,
+                      shareImageMode: true,
+                      fontSize: _shareArabicFontSize(),
+                      fontSizeTranslation: _shareImageTranslationFontSize,
                     ),
                   ),
                 ),
@@ -2478,7 +2491,7 @@ class _ReadPageState extends State<ReadPage> {
                                 true,
                             fontSize: SettingsDB().get(
                               "fontSize",
-                              defaultValue: 38.0,
+                              defaultValue: 31.0,
                             ),
                             fontSizeTranslation: SettingsDB().get(
                               "fontSizeTranslation",
@@ -2971,6 +2984,11 @@ class _ReadPageState extends State<ReadPage> {
 
   Future<void> _showTafsirSheet(int verse) async {
     const TafsirSource selectedSource = TafsirSource.mukhtasar;
+    final Future<String> tafsirFuture = TafsirService.instance.verseTafsir(
+      source: selectedSource,
+      surah: _currentChapter,
+      ayah: verse,
+    );
 
     await showModalBottomSheet<void>(
       context: context,
@@ -2980,11 +2998,7 @@ class _ReadPageState extends State<ReadPage> {
       constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width),
       builder: (context) {
         return FutureBuilder<String>(
-          future: TafsirService.instance.verseTafsir(
-            source: selectedSource,
-            surah: _currentChapter,
-            ayah: verse,
-          ),
+          future: tafsirFuture,
           builder: (context, tafsirSnapshot) {
             final String tafsirText = tafsirSnapshot.data?.trim() ?? '';
             return DraggableScrollableSheet(

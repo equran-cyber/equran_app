@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:ui' show DisplayFeature, DisplayFeatureType;
 
-import 'package:adaptive_theme/adaptive_theme.dart';
 import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:equran/backend/library.dart'
     show
@@ -878,19 +877,6 @@ class _PlayerPageState extends State<PlayerPage> {
     AndroidAudioDisplayMode.notifyUserActivity();
   }
 
-  Future<void> _toggleQuickTheme() async {
-    final ThemeData theme = Theme.of(context);
-    final AdaptiveThemeMode mode = AdaptiveTheme.of(context).mode;
-    final bool isDark =
-        mode.isSystem ? theme.brightness == Brightness.dark : mode.isDark;
-    final AdaptiveThemeMode nextMode = isDark
-        ? AdaptiveThemeMode.light
-        : AdaptiveThemeMode.dark;
-    await SettingsDB().put('themeMode', nextMode.isDark ? 'dark' : 'light');
-    if (!mounted) return;
-    AdaptiveTheme.of(context).setThemeMode(nextMode);
-  }
-
   Widget _buildAudioInteractionBoundary({required Widget child}) {
     return Listener(
       behavior: HitTestBehavior.translucent,
@@ -961,6 +947,9 @@ class _PlayerPageState extends State<PlayerPage> {
         final double actionIconSize = isDesktop
             ? (28 * desktopHeightScale).clamp(24.0, 28.0).toDouble()
             : 28.0;
+        final double foldableRightPanelLift = isFoldableLayout
+            ? (height * 0.035).clamp(18.0, 32.0).toDouble()
+            : 0.0;
         final double maxContentWidth = isDesktop
             ? width
             : isFoldableLayout
@@ -1026,15 +1015,6 @@ class _PlayerPageState extends State<PlayerPage> {
                   ),
                 ),
                 const Spacer(),
-                IconButton(
-                  tooltip: 'Toggle theme',
-                  onPressed: _toggleQuickTheme,
-                  icon: Icon(
-                    Theme.of(context).brightness == Brightness.dark
-                        ? Icons.light_mode_rounded
-                        : Icons.dark_mode_rounded,
-                  ),
-                ),
               ],
             ),
           ),
@@ -1554,21 +1534,27 @@ class _PlayerPageState extends State<PlayerPage> {
           ),
         );
 
-        final Widget foldableNowPlaying = Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Expanded(
-              child: Align(
-                alignment: Alignment.center,
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  child: artworkPanel,
+        final Widget foldableNowPlaying = Transform.translate(
+          offset: Offset(0, -foldableRightPanelLift),
+          child: Padding(
+            padding: EdgeInsets.only(bottom: foldableRightPanelLift),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.center,
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: artworkPanel,
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(height: 12),
+                playbackPanel,
+              ],
             ),
-            const SizedBox(height: 12),
-            playbackPanel,
-          ],
+          ),
         );
 
         final Widget mobileNowPlaying = LayoutBuilder(

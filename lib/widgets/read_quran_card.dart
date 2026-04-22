@@ -183,41 +183,48 @@ class ReadQuranCard extends StatelessWidget {
   }
 
   Widget _buildHeaderActions(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
-    final bool isFavourite = FavouritesDB().contains(_favouriteKey);
-    final double actionGap = MediaQuery.sizeOf(context).width >= 700 ? 8 : 4;
+    return ValueListenableBuilder(
+      valueListenable: FavouritesDB().listener,
+      builder: (context, favouritesBox, child) {
+        final ColorScheme colorScheme = Theme.of(context).colorScheme;
+        final bool isFavourite = FavouritesDB().contains(_favouriteKey);
+        final double actionGap = MediaQuery.sizeOf(context).width >= 700
+            ? 8
+            : 4;
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        _buildActionButton(
-          context: context,
-          tooltip: isPlaying ? 'Pause' : 'Play',
-          onPressed: onPlay,
-          isPrimary: true,
-          child: Icon(
-            isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-            size: 21,
-            color: colorScheme.primary,
-          ),
-        ),
-
-        if (onTafsir != null) ...<Widget>[
-          SizedBox(width: actionGap),
-          _buildActionButton(
-            context: context,
-            tooltip: 'Tafsir',
-            onPressed: onTafsir,
-            child: Icon(
-              Icons.chrome_reader_mode_rounded,
-              size: 18,
-              color: colorScheme.onSurface.withAlpha(185),
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            _buildActionButton(
+              context: context,
+              tooltip: isPlaying ? 'Pause' : 'Play',
+              onPressed: onPlay,
+              isPrimary: true,
+              child: Icon(
+                isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                size: 21,
+                color: colorScheme.primary,
+              ),
             ),
-          ),
-        ],
-        SizedBox(width: actionGap),
-        _buildOverflowMenu(context: context, isFavourite: isFavourite),
-      ],
+
+            if (onTafsir != null) ...<Widget>[
+              SizedBox(width: actionGap),
+              _buildActionButton(
+                context: context,
+                tooltip: 'Tafsir',
+                onPressed: onTafsir,
+                child: Icon(
+                  Icons.chrome_reader_mode_rounded,
+                  size: 18,
+                  color: colorScheme.onSurface.withAlpha(185),
+                ),
+              ),
+            ],
+            SizedBox(width: actionGap),
+            _buildOverflowMenu(context: context, isFavourite: isFavourite),
+          ],
+        );
+      },
     );
   }
 

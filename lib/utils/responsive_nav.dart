@@ -31,6 +31,11 @@ class ResponsiveNav {
     return isLargeTablet(context) ? 1.08 : 1.0;
   }
 
+  static double appChromeTextScale(BuildContext context) {
+    final double shortestSide = MediaQuery.sizeOf(context).shortestSide;
+    return shortestSide >= 390 && shortestSide < 600 ? 0.94 : 1.0;
+  }
+
   static TextStyle? drawerLabelStyle(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     return isTablet(context)

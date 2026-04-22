@@ -9,11 +9,7 @@ class QuranCardList extends StatefulWidget {
   final String searchQuery;
   final Widget? header;
 
-  const QuranCardList({
-    super.key,
-    required this.searchQuery,
-    this.header,
-  });
+  const QuranCardList({super.key, required this.searchQuery, this.header});
 
   @override
   State<QuranCardList> createState() => _QuranCardListState();
@@ -86,7 +82,8 @@ class _QuranCardListState extends State<QuranCardList>
                       );
                     }
 
-                    final int dataIndex = index - (widget.header == null ? 0 : 1);
+                    final int dataIndex =
+                        index - (widget.header == null ? 0 : 1);
                     return Padding(
                       padding: EdgeInsets.only(
                         bottom: dataIndex == data.length - 1 ? 0 : 6,
@@ -121,7 +118,11 @@ class _QuranCardListState extends State<QuranCardList>
                       crossAxisSpacing: 8,
                       mainAxisSpacing: 8,
                       builder: (BuildContext context, int index) {
-                        return QuranCard(surah: data[index], compact: true);
+                        return QuranCard(
+                          surah: data[index],
+                          compact: true,
+                          reduceTitleSize: columns == 2,
+                        );
                       },
                     ),
                   ),
@@ -166,10 +167,12 @@ class _QuranCardListState extends State<QuranCardList>
     return surahs
         .where(
           (surah) =>
-              surah.name.toLowerCase().contains(widget.searchQuery.toLowerCase()) ||
-              surah.transliteration
-                  .toLowerCase()
-                  .contains(widget.searchQuery.toLowerCase()) ||
+              surah.name.toLowerCase().contains(
+                widget.searchQuery.toLowerCase(),
+              ) ||
+              surah.transliteration.toLowerCase().contains(
+                widget.searchQuery.toLowerCase(),
+              ) ||
               surah.id.toString() == widget.searchQuery,
         )
         .toList();

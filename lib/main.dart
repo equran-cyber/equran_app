@@ -69,13 +69,29 @@ class MyApp extends StatelessWidget {
         builder: (context, child) {
           final MediaQueryData mediaQuery = MediaQuery.of(context);
           final double tabletTextScale = ResponsiveNav.appTextScale(context);
+          final double chromeTextScale = ResponsiveNav.appChromeTextScale(
+            context,
+          );
           final double effectiveTextScale =
               mediaQuery.textScaler.scale(1.0) * tabletTextScale;
+          final Widget scaledChild = chromeTextScale == 1.0
+              ? child ?? const SizedBox.shrink()
+              : Theme(
+                  data: Theme.of(context).copyWith(
+                    textTheme: Theme.of(
+                      context,
+                    ).textTheme.apply(fontSizeFactor: chromeTextScale),
+                    primaryTextTheme: Theme.of(
+                      context,
+                    ).primaryTextTheme.apply(fontSizeFactor: chromeTextScale),
+                  ),
+                  child: child ?? const SizedBox.shrink(),
+                );
           return MediaQuery(
             data: mediaQuery.copyWith(
               textScaler: TextScaler.linear(effectiveTextScale),
             ),
-            child: child ?? const SizedBox.shrink(),
+            child: scaledChild,
           );
         },
         home: const HomePage(),
