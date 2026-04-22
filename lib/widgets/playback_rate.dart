@@ -1,4 +1,5 @@
 import 'package:equran/backend/library.dart';
+import 'package:equran/utils/app_slider_theme.dart';
 import 'package:flutter/material.dart';
 
 class PlayBackSlider extends StatefulWidget {
@@ -14,18 +15,21 @@ class _PlayBackSliderState extends State<PlayBackSlider> {
     double rate = SettingsDB().get("playbackRate", defaultValue: 1.0);
     return ListTile(
       title: const Text("Playback Rate"),
-      subtitle: Slider(
-        min: 0.5,
-        max: 2,
-        divisions: 6,
-        label: rate.toString(),
-        value: rate,
-        onChanged: (double value) {
-          setState(() {
-            rate = value;
-            SettingsDB().put("playbackRate", value);
-          });
-        },
+      subtitle: SliderTheme(
+        data: AppSliderTheme.standard(context),
+        child: Slider(
+          min: 0.5,
+          max: 2,
+          divisions: 6,
+          label: '${rate.toStringAsFixed(2)}x',
+          value: rate,
+          onChanged: (double value) {
+            setState(() {
+              rate = value;
+              SettingsDB().put("playbackRate", value);
+            });
+          },
+        ),
       ),
     );
   }

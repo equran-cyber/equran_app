@@ -21,6 +21,8 @@ class ReadQuranCard extends StatelessWidget {
   final bool showActions;
 
   final VoidCallback? onPlay;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
   final VoidCallback? onDownload;
   final bool isPlaying;
   final bool isDownloading;
@@ -39,6 +41,8 @@ class ReadQuranCard extends StatelessWidget {
     required this.verse,
     this.showActions = true,
     this.onPlay,
+    this.onPrevious,
+    this.onNext,
     this.onDownload,
     this.isPlaying = false,
     this.isDownloading = false,
@@ -185,6 +189,16 @@ class ReadQuranCard extends StatelessWidget {
             children: <Widget>[
               _buildActionButton(
                 context: context,
+                tooltip: 'Previous ayah',
+                onPressed: onPrevious,
+                child: Icon(
+                  Icons.skip_previous_rounded,
+                  size: 24,
+                  color: colorScheme.onSurface.withAlpha(185),
+                ),
+              ),
+              _buildActionButton(
+                context: context,
                 tooltip: isPlaying ? 'Pause' : 'Play',
                 onPressed: onPlay,
                 isPrimary: true,
@@ -199,10 +213,10 @@ class ReadQuranCard extends StatelessWidget {
               _buildActionButton(
                 context: context,
                 tooltip: isDownloaded
-                    ? 'All ayahs downloaded'
+                    ? 'Current ayah downloaded'
                     : isDownloading
                     ? 'Downloading'
-                    : 'Download all ayahs',
+                    : 'Download current ayah',
                 onPressed: isDownloading ? null : onDownload,
                 child: isDownloading
                     ? SizedBox(
@@ -220,6 +234,16 @@ class ReadQuranCard extends StatelessWidget {
                         size: 22,
                         color: colorScheme.onSurface.withAlpha(185),
                       ),
+              ),
+              _buildActionButton(
+                context: context,
+                tooltip: 'Next ayah',
+                onPressed: onNext,
+                child: Icon(
+                  Icons.skip_next_rounded,
+                  size: 24,
+                  color: colorScheme.onSurface.withAlpha(185),
+                ),
               ),
               _buildActionButton(
                 context: context,

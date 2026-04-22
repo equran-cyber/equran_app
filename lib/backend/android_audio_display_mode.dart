@@ -16,6 +16,7 @@ class AndroidAudioDisplayMode {
   static double? _lastAppliedFrameRate;
   static Timer? _idleTimer;
   static DateTime? _lastUserActivityAt;
+  static int _lowFpsSuppressionCount = 0;
 
   static bool get _isSupported => !kIsWeb && Platform.isAndroid;
 
@@ -34,6 +35,7 @@ class AndroidAudioDisplayMode {
     }
 
     await _applyPreferredFrameRate(_systemFrameRate);
+    if (_lowFpsSuppressionCount > 0) return;
     _scheduleIdleFrameRate();
   }
 
@@ -42,7 +44,26 @@ class AndroidAudioDisplayMode {
 
     _lastUserActivityAt = DateTime.now();
     unawaited(_applyPreferredFrameRate(_systemFrameRate));
+    if (_lowFpsSuppressionCount > 0) return;
     _idleTimer ??= Timer(idleDelay, () => _handleIdleTimer(idleDelay));
+  }
+
+  static Future<void> setLowFpsSuppressed(bool suppressed) async {
+    if (!_isSupported) return;
+    if (suppressed) {
+      _lowFpsSuppressionCount++;
+      _idleTimer?.cancel();
+      _idleTimer = null;
+      await _applyPreferredFrameRate(_systemFrameRate);
+      return;
+    }
+
+    if (_lowFpsSuppressionCount > 0) {
+      _lowFpsSuppressionCount--;
+    }
+    if (_lowFpsSuppressionCount == 0 && _audioPlaybackActive) {
+      _scheduleIdleFrameRate();
+    }
   }
 
   static void _scheduleIdleFrameRate() {
@@ -55,6 +76,10 @@ class AndroidAudioDisplayMode {
 
   static void _handleIdleTimer(Duration idleDelay) {
     if (!_audioPlaybackActive) {
+      _idleTimer = null;
+      return;
+    }
+    if (_lowFpsSuppressionCount > 0) {
       _idleTimer = null;
       return;
     }

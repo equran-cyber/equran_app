@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   const AppTheme._();
@@ -29,9 +30,12 @@ class AppTheme {
       ),
     );
 
+    final TextTheme textTheme = GoogleFonts.interTextTheme();
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
+      textTheme: textTheme,
+      primaryTextTheme: textTheme,
       scaffoldBackgroundColor: const Color(0xFFF4F1EE),
       canvasColor: const Color(0xFFF4F1EE),
       cardTheme: CardThemeData(
@@ -48,12 +52,17 @@ class AppTheme {
   }
 
   static ThemeData buildDarkTheme(Color seedColor) {
+    final TextTheme textTheme = GoogleFonts.interTextTheme(
+      ThemeData(brightness: Brightness.dark).textTheme,
+    );
     return ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
         seedColor: seedColor,
         brightness: Brightness.dark,
       ),
+      textTheme: textTheme,
+      primaryTextTheme: textTheme,
     );
   }
 }

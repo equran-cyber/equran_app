@@ -1,3 +1,4 @@
+import 'package:adaptive_theme/adaptive_theme.dart';
 import 'package:equran/backend/library.dart';
 import 'package:equran/utils/app_radii.dart';
 import 'package:equran/utils/debouncer.dart';
@@ -153,16 +154,32 @@ class _MainPageState extends State<MainPage>
         ),
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 180),
-          child: _showSearch
-              ? const SizedBox(
-                  key: ValueKey<String>('search-button-hidden'),
-                  width: 0,
-                )
-              : IconButton(
-                  key: const ValueKey<String>('search-button'),
-                  onPressed: _openSearch,
-                  icon: const Icon(Icons.search_rounded),
+          child: Row(
+            key: ValueKey<bool>(_showSearch),
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              if (!_showSearch)
+                IconButton(
+                  tooltip: 'Toggle theme',
+                  onPressed: _toggleQuickTheme,
+                  icon: Icon(
+                    theme.brightness == Brightness.dark
+                        ? Icons.light_mode_rounded
+                        : Icons.dark_mode_rounded,
+                  ),
                 ),
+              _showSearch
+                  ? const SizedBox(
+                      key: ValueKey<String>('search-button-hidden'),
+                      width: 0,
+                    )
+                  : IconButton(
+                      key: const ValueKey<String>('search-button'),
+                      onPressed: _openSearch,
+                      icon: const Icon(Icons.search_rounded),
+                    ),
+            ],
+          ),
         ),
       ],
     );
@@ -371,10 +388,24 @@ class _MainPageState extends State<MainPage>
   }
 
   String get _searchHint => switch (_selectedSegment) {
-    1 => "Juz, surah, or number...",
+    1 => "Juz number or surah name...",
     2 => "Saved ayah, surah, note, or number...",
     _ => "Surah name or number...",
   };
+
+  Future<void> _toggleQuickTheme() async {
+    final ThemeData theme = Theme.of(context);
+    final AdaptiveThemeMode mode = AdaptiveTheme.of(context).mode;
+    final bool isDark = mode.isSystem
+        ? theme.brightness == Brightness.dark
+        : mode.isDark;
+    final AdaptiveThemeMode nextMode = isDark
+        ? AdaptiveThemeMode.light
+        : AdaptiveThemeMode.dark;
+    await SettingsDB().put('themeMode', nextMode.isDark ? 'dark' : 'light');
+    if (!mounted) return;
+    AdaptiveTheme.of(context).setThemeMode(nextMode);
+  }
 
   Widget? _buildLastReadCard() {
     if (SettingsDB().get("showLastRead", defaultValue: true) != true) {

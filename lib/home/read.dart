@@ -13,6 +13,7 @@ import 'package:equran/backend/library.dart'
         QuranAudioService,
         SettingsDB;
 import 'package:equran/utils/app_radii.dart';
+import 'package:equran/utils/app_slider_theme.dart';
 import 'package:equran/utils/responsive_nav.dart';
 import 'package:equran/utils/translation_display.dart';
 import 'package:equran/widgets/library.dart'
@@ -71,6 +72,7 @@ class _ReadPageState extends State<ReadPage> {
   bool _isVerseLoading = false;
   bool _isDownloadingSurahAyahs = false;
   bool _hasDownloadedSurahAyahs = false;
+  bool _hasDownloadedCurrentAyah = false;
   bool _continuousPlayback = false;
   bool _repeatIntervalEnabled = false;
   int _playbackRequestId = 0;
@@ -115,6 +117,7 @@ class _ReadPageState extends State<ReadPage> {
     _isDownloadingSurahAyahs = AudioDownloadService()
         .isSurahAyahsDownloadInProgress(_currentChapter);
     unawaited(_refreshSurahAyahDownloadState());
+    unawaited(_refreshCurrentAyahDownloadState());
     _pageFocusNode = FocusNode(debugLabel: 'Read Page Keyboard Focus');
     _getTotalVerses();
     _repeatStartVerse = _currentVerse;
@@ -132,6 +135,7 @@ class _ReadPageState extends State<ReadPage> {
       BookmarkDB().addReadingEntry(_currentChapter, _currentVerse);
     }
     unawaited(_setKeepScreenOn(false));
+    unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
     unawaited(AndroidAudioDisplayMode.setAudioPlaybackActive(false));
     _playerPositionSubscription?.cancel();
     _playerDurationSubscription?.cancel();
@@ -504,9 +508,9 @@ class _ReadPageState extends State<ReadPage> {
                           ),
                   ),
                 IconButton(
-                  tooltip: 'Jump to verse',
+                  tooltip: 'Go to ayah',
                   onPressed: () => _showJumpToVerseDialog(context),
-                  icon: const Icon(Icons.format_list_numbered_rounded),
+                  icon: const Icon(Icons.my_location_rounded),
                 ),
                 const SizedBox(width: 6),
               ],
@@ -615,7 +619,7 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
                 Text(
-                  'Jump to verse',
+                  'Go to ayah',
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -705,10 +709,20 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
 
   Future<void> _updateKeepScreenOn() async {
     await _setKeepScreenOn(
-      !_viewMode &&
-          _playerVisible &&
+      _playerVisible &&
           (_continuousPlayback || _repeatIntervalEnabled),
     );
+  }
+
+  Future<void> _refreshCurrentAyahDownloadState() async {
+    final bool hasAyah = await AudioDownloadService().hasAyah(
+      _currentChapter,
+      _currentVerse,
+    );
+    if (!mounted) return;
+    setState(() {
+      _hasDownloadedCurrentAyah = hasAyah;
+    });
   }
 
   Future<void> _playVerse(
@@ -980,6 +994,32 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
           _isDownloadingSurahAyahs = false;
         });
       }
+    }
+  }
+
+  Future<void> _downloadCurrentAyah() async {
+    if (_isDownloadingSurahAyahs) return;
+    try {
+      setState(() {
+        _isDownloadingSurahAyahs = true;
+      });
+      await AudioDownloadService().downloadAyah(_currentChapter, _currentVerse);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Downloaded ayah $_currentChapter:$_currentVerse')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to download ayah audio.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDownloadingSurahAyahs = false;
+        });
+      }
+      unawaited(_refreshCurrentAyahDownloadState());
     }
   }
 
@@ -1316,6 +1356,7 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
     setState(() {
       _currentVerse = value;
     });
+    unawaited(_refreshCurrentAyahDownloadState());
   }
 
   void _decrementVerse() {
@@ -1376,6 +1417,7 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
 
   void _updateDB() {
     BookmarkDB().addReadingEntry(_currentChapter, _currentVerse);
+    unawaited(_refreshCurrentAyahDownloadState());
   }
 
   void _updateVerseFromProgress({
@@ -1454,6 +1496,7 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
             onLongPressStart: (details) {
+              unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(true));
               setState(() {
                 _isScrubbingProgress = true;
                 _scrubStartVerse = _currentVerse;
@@ -1476,6 +1519,7 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
               );
             },
             onLongPressEnd: (_) {
+              unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
               setState(() {
                 _isScrubbingProgress = false;
                 _scrubStartVerse = null;
@@ -1485,6 +1529,7 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
               });
             },
             onLongPressCancel: () {
+              unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
               setState(() {
                 _isScrubbingProgress = false;
                 _scrubStartVerse = null;
@@ -1625,11 +1670,14 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
                 children: <Widget>[
                   Padding(
                     padding: const EdgeInsets.only(right: 36),
-                    child: Slider(
-                      value: progress,
-                      onChanged: duration.inMilliseconds <= 0
-                          ? null
-                          : _seekBottomPlayer,
+                    child: SliderTheme(
+                      data: AppSliderTheme.standard(context),
+                      child: Slider(
+                        value: progress,
+                        onChanged: duration.inMilliseconds <= 0
+                            ? null
+                            : _seekBottomPlayer,
+                      ),
                     ),
                   ),
                   Row(
@@ -1655,7 +1703,7 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
                     children: <Widget>[
                       _buildAutoPlaybackButton(colorScheme),
                       if (!_viewMode) ...<Widget>[
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 14),
                         _buildPageViewAyahNavButton(
                           icon: Icons.skip_previous_rounded,
                           tooltip: 'Previous ayah',
@@ -1664,7 +1712,7 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
                               : () => unawaited(_playAdjacentPageViewAyah(-1)),
                         ),
                       ],
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 14),
                       FilledButton(
                         onPressed: _toggleBottomPlayer,
                         style: FilledButton.styleFrom(
@@ -1688,7 +1736,7 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
                               ),
                       ),
                       if (!_viewMode) ...<Widget>[
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 14),
                         _buildPageViewAyahNavButton(
                           icon: Icons.skip_next_rounded,
                           tooltip: 'Next ayah',
@@ -1698,7 +1746,7 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
                               : () => unawaited(_playAdjacentPageViewAyah(1)),
                         ),
                       ],
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 14),
                       _buildRepeatIntervalButton(colorScheme),
                     ],
                   ),
@@ -1787,6 +1835,7 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: <Widget>[
                               _buildAutoPlaybackButton(colorScheme),
+                              const SizedBox(width: 10),
                               if (!_viewMode)
                                 _buildPageViewAyahNavButton(
                                   icon: Icons.skip_previous_rounded,
@@ -1798,6 +1847,7 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
                                           _playAdjacentPageViewAyah(-1),
                                         ),
                                 ),
+                              const SizedBox(width: 10),
                               FilledButton(
                                 onPressed: _toggleBottomPlayer,
                                 style: FilledButton.styleFrom(
@@ -1832,6 +1882,7 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
                                           _playAdjacentPageViewAyah(1),
                                         ),
                                 ),
+                              const SizedBox(width: 10),
                               _buildRepeatIntervalButton(colorScheme),
                             ],
                           ),
@@ -1851,11 +1902,14 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
                                 ),
                               ),
                               Expanded(
-                                child: Slider(
-                                  value: progress,
-                                  onChanged: duration.inMilliseconds <= 0
-                                      ? null
-                                      : _seekBottomPlayer,
+                                child: SliderTheme(
+                                  data: AppSliderTheme.standard(context),
+                                  child: Slider(
+                                    value: progress,
+                                    onChanged: duration.inMilliseconds <= 0
+                                        ? null
+                                        : _seekBottomPlayer,
+                                  ),
                                 ),
                               ),
                               SizedBox(
@@ -2095,10 +2149,24 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
     defaultValue: 18.0,
   ),
   onPlay: _togglePageViewPlayback,
-  onDownload: _downloadCurrentSurahAyahs,
+  onDownload: _downloadCurrentAyah,
+  onPrevious: _currentVerse > 1
+      ? () {
+          _setVerse(_currentVerse - 1);
+          _scrollUp();
+          _updateDB();
+        }
+      : null,
+  onNext: _currentVerse < _totalVerses
+      ? () {
+          _setVerse(_currentVerse + 1);
+          _scrollUp();
+          _updateDB();
+        }
+      : null,
   isPlaying: _isVersePlaying && _playingVerse == _currentVerse,
   isDownloading: _isDownloadingSurahAyahs,
-  isDownloaded: _hasDownloadedSurahAyahs,
+  isDownloaded: _hasDownloadedCurrentAyah,
 ),
                     ),
                     AnimatedContainer(
@@ -2527,6 +2595,11 @@ Future<void> _showJumpToVerseDialog(BuildContext context) async {
     final String key = _favouriteKey(_currentChapter, verse);
     if (isFavourite) {
       FavouritesDB().delete(key);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Removed from favourites.')),
+        );
+      }
       return;
     }
     FavouritesDB().put(key, '');

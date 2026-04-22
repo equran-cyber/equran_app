@@ -79,7 +79,7 @@ class AppSelectionDialog<T> extends StatelessWidget {
               child: ClipRect(
                 child: ListView.builder(
                   shrinkWrap: true,
-                  physics: const ClampingScrollPhysics(),
+                  physics: const BouncingScrollPhysics(),
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: options.length,
                   itemBuilder: (context, index) {

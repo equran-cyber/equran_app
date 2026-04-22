@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:ui' show DisplayFeature, DisplayFeatureType;
 
+import 'package:adaptive_theme/adaptive_theme.dart';
 import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:equran/backend/library.dart'
     show
@@ -11,6 +12,7 @@ import 'package:equran/backend/library.dart'
         DownloadNotifications,
         SettingsDB;
 import 'package:equran/utils/app_radii.dart';
+import 'package:equran/utils/app_slider_theme.dart';
 import 'package:equran/utils/responsive_nav.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -142,29 +144,6 @@ class PlayerPage extends StatefulWidget {
   State<PlayerPage> createState() => _PlayerPageState();
 }
 
-class _FullWidthSliderTrackShape extends RoundedRectSliderTrackShape {
-  const _FullWidthSliderTrackShape();
-
-  @override
-  Rect getPreferredRect({
-    required RenderBox parentBox,
-    Offset offset = Offset.zero,
-    required SliderThemeData sliderTheme,
-    bool isEnabled = false,
-    bool isDiscrete = false,
-  }) {
-    final double trackHeight = sliderTheme.trackHeight ?? 2;
-    final double trackTop =
-        offset.dy + (parentBox.size.height - trackHeight) / 2;
-    return Rect.fromLTWH(
-      offset.dx,
-      trackTop,
-      parentBox.size.width,
-      trackHeight,
-    );
-  }
-}
-
 class _PlayerPageState extends State<PlayerPage> {
   final ja.AudioPlayer _justAudio = ja.AudioPlayer();
   final ap.AudioPlayer _fallbackAudio = ap.AudioPlayer();
@@ -195,6 +174,7 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _loopEnabled = false;
   bool _isCompletingTrack = false;
   bool _showProgressThumb = false;
+  double? _pendingSeekProgress;
 
   double _playbackRate = 1.0;
   Duration _position = Duration.zero;
@@ -215,6 +195,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
     _bindAudioListeners();
     _refreshDownloadState();
+    unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(true));
   }
 
   void _bindAudioListeners() {
@@ -556,11 +537,8 @@ class _PlayerPageState extends State<PlayerPage> {
     required BuildContext context,
     required double progress,
   }) {
-    final SliderThemeData baseTheme = SliderTheme.of(context);
     return SliderTheme(
-      data: baseTheme.copyWith(
-        trackHeight: 8.0,
-        trackShape: const _FullWidthSliderTrackShape(),
+      data: AppSliderTheme.standard(context).copyWith(
         thumbShape: _showProgressThumb
             ? const RoundSliderThumbShape(enabledThumbRadius: 7)
             : SliderComponentShape.noThumb,
@@ -569,13 +547,23 @@ class _PlayerPageState extends State<PlayerPage> {
             : SliderComponentShape.noOverlay,
       ),
       child: Slider(
-        value: progress,
+        value: (_pendingSeekProgress ?? progress).clamp(0.0, 1.0),
         onChangeStart: (_) => _revealProgressThumb(),
         onChanged: (value) {
           _revealProgressThumb();
-          _seek(value);
+          _safeSetState(() {
+            _pendingSeekProgress = value;
+            final int pendingMs = (_duration.inMilliseconds * value).round();
+            _position = Duration(milliseconds: pendingMs);
+          });
         },
-        onChangeEnd: (_) => _hideProgressThumbSoon(),
+        onChangeEnd: (value) async {
+          _hideProgressThumbSoon();
+          await _seek(value);
+          _safeSetState(() {
+            _pendingSeekProgress = null;
+          });
+        },
       ),
     );
   }
@@ -871,6 +859,7 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void dispose() {
     unawaited(AndroidAudioDisplayMode.setAudioPlaybackActive(false));
+    unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
     _progressThumbTimer?.cancel();
     _positionSubscription?.cancel();
     _durationSubscription?.cancel();
@@ -887,6 +876,19 @@ class _PlayerPageState extends State<PlayerPage> {
 
   void _notifyAudioUserActivity() {
     AndroidAudioDisplayMode.notifyUserActivity();
+  }
+
+  Future<void> _toggleQuickTheme() async {
+    final ThemeData theme = Theme.of(context);
+    final AdaptiveThemeMode mode = AdaptiveTheme.of(context).mode;
+    final bool isDark =
+        mode.isSystem ? theme.brightness == Brightness.dark : mode.isDark;
+    final AdaptiveThemeMode nextMode = isDark
+        ? AdaptiveThemeMode.light
+        : AdaptiveThemeMode.dark;
+    await SettingsDB().put('themeMode', nextMode.isDark ? 'dark' : 'light');
+    if (!mounted) return;
+    AdaptiveTheme.of(context).setThemeMode(nextMode);
   }
 
   Widget _buildAudioInteractionBoundary({required Widget child}) {
@@ -1021,6 +1023,16 @@ class _PlayerPageState extends State<PlayerPage> {
                       Icons.menu_rounded,
                       size: ResponsiveNav.iconSize(context),
                     ),
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  tooltip: 'Toggle theme',
+                  onPressed: _toggleQuickTheme,
+                  icon: Icon(
+                    Theme.of(context).brightness == Brightness.dark
+                        ? Icons.light_mode_rounded
+                        : Icons.dark_mode_rounded,
                   ),
                 ),
               ],

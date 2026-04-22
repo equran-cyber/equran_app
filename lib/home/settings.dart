@@ -15,6 +15,13 @@ import 'package:equran/widgets/library.dart'
 import 'package:flutter/material.dart';
 import 'package:quran/quran.dart' show Translation;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+const String _appDownloadUrl =
+    'https://f-droid.org/en/packages/com.app.equran/';
+const String _issueReportUrl = 'https://github.com/ya27hw/equran_app/issues';
+const String _contactEmail = 'equran@elbaesy.com';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -52,16 +59,31 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: "App behavior and history",
             icon: Icons.tune_rounded,
             initiallyExpanded: true,
-            children: const <Widget>[
-              SettingsSwitch(
+            children: <Widget>[
+              const SettingsSwitch(
                 title: "Vibration",
                 subtitle: "Enable haptic feedback when navigating.",
                 settingsKey: "vibration",
               ),
-              SettingsSwitch(
+              const SettingsSwitch(
                 title: "Show reading history",
                 settingsKey: "showLastRead",
                 subtitle: "Shows you up to 7 last read Surahs.",
+              ),
+              ListTile(
+                leading: const Icon(Icons.info_outline_rounded),
+                title: const Text('About this app'),
+                onTap: () => _showAboutApp(context),
+              ),
+              ListTile(
+                leading: const Icon(Icons.share_outlined),
+                title: const Text('Share app'),
+                onTap: () => _shareApp(context),
+              ),
+              ListTile(
+                leading: const Icon(Icons.feedback_outlined),
+                title: const Text('Feedback / Contact'),
+                onTap: () => _openFeedbackContactPage(context),
               ),
             ],
           ),
@@ -666,6 +688,112 @@ class _SettingsPageState extends State<SettingsPage> {
   String _selectedReciterName() {
     final dynamic savedReciter = SettingsDB().get("reciter", defaultValue: "1");
     return AppReciter.fromCode(savedReciter?.toString()).englishName;
+  }
+
+  Future<void> _showAboutApp(BuildContext context) async {
+    final PackageInfo packageInfo = await PackageInfo.fromPlatform();
+    if (!context.mounted) return;
+
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    showAboutDialog(
+      context: context,
+      applicationName: 'eQuran',
+      applicationVersion: 'Version ${packageInfo.version}',
+      applicationIcon: Icon(
+        Icons.menu_book_rounded,
+        color: colorScheme.primary,
+        size: 40,
+      ),
+      children: const <Widget>[
+        SizedBox(height: 16),
+        Text(
+          'eQuran is a modern Quran companion designed for focused reading, listening, and daily reflection.',
+        ),
+      ],
+    );
+  }
+
+  Future<void> _shareApp(BuildContext context) async {
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          title: 'eQuran',
+          subject: 'Download eQuran',
+          text: 'Download eQuran on F-Droid: $_appDownloadUrl',
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      _showMessage(context, 'Unable to open the share sheet.');
+    }
+  }
+
+  void _openFeedbackContactPage(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => const _FeedbackContactPage(),
+      ),
+    );
+  }
+}
+
+class _FeedbackContactPage extends StatelessWidget {
+  const _FeedbackContactPage();
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Feedback / Contact')),
+      body: ListView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        children: <Widget>[
+          ListTile(
+            leading: const Icon(Icons.bug_report_outlined),
+            title: const Text('Report issues'),
+            subtitle: const Text('Open the GitHub issue tracker.'),
+            trailing: const Icon(Icons.open_in_new_rounded),
+            onTap: () async {
+              final Uri uri = Uri.parse(_issueReportUrl);
+              if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
+                  context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Unable to open issue tracker.')),
+                );
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.email_outlined),
+            title: const Text('Email support'),
+            subtitle: Text(_contactEmail),
+            trailing: const Icon(Icons.open_in_new_rounded),
+            onTap: () async {
+              final Uri uri = Uri(
+                scheme: 'mailto',
+                path: _contactEmail,
+                queryParameters: <String, String>{'subject': 'eQuran feedback'},
+              );
+              if (!await launchUrl(uri) && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Unable to open email client.')),
+                );
+              }
+            },
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: Text(
+              'We appreciate your feedback and suggestions.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

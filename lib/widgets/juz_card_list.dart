@@ -225,6 +225,11 @@ class _JuzEntry {
   final int endVerse;
 
   bool matches(String query, int juzNumber) {
-    return juzNumber.toString() == query;
+    final String normalized = query.trim().toLowerCase();
+    if (normalized.isEmpty) return true;
+    return juzNumber.toString() == normalized ||
+        juzNumber.toString().startsWith(normalized) ||
+        transliteration.toLowerCase().contains(normalized) ||
+        name.contains(query);
   }
 }
