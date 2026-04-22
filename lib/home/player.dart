@@ -536,14 +536,12 @@ class _PlayerPageState extends State<PlayerPage> {
     required BuildContext context,
     required double progress,
   }) {
+    final SliderThemeData sliderTheme = AppSliderTheme.standard(context);
     return SliderTheme(
-      data: AppSliderTheme.standard(context).copyWith(
-        thumbShape: _showProgressThumb
-            ? const RoundSliderThumbShape(enabledThumbRadius: 7)
-            : SliderComponentShape.noThumb,
-        overlayShape: _showProgressThumb
-            ? const RoundSliderOverlayShape(overlayRadius: 16)
-            : SliderComponentShape.noOverlay,
+      data: sliderTheme.copyWith(
+        overlayColor: _showProgressThumb
+            ? sliderTheme.overlayColor
+            : Colors.transparent,
       ),
       child: Slider(
         value: (_pendingSeekProgress ?? progress).clamp(0.0, 1.0),
