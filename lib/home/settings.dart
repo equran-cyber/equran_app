@@ -728,29 +728,6 @@ class _SettingsPageState extends State<SettingsPage> {
     return AppReciter.fromCode(savedReciter?.toString()).englishName;
   }
 
-  Widget _buildTransliterationToggle() {
-    final bool enabled = SettingsDB().get(
-      "enableTransliteration",
-      defaultValue: false,
-    );
-    return ListTile(
-      onTap: () {
-        SettingsDB().put("enableTransliteration", !enabled);
-        setState(() {});
-      },
-      leading: const Icon(Icons.abc_rounded),
-      title: const Text('Display transliteration'),
-      subtitle: const Text('Shows English transliteration in card view.'),
-      trailing: Switch(
-        value: enabled,
-        onChanged: (value) {
-          SettingsDB().put("enableTransliteration", value);
-          setState(() {});
-        },
-      ),
-    );
-  }
-
   Future<void> _showAboutApp(BuildContext context) async {
     final PackageInfo packageInfo = await PackageInfo.fromPlatform();
     if (!context.mounted) return;

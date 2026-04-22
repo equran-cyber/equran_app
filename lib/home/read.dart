@@ -77,7 +77,6 @@ class _ReadPageState extends State<ReadPage> {
   bool _isDownloadingCurrentAyah = false;
   bool _hasDownloadedSurahAyahs = false;
   bool _hasDownloadedCurrentAyah = false;
-  List<String> _chapterTransliterations = const <String>[];
   bool _continuousPlayback = false;
   bool _repeatIntervalEnabled = false;
   int _playbackRequestId = 0;
@@ -123,7 +122,6 @@ class _ReadPageState extends State<ReadPage> {
         .isSurahAyahsDownloadInProgress(_currentChapter);
     unawaited(_refreshSurahAyahDownloadState());
     unawaited(_refreshCurrentAyahDownloadState());
-    unawaited(_loadChapterTransliterations());
     _pageFocusNode = FocusNode(debugLabel: 'Read Page Keyboard Focus');
     _getTotalVerses();
     _repeatStartVerse = _currentVerse;
@@ -615,20 +613,26 @@ class _ReadPageState extends State<ReadPage> {
           builder: (context, setSheetState) {
             return SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(
-                20,
-                8,
-                20,
-                MediaQuery.of(sheetContext).viewInsets.bottom + 20,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  Text(
-                    'Go to ayah',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+    20,
+    8,
+    20,
+    MediaQuery.of(sheetContext).viewInsets.bottom + 20,
+  ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Text(
+                  'Go to ayah',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Enter a verse number from 1 to $_totalVerses',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
                   ),
                   const SizedBox(height: 6),
                   Text(
@@ -729,24 +733,6 @@ class _ReadPageState extends State<ReadPage> {
     setState(() {
       _hasDownloadedCurrentAyah = hasAyah;
     });
-  }
-
-  Future<void> _loadChapterTransliterations() async {
-    final int chapter = _currentChapter;
-    final List<String> transliterations = await QuranTransliterationService
-        .instance
-        .versesForSurah(chapter);
-    if (!mounted || chapter != _currentChapter) return;
-    setState(() {
-      _chapterTransliterations = transliterations;
-    });
-  }
-
-  String _currentVerseTransliteration() {
-    if (_currentVerse < 1 || _currentVerse > _chapterTransliterations.length) {
-      return '';
-    }
-    return _chapterTransliterations[_currentVerse - 1];
   }
 
   Future<void> _playVerse(
@@ -929,10 +915,6 @@ class _ReadPageState extends State<ReadPage> {
     );
   }
 
-  Future<void> _playAdjacentPageViewAyah(int direction) async {
-    await _playAdjacentAyah(direction);
-  }
-
   Future<void> _playAdjacentAyah(int direction) async {
     if (_isVerseLoading) return;
 
@@ -1026,10 +1008,10 @@ class _ReadPageState extends State<ReadPage> {
   }
 
   Future<void> _downloadCurrentAyah() async {
-    if (_isDownloadingCurrentAyah || _isDownloadingSurahAyahs) return;
+    if (_isDownloadingSurahAyahs) return;
     try {
       setState(() {
-        _isDownloadingCurrentAyah = true;
+        _isDownloadingSurahAyahs = true;
       });
       await AudioDownloadService().downloadAyah(_currentChapter, _currentVerse);
       if (!mounted) return;
@@ -1044,7 +1026,7 @@ class _ReadPageState extends State<ReadPage> {
     } finally {
       if (mounted) {
         setState(() {
-          _isDownloadingCurrentAyah = false;
+          _isDownloadingSurahAyahs = false;
         });
       }
       unawaited(_refreshCurrentAyahDownloadState());
@@ -1734,14 +1716,16 @@ class _ReadPageState extends State<ReadPage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
                       _buildAutoPlaybackButton(colorScheme),
-                      const SizedBox(width: 14),
-                      _buildPageViewAyahNavButton(
-                        icon: Icons.skip_previous_rounded,
-                        tooltip: 'Previous ayah',
-                        onPressed: (_playingVerse ?? _currentVerse) <= 1
-                            ? null
-                            : () => unawaited(_playAdjacentAyah(-1)),
-                      ),
+                      if (!_viewMode) ...<Widget>[
+                        const SizedBox(width: 14),
+                        _buildPageViewAyahNavButton(
+                          icon: Icons.skip_previous_rounded,
+                          tooltip: 'Previous ayah',
+                          onPressed: (_playingVerse ?? _currentVerse) <= 1
+                              ? null
+                              : () => unawaited(_playAdjacentPageViewAyah(-1)),
+                        ),
+                      ],
                       const SizedBox(width: 14),
                       FilledButton(
                         onPressed: _toggleBottomPlayer,
@@ -1765,15 +1749,17 @@ class _ReadPageState extends State<ReadPage> {
                                 size: 32,
                               ),
                       ),
-                      const SizedBox(width: 14),
-                      _buildPageViewAyahNavButton(
-                        icon: Icons.skip_next_rounded,
-                        tooltip: 'Next ayah',
-                        onPressed:
-                            (_playingVerse ?? _currentVerse) >= _totalVerses
-                            ? null
-                            : () => unawaited(_playAdjacentAyah(1)),
-                      ),
+                      if (!_viewMode) ...<Widget>[
+                        const SizedBox(width: 14),
+                        _buildPageViewAyahNavButton(
+                          icon: Icons.skip_next_rounded,
+                          tooltip: 'Next ayah',
+                          onPressed:
+                              (_playingVerse ?? _currentVerse) >= _totalVerses
+                              ? null
+                              : () => unawaited(_playAdjacentPageViewAyah(1)),
+                        ),
+                      ],
                       const SizedBox(width: 14),
                       _buildRepeatIntervalButton(colorScheme),
                     ],
@@ -1864,13 +1850,17 @@ class _ReadPageState extends State<ReadPage> {
                             children: <Widget>[
                               _buildAutoPlaybackButton(colorScheme),
                               const SizedBox(width: 10),
-                              _buildPageViewAyahNavButton(
-                                icon: Icons.skip_previous_rounded,
-                                tooltip: 'Previous ayah',
-                                onPressed: (_playingVerse ?? _currentVerse) <= 1
-                                    ? null
-                                    : () => unawaited(_playAdjacentAyah(-1)),
-                              ),
+                              if (!_viewMode)
+                                _buildPageViewAyahNavButton(
+                                  icon: Icons.skip_previous_rounded,
+                                  tooltip: 'Previous ayah',
+                                  onPressed:
+                                      (_playingVerse ?? _currentVerse) <= 1
+                                      ? null
+                                      : () => unawaited(
+                                          _playAdjacentPageViewAyah(-1),
+                                        ),
+                                ),
                               const SizedBox(width: 10),
                               FilledButton(
                                 onPressed: _toggleBottomPlayer,
@@ -1894,15 +1884,18 @@ class _ReadPageState extends State<ReadPage> {
                                         size: 32,
                                       ),
                               ),
-                              _buildPageViewAyahNavButton(
-                                icon: Icons.skip_next_rounded,
-                                tooltip: 'Next ayah',
-                                onPressed:
-                                    (_playingVerse ?? _currentVerse) >=
-                                        _totalVerses
-                                    ? null
-                                    : () => unawaited(_playAdjacentAyah(1)),
-                              ),
+                              if (!_viewMode)
+                                _buildPageViewAyahNavButton(
+                                  icon: Icons.skip_next_rounded,
+                                  tooltip: 'Next ayah',
+                                  onPressed:
+                                      (_playingVerse ?? _currentVerse) >=
+                                          _totalVerses
+                                      ? null
+                                      : () => unawaited(
+                                          _playAdjacentPageViewAyah(1),
+                                        ),
+                                ),
                               const SizedBox(width: 10),
                               _buildRepeatIntervalButton(colorScheme),
                             ],
@@ -2136,52 +2129,59 @@ class _ReadPageState extends State<ReadPage> {
                     SizedBox(
                       width: MediaQuery.of(context).size.width,
                       child: ReadQuranCard(
-                        currentChapter: _currentChapter,
-                        currentVerse: _currentVerse,
-                        totalVerses: _totalVerses,
-                        juzNumber: quran.getJuzNumber(
-                          _currentChapter,
-                          _currentVerse,
-                        ),
-                        basmala:
-                            _currentChapter != 1 &&
-                                _currentVerse == 1 &&
-                                _currentChapter != 9
-                            ? quran.basmala
-                            : null,
-                        verse: _buildCardVerseText(
-                          _currentChapter,
-                          _currentVerse,
-                        ),
-                        translation: quran.getVerseTranslation(
-                          _currentChapter,
-                          _currentVerse,
-                          translation: quran.Translation.values[SettingsDB().get(
-                            "translation",
-                            defaultValue: 0,
-                          )],
-                        ),
-                        transliteration: _currentVerseTransliteration(),
-                        showTransliteration: SettingsDB().get(
-                          "enableTransliteration",
-                          defaultValue: false,
-                        ),
-                        fontSize: SettingsDB().get(
-                          "fontSize",
-                          defaultValue: 38.0,
-                        ),
-                        fontSizeTranslation: SettingsDB().get(
-                          "fontSizeTranslation",
-                          defaultValue: 18.0,
-                        ),
-                        onPlay: _togglePageViewPlayback,
-                        onDownload: _downloadCurrentAyah,
-                        onTafsir: () => _showTafsirSheet(_currentVerse),
-                        isPlaying:
-                            _isVersePlaying && _playingVerse == _currentVerse,
-                        isDownloading: _isDownloadingCurrentAyah,
-                        isDownloaded: _hasDownloadedCurrentAyah,
-                      ),
+  currentChapter: _currentChapter,
+  currentVerse: _currentVerse,
+  totalVerses: _totalVerses,
+  juzNumber: quran.getJuzNumber(
+    _currentChapter,
+    _currentVerse,
+  ),
+  basmala:
+      _currentChapter != 1 &&
+          _currentVerse == 1 &&
+          _currentChapter != 9
+      ? quran.basmala
+      : null,
+  verse: _buildCardVerseText(
+    _currentChapter,
+    _currentVerse,
+  ),
+  translation: quran.getVerseTranslation(
+    _currentChapter,
+    _currentVerse,
+    translation: quran.Translation.values[SettingsDB().get(
+      "translation",
+      defaultValue: 0,
+    )],
+  ),
+  fontSize: SettingsDB().get(
+    "fontSize",
+    defaultValue: 38.0,
+  ),
+  fontSizeTranslation: SettingsDB().get(
+    "fontSizeTranslation",
+    defaultValue: 18.0,
+  ),
+  onPlay: _togglePageViewPlayback,
+  onDownload: _downloadCurrentAyah,
+  onPrevious: _currentVerse > 1
+      ? () {
+          _setVerse(_currentVerse - 1);
+          _scrollUp();
+          _updateDB();
+        }
+      : null,
+  onNext: _currentVerse < _totalVerses
+      ? () {
+          _setVerse(_currentVerse + 1);
+          _scrollUp();
+          _updateDB();
+        }
+      : null,
+  isPlaying: _isVersePlaying && _playingVerse == _currentVerse,
+  isDownloading: _isDownloadingSurahAyahs,
+  isDownloaded: _hasDownloadedCurrentAyah,
+),
                     ),
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 260),
