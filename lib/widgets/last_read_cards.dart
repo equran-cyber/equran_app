@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_carousel_widget/flutter_carousel_widget.dart';
 import 'package:quran/quran.dart';
 
-class LastReadCard extends StatelessWidget {
+class LastReadCard extends StatefulWidget {
   const LastReadCard({super.key});
 
   Future<void> _handleMenuAction(String value, ReadingEntry entry) async {
@@ -15,6 +15,13 @@ class LastReadCard extends StatelessWidget {
       await BookmarkDB().delete(entry.surah);
     }
   }
+
+  @override
+  State<LastReadCard> createState() => _LastReadCardState();
+}
+
+class _LastReadCardState extends State<LastReadCard> {
+  int _currentPage = 0;
 
   List<ReadingEntry> displayReadingHistory() {
     final rawEntries = BookmarkDB().box
@@ -51,39 +58,110 @@ class LastReadCard extends StatelessWidget {
     }
 
     List<ReadingEntry> entries = displayReadingHistory();
-    return ExpandableCarousel.builder(
-      itemCount: entries.length,
-      itemBuilder: (BuildContext context, int itemIndex, int pageViewIndex) {
-        final ReadingEntry entry = entries[itemIndex];
-        return AnimatedSwitcher(
-          duration: const Duration(milliseconds: 260),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, animation) {
-            final Animation<Offset> offsetAnimation = Tween<Offset>(
-              begin: const Offset(0.04, 0),
-              end: Offset.zero,
-            ).animate(animation);
+    final int activeIndex = entries.isEmpty
+        ? 0
+        : _currentPage.clamp(0, entries.length - 1).toInt();
 
-            return FadeTransition(
-              opacity: animation,
-              child: SlideTransition(position: offsetAnimation, child: child),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        ExpandableCarousel.builder(
+          itemCount: entries.length,
+          itemBuilder: (BuildContext context, int itemIndex, int pageViewIndex) {
+            final ReadingEntry entry = entries[itemIndex];
+            return AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) {
+                final Animation<Offset> offsetAnimation = Tween<Offset>(
+                  begin: const Offset(0.04, 0),
+                  end: Offset.zero,
+                ).animate(animation);
+
+                return FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: offsetAnimation,
+                    child: child,
+                  ),
+                );
+              },
+              child: _LastReadEntryCard(
+                key: ValueKey<String>(
+                  '${entry.surah}-${entry.verse}-${entry.timestamp.microsecondsSinceEpoch}',
+                ),
+                entry: entry,
+                onMenuAction: widget._handleMenuAction,
+              ),
             );
           },
-          child: _LastReadEntryCard(
-            key: ValueKey<String>(
-              '${entry.surah}-${entry.verse}-${entry.timestamp.microsecondsSinceEpoch}',
-            ),
-            entry: entry,
-            onMenuAction: _handleMenuAction,
+          options: ExpandableCarouselOptions(
+            showIndicator: false,
+            viewportFraction: viewportFraction,
+            initialPage: 0,
+            onPageChanged: (int index, _) {
+              if (!mounted) return;
+              setState(() {
+                _currentPage = index;
+              });
+            },
+          ),
+        ),
+        if (entries.length > 1) ...<Widget>[
+          const SizedBox(height: 10),
+          _CarouselPillsIndicator(
+            itemCount: entries.length,
+            activeIndex: activeIndex,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _CarouselPillsIndicator extends StatelessWidget {
+  const _CarouselPillsIndicator({
+    required this.itemCount,
+    required this.activeIndex,
+  });
+
+  final int itemCount;
+  final int activeIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: List<Widget>.generate(itemCount, (index) {
+        final bool isActive = index == activeIndex;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.symmetric(horizontal: 2.5),
+          width: isActive ? 18 : 6,
+          height: 6,
+          decoration: BoxDecoration(
+            color: isActive
+                ? colorScheme.primary
+                : colorScheme.onSurfaceVariant.withAlpha(90),
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: isActive
+                ? <BoxShadow>[
+                    BoxShadow(
+                      color: colorScheme.primary.withAlpha(40),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ]
+                : null,
           ),
         );
-      },
-      options: ExpandableCarouselOptions(
-        showIndicator: true,
-        viewportFraction: viewportFraction,
-        initialPage: 0,
-      ),
+      }),
     );
   }
 }
