@@ -224,7 +224,7 @@ class _LastReadEntryCard extends StatelessWidget {
     final bool isLight = theme.brightness == Brightness.light;
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
       elevation: isLight ? 4 : 2,
       color: Colors.transparent,
       clipBehavior: Clip.antiAlias,
@@ -265,7 +265,7 @@ class _LastReadEntryCard extends StatelessWidget {
             ),
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -299,7 +299,7 @@ class _LastReadEntryCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
+                
                 Text(
                   getSurahName(keySurah),
                   style: theme.textTheme.bodyLarge?.copyWith(
@@ -316,7 +316,7 @@ class _LastReadEntryCard extends StatelessWidget {
                     fontSize: 15,
                   ),
                 ),
-                if (showIndicatorSpace) const SizedBox(height: 20),
+                const SizedBox(height: 4),
               ],
             ),
           ),
