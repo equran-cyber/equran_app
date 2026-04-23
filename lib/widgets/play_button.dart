@@ -29,7 +29,7 @@ class PlayButton extends StatefulWidget {
 }
 
 class _PlayButtonState extends State<PlayButton> {
-  static const int _maxCachedAyahs = 5;
+  static const int _maxCachedAyahs = 10;
   static final LinkedHashMap<String, Uint8List> _audioCache =
       LinkedHashMap<String, Uint8List>();
 
