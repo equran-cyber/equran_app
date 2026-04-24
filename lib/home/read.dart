@@ -174,6 +174,7 @@ class _ReadPageState extends State<ReadPage> {
       BookmarkDB().addReadingEntry(_currentChapter, _currentVerse);
     }
     unawaited(_setKeepScreenOn(false));
+    unawaited(AndroidAudioDisplayMode.setIdleAudioFrameRateEnabled(true));
     unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
     unawaited(AndroidAudioDisplayMode.setAudioPlaybackActive(false));
     _playerPositionSubscription?.cancel();
@@ -192,6 +193,11 @@ class _ReadPageState extends State<ReadPage> {
 
   void _notifyAudioUserActivity() {
     AndroidAudioDisplayMode.notifyUserActivity();
+  }
+
+  void _setPlayerMinimizedState(bool minimized) {
+    _playerMinimized = minimized;
+    unawaited(AndroidAudioDisplayMode.setIdleAudioFrameRateEnabled(!minimized));
   }
 
   Future<T> _withLowFpsSuppressed<T>(Future<T> Function() action) async {
@@ -877,6 +883,7 @@ class _ReadPageState extends State<ReadPage> {
     setState(() {
       _playerVisible = true;
       _playerMounted = true;
+      _setPlayerMinimizedState(false);
       _playerMinimized = nextPlayerMinimized;
       _playerCollapseProgress = nextPlayerCollapseProgress;
       _isDraggingPlayerBar = false;
@@ -1348,6 +1355,7 @@ class _ReadPageState extends State<ReadPage> {
     _playbackRequestId++;
     setState(() {
       _playerVisible = false;
+      _setPlayerMinimizedState(false);
       _playerMinimized = false;
       _playerCollapseProgress = 0;
       _isDraggingPlayerBar = false;
@@ -1372,6 +1380,7 @@ class _ReadPageState extends State<ReadPage> {
       }
       _playerVisible = true;
       _playerMounted = true;
+      _setPlayerMinimizedState(false);
       _playerMinimized = false;
       _playerCollapseProgress = 0;
       _isDraggingPlayerBar = false;
@@ -2058,10 +2067,21 @@ class _ReadPageState extends State<ReadPage> {
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
+      onVerticalDragEnd: (details) {
+        final double velocity = details.primaryVelocity ?? 0;
+        if (velocity > 220) {
+          if (_playerMinimized) {
+            _stopBottomPlayer();
+          } else {
+            setState(() {
+              _setPlayerMinimizedState(true);
+            });
+          }
+        }
+      },
       onTap: _playerMinimized ? () => _setPlayerMinimized(false) : null,
       onVerticalDragStart: _handlePlayerBarDragStart,
       onVerticalDragUpdate: _handlePlayerBarDragUpdate,
-      onVerticalDragEnd: _handlePlayerBarDragEnd,
       onVerticalDragCancel: () => _playerBarDragDistance = 0,
       child: AnimatedSlide(
         offset: _playerVisible ? Offset.zero : const Offset(0, 1.15),
@@ -2297,7 +2317,11 @@ class _ReadPageState extends State<ReadPage> {
           padding: const EdgeInsets.only(top: 10),
           child: InkWell(
             borderRadius: BorderRadius.circular(AppRadii.large),
-            onTap: () => _setPlayerMinimized(false),
+            onTap: () {
+              setState(() {
+                _setPlayerMinimizedState(false);
+              });
+            },
             child: Row(
               children: <Widget>[
                 Icon(

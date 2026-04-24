@@ -17,6 +17,7 @@ class AndroidAudioDisplayMode {
   static Timer? _idleTimer;
   static DateTime? _lastUserActivityAt;
   static int _lowFpsSuppressionCount = 0;
+  static bool _idleAudioFrameRateEnabled = true;
 
   static bool get _isSupported => !kIsWeb && Platform.isAndroid;
 
@@ -35,7 +36,7 @@ class AndroidAudioDisplayMode {
     }
 
     await _applyPreferredFrameRate(_systemFrameRate);
-    if (_lowFpsSuppressionCount > 0) return;
+    if (_lowFpsSuppressionCount > 0 || !_idleAudioFrameRateEnabled) return;
     _scheduleIdleFrameRate();
   }
 
@@ -44,8 +45,26 @@ class AndroidAudioDisplayMode {
 
     _lastUserActivityAt = DateTime.now();
     unawaited(_applyPreferredFrameRate(_systemFrameRate));
-    if (_lowFpsSuppressionCount > 0) return;
+    if (_lowFpsSuppressionCount > 0 || !_idleAudioFrameRateEnabled) return;
     _idleTimer ??= Timer(idleDelay, () => _handleIdleTimer(idleDelay));
+  }
+
+  static Future<void> setIdleAudioFrameRateEnabled(bool enabled) async {
+    if (!_isSupported) return;
+    if (_idleAudioFrameRateEnabled == enabled) return;
+
+    _idleAudioFrameRateEnabled = enabled;
+    _idleTimer?.cancel();
+    _idleTimer = null;
+
+    if (!enabled) {
+      await _applyPreferredFrameRate(_systemFrameRate);
+      return;
+    }
+
+    if (_audioPlaybackActive && _lowFpsSuppressionCount == 0) {
+      _scheduleIdleFrameRate();
+    }
   }
 
   static Future<void> setLowFpsSuppressed(bool suppressed) async {
@@ -61,7 +80,9 @@ class AndroidAudioDisplayMode {
     if (_lowFpsSuppressionCount > 0) {
       _lowFpsSuppressionCount--;
     }
-    if (_lowFpsSuppressionCount == 0 && _audioPlaybackActive) {
+    if (_lowFpsSuppressionCount == 0 &&
+        _audioPlaybackActive &&
+        _idleAudioFrameRateEnabled) {
       _scheduleIdleFrameRate();
     }
   }
@@ -80,6 +101,10 @@ class AndroidAudioDisplayMode {
       return;
     }
     if (_lowFpsSuppressionCount > 0) {
+      _idleTimer = null;
+      return;
+    }
+    if (!_idleAudioFrameRateEnabled) {
       _idleTimer = null;
       return;
     }

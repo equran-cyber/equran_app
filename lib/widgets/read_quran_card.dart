@@ -274,10 +274,17 @@ class ReadQuranCard extends StatelessWidget {
             tooltip: 'More actions',
             position: PopupMenuPosition.under,
             padding: EdgeInsets.zero,
-            icon: Icon(
-              Icons.more_horiz_rounded,
-              size: iconSize,
-              color: colorScheme.onSurface.withAlpha(168),
+            borderRadius: BorderRadius.circular(10),
+            child: SizedBox(
+              height: actionSize,
+              width: actionSize,
+              child: Center(
+                child: Icon(
+                  Icons.more_horiz_rounded,
+                  size: iconSize,
+                  color: colorScheme.onSurface.withAlpha(168),
+                ),
+              ),
             ),
             onSelected: (action) {
               switch (action) {
