@@ -162,6 +162,7 @@ class _ReadPageState extends State<ReadPage> {
       BookmarkDB().addReadingEntry(_currentChapter, _currentVerse);
     }
     unawaited(_setKeepScreenOn(false));
+    unawaited(AndroidAudioDisplayMode.setIdleAudioFrameRateEnabled(true));
     unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
     unawaited(AndroidAudioDisplayMode.setAudioPlaybackActive(false));
     _playerPositionSubscription?.cancel();
@@ -180,6 +181,11 @@ class _ReadPageState extends State<ReadPage> {
 
   void _notifyAudioUserActivity() {
     AndroidAudioDisplayMode.notifyUserActivity();
+  }
+
+  void _setPlayerMinimizedState(bool minimized) {
+    _playerMinimized = minimized;
+    unawaited(AndroidAudioDisplayMode.setIdleAudioFrameRateEnabled(!minimized));
   }
 
   Future<T> _withLowFpsSuppressed<T>(Future<T> Function() action) async {
@@ -852,7 +858,7 @@ class _ReadPageState extends State<ReadPage> {
     setState(() {
       _playerVisible = true;
       _playerMounted = true;
-      _playerMinimized = false;
+      _setPlayerMinimizedState(false);
       _isVerseLoading = true;
       _continuousPlayback = continuous;
       if (!_repeatIntervalEnabled) {
@@ -1315,7 +1321,7 @@ class _ReadPageState extends State<ReadPage> {
     _playbackRequestId++;
     setState(() {
       _playerVisible = false;
-      _playerMinimized = false;
+      _setPlayerMinimizedState(false);
       _isVersePlaying = false;
       _isVerseLoading = false;
       _continuousPlayback = false;
@@ -1337,7 +1343,7 @@ class _ReadPageState extends State<ReadPage> {
       }
       _playerVisible = true;
       _playerMounted = true;
-      _playerMinimized = false;
+      _setPlayerMinimizedState(false);
       _playingVerse ??= _currentVerse;
       if (value) {
         _repeatStartVerse = _currentVerse;
@@ -1891,7 +1897,7 @@ class _ReadPageState extends State<ReadPage> {
             _stopBottomPlayer();
           } else {
             setState(() {
-              _playerMinimized = true;
+              _setPlayerMinimizedState(true);
             });
           }
         }
@@ -1957,7 +1963,7 @@ class _ReadPageState extends State<ReadPage> {
             borderRadius: BorderRadius.circular(AppRadii.large),
             onTap: () {
               setState(() {
-                _playerMinimized = false;
+                _setPlayerMinimizedState(false);
               });
             },
             child: Row(
