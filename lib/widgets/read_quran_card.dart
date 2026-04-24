@@ -346,7 +346,7 @@ class ReadQuranCard extends StatelessWidget {
                   const PopupMenuItem<_CardOverflowAction>(
                     value: _CardOverflowAction.share,
                     child: _OverflowMenuItem(
-                      icon: Icons.ios_share_rounded,
+                      icon: Icons.ios_share_outlined,
                       label: 'Share image',
                     ),
                   ),
@@ -450,6 +450,7 @@ class ReadQuranCard extends StatelessWidget {
             shareImageMode ? (compactShareContent ? 14 : 16) : 20,
           ),
           child: Column(
+            mainAxisSize: shareImageMode ? MainAxisSize.min : MainAxisSize.max,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               _buildHeader(context),
@@ -490,13 +491,14 @@ class ReadQuranCard extends StatelessWidget {
                   padding: EdgeInsets.only(top: compactShareContent ? 12 : 14),
                   child: Text(
                     trimmedTransliteration,
-                    textAlign: TextAlign.start,
+                    textAlign: TextAlign.justify,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontSize: (fontSizeTranslation - 2)
                           .clamp(12.0, 18.0)
                           .toDouble(),
                       color: colorScheme.onSurfaceVariant.withAlpha(178),
                       height: 1.45,
+                      
                       fontWeight: FontWeight.w400,
                     ),
                   ),
