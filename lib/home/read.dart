@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
-import 'dart:ui' show ImageByteFormat, ImageFilter, TextBox;
-
+import 'dart:ui' show ImageByteFormat, ImageFilter, TextBox, lerpDouble;
+import 'package:like_button/like_button.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:equran/backend/bookmark_db.dart';
 import 'package:equran/backend/library.dart'
@@ -73,8 +73,15 @@ class _ReadPageState extends State<ReadPage> {
   static const Size _shareImageSize = Size(1080, 1350);
   static const double _shareImageArabicFontSize = 60;
   static const double _shareImageTranslationFontSize = 22;
-  static const double _cardSwipeEdgeInset = 32;
-  static const double _cardSwipeMinVelocity = 450;
+  static const double _cardSwipeEdgeInset = 40;
+  static const double _cardSwipeMinVelocity = 300;
+  static const double _cardSwipeMinDistance = 82;
+  static const double _cardSwipeAssistDistance = 46;
+  static const double _cardSwipeAxisLockRatio = 1.18;
+  static const double _playerBarMinimizeDistance = 44;
+  static const double _playerBarExpandDistance = 34;
+  static const double _playerBarDismissDistance = 52;
+  static const double _playerBarMinVelocity = 220;
 
   final AudioPlayer _versePlayer = AudioPlayer();
   late int _currentVerse;
@@ -129,6 +136,11 @@ class _ReadPageState extends State<ReadPage> {
   double _scrubPrecision = 1.0;
   double? _cardSwipeStartX;
   double _cardSwipeDistance = 0;
+  double _cardSwipeVerticalDistance = 0;
+  double _playerBarDragDistance = 0;
+  double _playerCollapseProgress = 0;
+  double _playerBarDragStartProgress = 0;
+  bool _isDraggingPlayerBar = false;
   int? _transliterationChapter;
   List<String> _chapterTransliterations = const <String>[];
 
@@ -846,6 +858,7 @@ class _ReadPageState extends State<ReadPage> {
     int verse, {
     bool continuous = false,
     bool smoothScroll = false,
+    bool preservePlayerPresentationState = false,
   }) async {
     if (_isVerseLoading) return;
 
@@ -853,10 +866,20 @@ class _ReadPageState extends State<ReadPage> {
     unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(true));
 
     final int requestId = ++_playbackRequestId;
+    final bool shouldPreservePresentation =
+        preservePlayerPresentationState && _playerMounted && _playerVisible;
+    final bool nextPlayerMinimized = shouldPreservePresentation
+        ? _playerMinimized
+        : false;
+    final double nextPlayerCollapseProgress = shouldPreservePresentation
+        ? _playerCollapseProgress
+        : 0;
     setState(() {
       _playerVisible = true;
       _playerMounted = true;
-      _playerMinimized = false;
+      _playerMinimized = nextPlayerMinimized;
+      _playerCollapseProgress = nextPlayerCollapseProgress;
+      _isDraggingPlayerBar = false;
       _isVerseLoading = true;
       _continuousPlayback = continuous;
       if (!_repeatIntervalEnabled) {
@@ -1029,7 +1052,12 @@ class _ReadPageState extends State<ReadPage> {
       final int nextVerse = completedVerse >= _repeatEndVerse
           ? _repeatStartVerse
           : completedVerse + 1;
-      await _playVerse(_currentChapter, nextVerse, smoothScroll: true);
+      await _playVerse(
+        _currentChapter,
+        nextVerse,
+        smoothScroll: true,
+        preservePlayerPresentationState: true,
+      );
       return;
     }
 
@@ -1039,6 +1067,7 @@ class _ReadPageState extends State<ReadPage> {
         completedVerse + 1,
         continuous: true,
         smoothScroll: true,
+        preservePlayerPresentationState: true,
       );
       return;
     }
@@ -1320,6 +1349,8 @@ class _ReadPageState extends State<ReadPage> {
     setState(() {
       _playerVisible = false;
       _playerMinimized = false;
+      _playerCollapseProgress = 0;
+      _isDraggingPlayerBar = false;
       _isVersePlaying = false;
       _isVerseLoading = false;
       _continuousPlayback = false;
@@ -1342,6 +1373,8 @@ class _ReadPageState extends State<ReadPage> {
       _playerVisible = true;
       _playerMounted = true;
       _playerMinimized = false;
+      _playerCollapseProgress = 0;
+      _isDraggingPlayerBar = false;
       _playingVerse ??= _currentVerse;
       if (value) {
         _repeatStartVerse = _currentVerse;
@@ -1881,6 +1914,143 @@ class _ReadPageState extends State<ReadPage> {
     return '$minutes:$seconds';
   }
 
+  void _setPlayerMinimized(bool minimized) {
+    if (!mounted || _playerMinimized == minimized) return;
+    setState(() {
+      _playerMinimized = minimized;
+      _playerCollapseProgress = minimized ? 1 : 0;
+      _isDraggingPlayerBar = false;
+    });
+  }
+
+  void _handlePlayerBarDragStart(DragStartDetails details) {
+    _playerBarDragDistance = 0;
+    _playerBarDragStartProgress = _playerCollapseProgress;
+    _isDraggingPlayerBar = true;
+  }
+
+  void _handlePlayerBarDragUpdate(DragUpdateDetails details) {
+    _playerBarDragDistance += details.primaryDelta ?? 0;
+    final double width = MediaQuery.sizeOf(context).width;
+    final double dragRange = width < 900 ? 110 : 96;
+    setState(() {
+      _playerCollapseProgress =
+          (_playerBarDragStartProgress + (_playerBarDragDistance / dragRange))
+              .clamp(0.0, 1.0);
+    });
+  }
+
+  void _handlePlayerBarDragEnd(DragEndDetails details) {
+    final double velocity = details.primaryVelocity ?? 0;
+    final double distance = _playerBarDragDistance;
+    final double progress = _playerCollapseProgress;
+    _playerBarDragDistance = 0;
+    _isDraggingPlayerBar = false;
+
+    if (_playerMinimized) {
+      if (distance <= -_playerBarExpandDistance ||
+          velocity <= -_playerBarMinVelocity ||
+          progress <= 0.55) {
+        _setPlayerMinimized(false);
+        return;
+      }
+
+      if (distance >= _playerBarDismissDistance ||
+          velocity >= _playerBarMinVelocity) {
+        unawaited(_stopBottomPlayer());
+        return;
+      }
+      setState(() {
+        _playerCollapseProgress = 1;
+      });
+      return;
+    }
+
+    if (distance >= _playerBarMinimizeDistance ||
+        velocity >= _playerBarMinVelocity ||
+        progress >= 0.45) {
+      _setPlayerMinimized(true);
+      return;
+    }
+
+    setState(() {
+      _playerCollapseProgress = 0;
+    });
+  }
+
+  void _resetCardSwipeGesture() {
+    _cardSwipeStartX = null;
+    _cardSwipeDistance = 0;
+    _cardSwipeVerticalDistance = 0;
+  }
+
+  void _handleCardSwipeStart(DragStartDetails details) {
+    final MediaQueryData mediaQuery = MediaQuery.of(context);
+    final double width = mediaQuery.size.width;
+    final double startX = details.localPosition.dx;
+    final double leftSystemInset = mediaQuery.systemGestureInsets.left;
+    final double rightSystemInset = mediaQuery.systemGestureInsets.right;
+    final double leftBlockedEdge = max(
+      _cardSwipeEdgeInset,
+      leftSystemInset + 12,
+    );
+    final double rightBlockedEdge = max(
+      _cardSwipeEdgeInset,
+      rightSystemInset + 12,
+    );
+    final bool startsAtEdge =
+        startX <= leftBlockedEdge || startX >= width - rightBlockedEdge;
+
+    _cardSwipeStartX = startsAtEdge ? null : startX;
+    _cardSwipeDistance = 0;
+    _cardSwipeVerticalDistance = 0;
+  }
+
+  void _handleCardSwipeUpdate(DragUpdateDetails details) {
+    if (_cardSwipeStartX == null) return;
+    _cardSwipeDistance += details.delta.dx;
+    _cardSwipeVerticalDistance += details.delta.dy.abs();
+  }
+
+  void _handleCardSwipeEnd(DragEndDetails details) {
+    if (_cardSwipeStartX == null) {
+      _resetCardSwipeGesture();
+      return;
+    }
+
+    final double distance = _cardSwipeDistance;
+    final double verticalDistance = _cardSwipeVerticalDistance;
+    final double velocity = details.primaryVelocity ?? 0;
+    final double minDistance = min(
+      140.0,
+      max(_cardSwipeMinDistance, MediaQuery.sizeOf(context).width * 0.12),
+    );
+    final double assistedDistance = min(
+      84.0,
+      max(_cardSwipeAssistDistance, minDistance * 0.56),
+    );
+    final double horizontalDistance = distance.abs();
+    final bool isMostlyHorizontal =
+        horizontalDistance >= verticalDistance * _cardSwipeAxisLockRatio;
+
+    _resetCardSwipeGesture();
+
+    if (!isMostlyHorizontal) return;
+
+    final bool triggersForward =
+        distance <= -minDistance ||
+        (distance <= -assistedDistance && velocity <= -_cardSwipeMinVelocity);
+    final bool triggersBackward =
+        distance >= minDistance ||
+        (distance >= assistedDistance && velocity >= _cardSwipeMinVelocity);
+
+    if (triggersForward) {
+      _increase();
+    } else if (triggersBackward) {
+      _decrease();
+    }
+  }
+
   Widget _buildVersePlayerBar() {
     if (!_playerMounted) return const SizedBox.shrink();
 
@@ -1888,18 +2058,11 @@ class _ReadPageState extends State<ReadPage> {
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
-      onVerticalDragEnd: (details) {
-        final double velocity = details.primaryVelocity ?? 0;
-        if (velocity > 220) {
-          if (_playerMinimized) {
-            _stopBottomPlayer();
-          } else {
-            setState(() {
-              _playerMinimized = true;
-            });
-          }
-        }
-      },
+      onTap: _playerMinimized ? () => _setPlayerMinimized(false) : null,
+      onVerticalDragStart: _handlePlayerBarDragStart,
+      onVerticalDragUpdate: _handlePlayerBarDragUpdate,
+      onVerticalDragEnd: _handlePlayerBarDragEnd,
+      onVerticalDragCancel: () => _playerBarDragDistance = 0,
       child: AnimatedSlide(
         offset: _playerVisible ? Offset.zero : const Offset(0, 1.15),
         duration: const Duration(milliseconds: 260),
@@ -1920,19 +2083,21 @@ class _ReadPageState extends State<ReadPage> {
               return ValueListenableBuilder<Duration>(
                 valueListenable: _playerDurationValue,
                 builder: (context, duration, _) {
-                  if (_playerMinimized) {
-                    return _buildMinimizedVersePlayerBar(width);
-                  }
-                  return width < 900
-                      ? _buildCompactVersePlayerBar(
-                          position: position,
-                          duration: duration,
-                        )
-                      : _buildWidescreenVersePlayerBar(
-                          width,
-                          position: position,
-                          duration: duration,
-                        );
+                  return TweenAnimationBuilder<double>(
+                    tween: Tween<double>(end: _playerCollapseProgress),
+                    duration: _isDraggingPlayerBar
+                        ? Duration.zero
+                        : const Duration(milliseconds: 240),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, collapseProgress, _) {
+                      return _buildMorphingVersePlayerBar(
+                        width,
+                        collapseProgress: collapseProgress,
+                        position: position,
+                        duration: duration,
+                      );
+                    },
+                  );
                 },
               );
             },
@@ -1942,28 +2107,197 @@ class _ReadPageState extends State<ReadPage> {
     );
   }
 
-  Widget _buildMinimizedVersePlayerBar(double width) {
+  double _compactPlayerHorizontalInset(double width) {
+    return _viewMode ? _readCardHorizontalInset(width) : 9;
+  }
+
+  double _widescreenPlayerHorizontalInset(double width) {
+    return _viewMode ? _readCardHorizontalInset(width) : 12;
+  }
+
+  double _minimizedPlayerHorizontalInset(double width) {
+    return _viewMode ? _readCardHorizontalInset(width) : (width > 700 ? 16 : 8);
+  }
+
+  double _expandedPlayerBarHeight(double width) {
+    if (width < 900) return 146;
+    return width >= 1500 ? 148 : 142;
+  }
+
+  double _minimizedPlayerBarHeight() => 58;
+
+  Widget _buildMorphingVersePlayerBar(
+    double width, {
+    required double collapseProgress,
+    required Duration position,
+    required Duration duration,
+  }) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
-    final double horizontalInset = _viewMode
-        ? _readCardHorizontalInset(width)
-        : (width > 700 ? 16 : 8);
-    final int verse = _playingVerse ?? _currentVerse;
+    final double expandedInset = width < 900
+        ? _compactPlayerHorizontalInset(width)
+        : _widescreenPlayerHorizontalInset(width);
+    final double minimizedInset = _minimizedPlayerHorizontalInset(width);
+    final double horizontalInset = lerpDouble(
+      expandedInset,
+      minimizedInset,
+      collapseProgress,
+    )!;
+    final double bottomInset = lerpDouble(
+      width < 900 ? 10 : 12,
+      10,
+      collapseProgress,
+    )!;
+    final double verticalPadding = lerpDouble(
+      width < 900 ? 16 : 18,
+      10,
+      collapseProgress,
+    )!;
+    final double horizontalPadding = lerpDouble(
+      width < 900 ? 14 : 24,
+      14,
+      collapseProgress,
+    )!;
+    final double barHeight = lerpDouble(
+      _expandedPlayerBarHeight(width),
+      _minimizedPlayerBarHeight(),
+      collapseProgress,
+    )!;
+    final double expandedBodyHeight = _expandedPlayerBarHeight(width);
+    final double minimizedBodyHeight = _minimizedPlayerBarHeight();
+    final double shellHeightFactor = (barHeight / expandedBodyHeight).clamp(
+      0.0,
+      1.0,
+    );
+    final Widget expandedBody = width < 900
+        ? _buildCompactVersePlayerBarBody(
+            position: position,
+            duration: duration,
+          )
+        : _buildWidescreenVersePlayerBarBody(
+            width,
+            position: position,
+            duration: duration,
+          );
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(horizontalInset, 0, horizontalInset, 10),
+      padding: EdgeInsets.fromLTRB(
+        horizontalInset,
+        0,
+        horizontalInset,
+        bottomInset,
+      ),
       child: _buildFrostedPlayerSurface(
         colorScheme: colorScheme,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: EdgeInsets.symmetric(
+          horizontal: horizontalPadding,
+          vertical: verticalPadding,
+        ),
         child: SafeArea(
           top: false,
+          child: ClipRect(
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              heightFactor: shellHeightFactor,
+              child: SizedBox(
+                height: expandedBodyHeight,
+                child: Stack(
+                  children: <Widget>[
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      height: expandedBodyHeight,
+                      child: IgnorePointer(
+                        ignoring: collapseProgress > 0.12,
+                        child: Opacity(
+                          opacity: (1 - collapseProgress).clamp(0.0, 1.0),
+                          child: Transform.translate(
+                            offset: Offset(
+                              0,
+                              lerpDouble(
+                                0,
+                                expandedBodyHeight - minimizedBodyHeight,
+                                collapseProgress,
+                              )!,
+                            ),
+                            child: Transform.scale(
+                              scale: lerpDouble(1, 0.985, collapseProgress)!,
+                              alignment: Alignment.bottomCenter,
+                              child: SizedBox(
+                                width: double.infinity,
+                                height: expandedBodyHeight,
+                                child: expandedBody,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      height: minimizedBodyHeight,
+                      child: IgnorePointer(
+                        ignoring: collapseProgress < 0.88,
+                        child: Opacity(
+                          opacity: collapseProgress.clamp(0.0, 1.0),
+                          child: Transform.translate(
+                            offset: Offset(
+                              0,
+                              lerpDouble(20, 0, collapseProgress)!,
+                            ),
+                            child: Transform.scale(
+                              scale: lerpDouble(0.985, 1, collapseProgress)!,
+                              alignment: Alignment.bottomCenter,
+                              child: _buildMinimizedVersePlayerBarBody(
+                                theme,
+                                colorScheme,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMinimizedVersePlayerBarBody(
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
+    final int verse = _playingVerse ?? _currentVerse;
+
+    return Stack(
+      children: <Widget>[
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: Container(
+              width: 30,
+              height: 4,
+              decoration: BoxDecoration(
+                color: colorScheme.onSurfaceVariant.withAlpha(132),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 10),
           child: InkWell(
             borderRadius: BorderRadius.circular(AppRadii.large),
-            onTap: () {
-              setState(() {
-                _playerMinimized = false;
-              });
-            },
+            onTap: () => _setPlayerMinimized(false),
             child: Row(
               children: <Widget>[
                 Icon(
@@ -1997,7 +2331,7 @@ class _ReadPageState extends State<ReadPage> {
             ),
           ),
         ),
-      ),
+      ],
     );
   }
 
@@ -2007,99 +2341,82 @@ class _ReadPageState extends State<ReadPage> {
     return 6;
   }
 
-  Widget _buildCompactVersePlayerBar({
+  Widget _buildCompactVersePlayerBarBody({
     required Duration position,
     required Duration duration,
   }) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
-    final double width = MediaQuery.sizeOf(context).width;
-    final double horizontalInset = _viewMode
-        ? _readCardHorizontalInset(width)
-        : 9;
     final double progress = duration.inMilliseconds <= 0
         ? 0
         : (position.inMilliseconds / duration.inMilliseconds)
               .clamp(0.0, 1.0)
               .toDouble();
-    return Padding(
-      padding: EdgeInsets.fromLTRB(horizontalInset, 0, horizontalInset, 10),
-      child: _buildFrostedPlayerSurface(
-        colorScheme: colorScheme,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-        child: SafeArea(
-          top: false,
-          child: Stack(
+    return Stack(
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.only(top: 25),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.only(top: 25),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    SliderTheme(
-                      data: AppSliderTheme.standard(context),
-                      child: Slider(
-                        value: progress,
-                        onChanged: duration.inMilliseconds <= 0
-                            ? null
-                            : _seekBottomPlayer,
-                      ),
-                    ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: <Widget>[
-                        Text(
-                          _formatDuration(position),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        Text(
-                          _formatDuration(duration),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    _buildSharedPlayerControls(colorScheme, spacing: 4),
-                  ],
+              SliderTheme(
+                data: AppSliderTheme.standard(context),
+                child: Slider(
+                  value: progress,
+                  onChanged: duration.inMilliseconds <= 0
+                      ? null
+                      : _seekBottomPlayer,
                 ),
               ),
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    width: 34,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: colorScheme.onSurfaceVariant.withAlpha(140),
-                      borderRadius: BorderRadius.circular(999),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: <Widget>[
+                  Text(
+                    _formatDuration(position),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
-                ),
+                  Text(
+                    _formatDuration(duration),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 8),
+              _buildSharedPlayerControls(colorScheme, spacing: 4),
             ],
           ),
         ),
-      ),
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: Container(
+              width: 34,
+              height: 5,
+              decoration: BoxDecoration(
+                color: colorScheme.onSurfaceVariant.withAlpha(140),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildWidescreenVersePlayerBar(
+  Widget _buildWidescreenVersePlayerBarBody(
     double width, {
     required Duration position,
     required Duration duration,
   }) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
-    final double horizontalInset = _viewMode
-        ? _readCardHorizontalInset(width)
-        : 12;
     final double progress = duration.inMilliseconds <= 0
         ? 0
         : (position.inMilliseconds / duration.inMilliseconds)
@@ -2112,100 +2429,87 @@ class _ReadPageState extends State<ReadPage> {
       max(isCompactWidescreenLayout ? 460.0 : 320.0, width - 620),
     );
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(horizontalInset, 0, horizontalInset, 12),
-      child: _buildFrostedPlayerSurface(
-        colorScheme: colorScheme,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-        child: SafeArea(
-          top: false,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: width >= 1500 ? 132 : 124),
-            child: Stack(
-              alignment: Alignment.center,
-              children: <Widget>[
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: <Widget>[
-                    const Expanded(child: SizedBox.shrink()),
-                    SizedBox(width: centerGap),
-                    Expanded(
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            IconButton(
-                              tooltip: 'Dismiss player',
-                              onPressed: _stopBottomPlayer,
-                              icon: const Icon(Icons.close_rounded, size: 28),
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ],
-                        ),
+    return ConstrainedBox(
+      constraints: BoxConstraints(minHeight: width >= 1500 ? 132 : 124),
+      child: Stack(
+        alignment: Alignment.center,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              const Expanded(child: SizedBox.shrink()),
+              SizedBox(width: centerGap),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      IconButton(
+                        tooltip: 'Dismiss player',
+                        onPressed: _stopBottomPlayer,
+                        icon: const Icon(Icons.close_rounded, size: 28),
+                        color: colorScheme.onSurfaceVariant,
                       ),
-                    ),
-                  ],
-                ),
-                IgnorePointer(
-                  ignoring: false,
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(maxWidth: centerWidth),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          _buildSharedPlayerControls(colorScheme, spacing: 12),
-                          const SizedBox(height: 25),
-                          Row(
-                            children: <Widget>[
-                              SizedBox(
-                                width: 64,
-                                child: Text(
-                                  _formatDuration(position),
-                                  maxLines: 1,
-                                  softWrap: false,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: colorScheme.onSurfaceVariant,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: SliderTheme(
-                                  data: AppSliderTheme.standard(context),
-                                  child: Slider(
-                                    value: progress,
-                                    onChanged: duration.inMilliseconds <= 0
-                                        ? null
-                                        : _seekBottomPlayer,
-                                  ),
-                                ),
-                              ),
-                              SizedBox(
-                                width: 64,
-                                child: Text(
-                                  _formatDuration(duration),
-                                  maxLines: 1,
-                                  softWrap: false,
-                                  textAlign: TextAlign.right,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: colorScheme.onSurfaceVariant,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
+                    ],
                   ),
                 ),
-              ],
+              ),
+            ],
+          ),
+          Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: centerWidth),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  _buildSharedPlayerControls(colorScheme, spacing: 12),
+                  const SizedBox(height: 25),
+                  Row(
+                    children: <Widget>[
+                      SizedBox(
+                        width: 64,
+                        child: Text(
+                          _formatDuration(position),
+                          maxLines: 1,
+                          softWrap: false,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: SliderTheme(
+                          data: AppSliderTheme.standard(context),
+                          child: Slider(
+                            value: progress,
+                            onChanged: duration.inMilliseconds <= 0
+                                ? null
+                                : _seekBottomPlayer,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 64,
+                        child: Text(
+                          _formatDuration(duration),
+                          maxLines: 1,
+                          softWrap: false,
+                          textAlign: TextAlign.right,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -2234,14 +2538,17 @@ class _ReadPageState extends State<ReadPage> {
     required ColorScheme colorScheme,
     required EdgeInsetsGeometry padding,
     required Widget child,
+    double borderRadius = AppRadii.large,
   }) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(AppRadii.large),
+      borderRadius: BorderRadius.circular(borderRadius),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
           padding: padding,
-          decoration: _readPlayerDecoration(colorScheme),
+          decoration: _readPlayerDecoration(
+            colorScheme,
+          ).copyWith(borderRadius: BorderRadius.circular(borderRadius)),
           child: child,
         ),
       ),
@@ -2641,39 +2948,39 @@ class _ReadPageState extends State<ReadPage> {
     throw StateError('Unable to render share image: $lastError');
   }
 
-double _shareArabicFontSize() {
-  final ayahLength = _buildCardVerseText(
-    _currentChapter,
-    _currentVerse,
-  ).runes.length;
+  double _shareArabicFontSize() {
+    final ayahLength = _buildCardVerseText(
+      _currentChapter,
+      _currentVerse,
+    ).runes.length;
 
-  debugPrint('Ayah length: $ayahLength');
+    debugPrint('Ayah length: $ayahLength');
 
-  return switch (ayahLength) {
-    <= 80  => 86,
-    <= 140 => 76,
-    <= 220 => 66,
-    <= 360 => _shareImageArabicFontSize,
-    <= 520 => 52,
-    <= 760 => 46,
-    <= 980 => 42,
-    _      => 36,
-  };
-}
+    return switch (ayahLength) {
+      <= 80 => 86,
+      <= 140 => 76,
+      <= 220 => 66,
+      <= 360 => _shareImageArabicFontSize,
+      <= 520 => 52,
+      <= 760 => 46,
+      <= 980 => 42,
+      _ => 36,
+    };
+  }
 
-double _shareTranslationFontSize() {
-  final ayahLength = _buildCardVerseText(
-    _currentChapter,
-    _currentVerse,
-  ).runes.length;
+  double _shareTranslationFontSize() {
+    final ayahLength = _buildCardVerseText(
+      _currentChapter,
+      _currentVerse,
+    ).runes.length;
 
-  return switch (ayahLength) {
-    <= 360 => _shareImageTranslationFontSize,
-    <= 760 => 20,
-    <= 980 => 18,
-    _      => 17,
-  };
-}
+    return switch (ayahLength) {
+      <= 360 => _shareImageTranslationFontSize,
+      <= 760 => 20,
+      <= 980 => 18,
+      _ => 17,
+    };
+  }
 
   Widget _buildShareImageWidget() {
     final ThemeData theme = Theme.of(context);
@@ -2770,49 +3077,17 @@ double _shareTranslationFontSize() {
 
   Widget cardView({required double marginValue}) {
     final bool compactPlayerLayout = MediaQuery.sizeOf(context).width < 700;
+    final double expandedSpacer = compactPlayerLayout ? 392 : 304;
     final double bottomSpacer = _playerMounted
-        ? _playerMinimized
-              ? 206
-              : (compactPlayerLayout ? 392 : 304)
+        ? lerpDouble(expandedSpacer, 132, _playerCollapseProgress)!
         : 180;
 
     return SafeArea(
       child: GestureDetector(
-        onHorizontalDragStart: (details) {
-          final double width = MediaQuery.sizeOf(context).width;
-          final double startX = details.localPosition.dx;
-          final bool startsAtEdge =
-              startX <= _cardSwipeEdgeInset ||
-              startX >= width - _cardSwipeEdgeInset;
-          _cardSwipeStartX = startsAtEdge ? null : startX;
-          _cardSwipeDistance = 0;
-        },
-        onHorizontalDragUpdate: (details) {
-          if (_cardSwipeStartX == null) return;
-          _cardSwipeDistance += details.primaryDelta ?? 0;
-        },
-        onHorizontalDragEnd: (details) {
-          if (_cardSwipeStartX == null) return;
-          final double velocity = details.primaryVelocity ?? 0;
-          final double minDistance = min(
-            180.0,
-            max(96.0, MediaQuery.sizeOf(context).width * 0.16),
-          );
-          final double distance = _cardSwipeDistance;
-          _cardSwipeStartX = null;
-          _cardSwipeDistance = 0;
-
-          if (velocity < -_cardSwipeMinVelocity && distance < -minDistance) {
-            _increase();
-          } else if (velocity > _cardSwipeMinVelocity &&
-              distance > minDistance) {
-            _decrease();
-          }
-        },
-        onHorizontalDragCancel: () {
-          _cardSwipeStartX = null;
-          _cardSwipeDistance = 0;
-        },
+        onHorizontalDragStart: _handleCardSwipeStart,
+        onHorizontalDragUpdate: _handleCardSwipeUpdate,
+        onHorizontalDragEnd: _handleCardSwipeEnd,
+        onHorizontalDragCancel: _resetCardSwipeGesture,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
@@ -2934,9 +3209,11 @@ double _shareTranslationFontSize() {
     final double fontSize = SettingsDB().get("fontSize", defaultValue: 31.0);
     final double pageMargin = marginValue > 8 ? 16 : 8;
     final bool compactPlayerLayout = MediaQuery.sizeOf(context).width < 700;
-    final double playerBottomPadding = _playerMinimized
-        ? 96
-        : (compactPlayerLayout ? 260 : 190);
+    final double playerBottomPadding = lerpDouble(
+      compactPlayerLayout ? 260 : 190,
+      76,
+      _playerCollapseProgress,
+    )!;
 
     return SafeArea(
       key: _pageViewViewportKey,
@@ -3108,60 +3385,105 @@ double _shareTranslationFontSize() {
         context: context,
         showDragHandle: true,
         builder: (context) {
-          final String key = _favouriteKey(_currentChapter, verse);
-          final bool isFavourite = FavouritesDB().contains(key);
-          return SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                ListTile(
-                  title: Text(
-                    '${quran.getSurahName(_currentChapter)} • Ayah $verse',
-                  ),
-                  subtitle: const Text('Choose an action'),
+          bool isFavourite = FavouritesDB().contains(
+            _favouriteKey(_currentChapter, verse),
+          );
+          return StatefulBuilder(
+            builder: (context, setSheetState) {
+              return SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    ListTile(
+                      title: Text(
+                        '${quran.getSurahName(_currentChapter)} • Ayah $verse',
+                      ),
+                      subtitle: const Text('Choose an action'),
+                      trailing: SizedBox(
+  width: 48,
+  height: 48,
+  child: Center(
+    child: LikeButton(
+      size: 28,
+      isLiked: isFavourite,
+      circleColor: CircleColor(
+        start: Theme.of(context).colorScheme.primary.withAlpha(180),
+        end: Theme.of(context).colorScheme.primary,
+      ),
+      bubblesColor: BubblesColor(
+        dotPrimaryColor: Theme.of(context).colorScheme.primary,
+        dotSecondaryColor: Theme.of(context).colorScheme.secondary,
+      ),
+      likeBuilder: (bool liked) {
+        return Icon(
+          liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+          color: liked
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.onSurfaceVariant,
+          size: 28,
+        );
+      },
+      onTap: (bool liked) async {
+        if (liked) {
+          _toggleFavourite(verse, isFavourite: true);
+          if (!mounted) return false;
+
+          setSheetState(() {
+            isFavourite = false;
+          });
+
+          return false;
+        }
+
+        await _showFavouriteNotePrompt(verse);
+        if (!mounted) return liked;
+
+        setSheetState(() {
+          isFavourite = true;
+        });
+
+        return true;
+      },
+    ),
+  ),
+),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.play_circle_outline_rounded),
+                      title: const Text('Play this ayah'),
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        _playVerse(_currentChapter, verse, continuous: false);
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.ios_share_outlined),
+                      title: const Text('Share image'),
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        _shareCurrentAyahImage();
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.chrome_reader_mode_rounded),
+                      title: const Text('Show tafsir'),
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        _showTafsirSheet(verse);
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.notes_rounded),
+                      title: const Text('Ayah details'),
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        _showAyahDetailsSheet(verse);
+                      },
+                    ),
+                  ],
                 ),
-                ListTile(
-                  leading: const Icon(Icons.play_circle_outline_rounded),
-                  title: const Text('Play this ayah'),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    _playVerse(_currentChapter, verse, continuous: false);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.ios_share_outlined),
-                  title: const Text('Share image'),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    _shareCurrentAyahImage();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.chrome_reader_mode_rounded),
-                  title: const Text('Show tafsir'),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    _showTafsirSheet(verse);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    isFavourite
-                        ? Icons.favorite_rounded
-                        : Icons.favorite_border_rounded,
-                  ),
-                  title: Text(isFavourite ? 'Remove favourite' : 'Favourite'),
-                  onTap: () async {
-                    Navigator.of(context).pop();
-                    if (isFavourite) {
-                      _toggleFavourite(verse, isFavourite: true);
-                    } else {
-                      await _showFavouriteNotePrompt(verse);
-                    }
-                  },
-                ),
-              ],
-            ),
+              );
+            },
           );
         },
       );
@@ -3169,6 +3491,83 @@ double _shareTranslationFontSize() {
     if (!mounted) return;
     setState(() {
       _selectedInlineVerse = null;
+    });
+  }
+
+  Future<void> _showAyahDetailsSheet(int verse) async {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final String transliteration = _transliterationForVerse(verse).trim();
+    final String translation = quran.getVerseTranslation(
+      _currentChapter,
+      verse,
+      translation: quran.Translation.values[_selectedTranslationIndex()],
+    );
+
+    await _withLowFpsSuppressed(() {
+      return showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        builder: (context) {
+          return DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: 0.52,
+            minChildSize: 0.36,
+            maxChildSize: 0.86,
+            builder: (context, controller) {
+              return ListView(
+                controller: controller,
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+                children: <Widget>[
+                  Text(
+                    '${quran.getSurahName(_currentChapter)} • Ayah $verse',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    _buildCardVerseText(_currentChapter, verse),
+                    textDirection: TextDirection.rtl,
+                    textAlign: TextAlign.justify,
+                    style: TextStyle(
+                      fontFamily: 'Hafs',
+                      fontSize: SettingsDB().get(
+                        "fontSize",
+                        defaultValue: 31.0,
+                      ),
+                      height: 1.7,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                   ...<Widget>[
+                    const SizedBox(height: 18),
+                    Text(
+                      transliteration,
+                      textAlign: TextAlign.justify,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  Text(
+                    translation,
+                    textAlign: TextAlign.justify,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: colorScheme.onSurface,
+                      height: 1.55,
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
     });
   }
 
