@@ -71,10 +71,10 @@ class _ReadPageState extends State<ReadPage> {
     'com.app.equran/read_page',
   );
   static const Size _shareImageSize = Size(1080, 1350);
-  static const double _shareImageArabicFontSize = 58;
-  static const double _shareImageTranslationFontSize = 24;
-  static const double _cardSwipeEdgeInset = 36;
-  static const double _cardSwipeMinVelocity = 650;
+  static const double _shareImageArabicFontSize = 60;
+  static const double _shareImageTranslationFontSize = 22;
+  static const double _cardSwipeEdgeInset = 32;
+  static const double _cardSwipeMinVelocity = 450;
 
   final AudioPlayer _versePlayer = AudioPlayer();
   late int _currentVerse;
@@ -649,8 +649,10 @@ class _ReadPageState extends State<ReadPage> {
     AndroidAudioDisplayMode.notifyUserActivity();
     unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(true));
 
+    int? selectedVerse;
+
     try {
-      await showModalBottomSheet<void>(
+      selectedVerse = await showModalBottomSheet<int>(
         context: context,
         useSafeArea: true,
         isScrollControlled: true,
@@ -686,32 +688,8 @@ class _ReadPageState extends State<ReadPage> {
 
             isSubmitting = true;
             focusNode.unfocus();
-            final bool shouldRetargetContinuousPlayback =
-                _isVersePlaying &&
-                _continuousPlayback &&
-                !_repeatIntervalEnabled &&
-                value != (_playingVerse ?? _currentVerse);
-            _setVerse(value);
-            if (!_viewMode) {
-              _scrollToInlineVerse(value, highlight: true);
-            } else {
-              _scrollUp();
-            }
-            _updateDB();
-
             if (Navigator.of(sheetContext).canPop()) {
-              Navigator.of(sheetContext).pop();
-            }
-
-            if (shouldRetargetContinuousPlayback) {
-              unawaited(
-                _playVerse(
-                  _currentChapter,
-                  value,
-                  continuous: true,
-                  smoothScroll: !_viewMode,
-                ),
-              );
+              Navigator.of(sheetContext).pop(value);
             }
           }
 
@@ -796,6 +774,32 @@ class _ReadPageState extends State<ReadPage> {
       await WidgetsBinding.instance.endOfFrame;
       controller.dispose();
       focusNode.dispose();
+    }
+
+    if (selectedVerse == null || !mounted) return;
+
+    final bool shouldRetargetContinuousPlayback =
+        _isVersePlaying &&
+        _continuousPlayback &&
+        !_repeatIntervalEnabled &&
+        selectedVerse != (_playingVerse ?? _currentVerse);
+    _setVerse(selectedVerse);
+    if (!_viewMode) {
+      _scrollToInlineVerse(selectedVerse, highlight: true);
+    } else {
+      _scrollUp();
+    }
+    _updateDB();
+
+    if (shouldRetargetContinuousPlayback) {
+      unawaited(
+        _playVerse(
+          _currentChapter,
+          selectedVerse,
+          continuous: true,
+          smoothScroll: !_viewMode,
+        ),
+      );
     }
   }
 
@@ -2637,32 +2641,39 @@ class _ReadPageState extends State<ReadPage> {
     throw StateError('Unable to render share image: $lastError');
   }
 
-  double _shareArabicFontSize() {
-    final int ayahLength = _buildCardVerseText(
-      _currentChapter,
-      _currentVerse,
-    ).runes.length;
+double _shareArabicFontSize() {
+  final ayahLength = _buildCardVerseText(
+    _currentChapter,
+    _currentVerse,
+  ).runes.length;
 
-    if (ayahLength <= 80) return 86;
-    if (ayahLength <= 140) return 76;
-    if (ayahLength <= 220) return 66;
-    if (ayahLength <= 360) return _shareImageArabicFontSize;
-    if (ayahLength <= 520) return 44;
-    if (ayahLength <= 760) return 36;
-    if (ayahLength <= 980) return 30;
-    return 26;
-  }
+  debugPrint('Ayah length: $ayahLength');
 
-  double _shareTranslationFontSize() {
-    final int ayahLength = _buildCardVerseText(
-      _currentChapter,
-      _currentVerse,
-    ).runes.length;
+  return switch (ayahLength) {
+    <= 80  => 86,
+    <= 140 => 76,
+    <= 220 => 66,
+    <= 360 => _shareImageArabicFontSize,
+    <= 520 => 52,
+    <= 760 => 46,
+    <= 980 => 42,
+    _      => 36,
+  };
+}
 
-    if (ayahLength <= 360) return _shareImageTranslationFontSize;
-    if (ayahLength <= 760) return 22;
-    return 20;
-  }
+double _shareTranslationFontSize() {
+  final ayahLength = _buildCardVerseText(
+    _currentChapter,
+    _currentVerse,
+  ).runes.length;
+
+  return switch (ayahLength) {
+    <= 360 => _shareImageTranslationFontSize,
+    <= 760 => 20,
+    <= 980 => 18,
+    _      => 17,
+  };
+}
 
   Widget _buildShareImageWidget() {
     final ThemeData theme = Theme.of(context);
@@ -2705,39 +2716,48 @@ class _ReadPageState extends State<ReadPage> {
                 ),
               ),
               child: Center(
-                child: SizedBox(
-                  width: _shareImageSize.width,
-                  child: ReadQuranCard(
-                    currentChapter: _currentChapter,
-                    currentVerse: _currentVerse,
-                    totalVerses: _totalVerses,
-                    juzNumber: quran.getJuzNumber(
-                      _currentChapter,
-                      _currentVerse,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: _shareImageSize.width,
+                    minWidth: _shareImageSize.width,
+                  ),
+                  child: Align(
+                    alignment: Alignment.center,
+                    child: ReadQuranCard(
+                      currentChapter: _currentChapter,
+                      currentVerse: _currentVerse,
+                      totalVerses: _totalVerses,
+                      juzNumber: quran.getJuzNumber(
+                        _currentChapter,
+                        _currentVerse,
+                      ),
+                      basmala:
+                          _currentChapter != 1 &&
+                              _currentVerse == 1 &&
+                              _currentChapter != 9
+                          ? quran.basmala
+                          : null,
+                      verse: _buildCardVerseText(
+                        _currentChapter,
+                        _currentVerse,
+                      ),
+                      translation: quran.getVerseTranslation(
+                        _currentChapter,
+                        _currentVerse,
+                        translation:
+                            quran.Translation.values[SettingsDB().get(
+                              "translation",
+                              defaultValue: 0,
+                            )],
+                      ),
+                      transliteration: _transliterationForVerse(_currentVerse),
+                      showActions: false,
+                      showTransliteration: showTransliteration,
+                      showTranslation: showTranslation,
+                      shareImageMode: true,
+                      fontSize: _shareArabicFontSize(),
+                      fontSizeTranslation: _shareTranslationFontSize(),
                     ),
-                    basmala:
-                        _currentChapter != 1 &&
-                            _currentVerse == 1 &&
-                            _currentChapter != 9
-                        ? quran.basmala
-                        : null,
-                    verse: _buildCardVerseText(_currentChapter, _currentVerse),
-                    translation: quran.getVerseTranslation(
-                      _currentChapter,
-                      _currentVerse,
-                      translation:
-                          quran.Translation.values[SettingsDB().get(
-                            "translation",
-                            defaultValue: 0,
-                          )],
-                    ),
-                    transliteration: _transliterationForVerse(_currentVerse),
-                    showActions: false,
-                    showTransliteration: showTransliteration,
-                    showTranslation: showTranslation,
-                    shareImageMode: true,
-                    fontSize: _shareArabicFontSize(),
-                    fontSizeTranslation: _shareTranslationFontSize(),
                   ),
                 ),
               ),
@@ -3109,7 +3129,7 @@ class _ReadPageState extends State<ReadPage> {
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.ios_share_rounded),
+                  leading: const Icon(Icons.ios_share_outlined),
                   title: const Text('Share image'),
                   onTap: () {
                     Navigator.of(context).pop();
