@@ -7,6 +7,7 @@ import 'package:equran/backend/library.dart'
 import 'package:equran/utils/app_radii.dart';
 import 'package:equran/utils/reciter.dart';
 import 'package:flutter/material.dart';
+import 'package:quran/quran.dart' as quran;
 
 class _ReciterDownloadsGroup {
   const _ReciterDownloadsGroup({
@@ -27,6 +28,19 @@ class _ReciterDownloadsGroup {
 
   int get ayahCount =>
       ayahs.fold<int>(0, (total, entry) => total + entry.ayahCount);
+
+  int get sizeBytes =>
+      entries.fold<int>(0, (total, entry) => total + entry.sizeBytes);
+}
+
+class _SurahAyahDownloadsGroup {
+  const _SurahAyahDownloadsGroup({required this.surah, required this.entries});
+
+  final int surah;
+  final List<AudioDownloadEntry> entries;
+
+  int get ayahCount =>
+      entries.fold<int>(0, (total, entry) => total + entry.ayahCount);
 
   int get sizeBytes =>
       entries.fold<int>(0, (total, entry) => total + entry.sizeBytes);
@@ -266,7 +280,9 @@ class _DownloadsPageState extends State<DownloadsPage> {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
     final List<AudioDownloadEntry> surahs = group.surahs;
-    final List<AudioDownloadEntry> ayahs = group.ayahs;
+    final List<_SurahAyahDownloadsGroup> ayahSurahs = _groupAyahsBySurah(
+      group.ayahs,
+    );
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
@@ -293,12 +309,49 @@ class _DownloadsPageState extends State<DownloadsPage> {
             const Divider(height: 1),
             if (surahs.isNotEmpty) _buildGroupHeader('Surahs', surahs.length),
             ...surahs.map(_buildDownloadTile),
-            if (surahs.isNotEmpty && ayahs.isNotEmpty) const Divider(height: 1),
-            if (ayahs.isNotEmpty) _buildGroupHeader('Ayahs', group.ayahCount),
-            ...ayahs.map(_buildDownloadTile),
+            if (surahs.isNotEmpty && ayahSurahs.isNotEmpty)
+              const Divider(height: 1),
+            if (ayahSurahs.isNotEmpty)
+              _buildGroupHeader('Ayahs', group.ayahCount),
+            ...ayahSurahs.map(_buildAyahSurahTile),
           ],
         ),
       ),
+    );
+  }
+
+  List<_SurahAyahDownloadsGroup> _groupAyahsBySurah(
+    List<AudioDownloadEntry> ayahs,
+  ) {
+    final Map<int, List<AudioDownloadEntry>> grouped =
+        <int, List<AudioDownloadEntry>>{};
+    for (final AudioDownloadEntry entry in ayahs) {
+      grouped.putIfAbsent(entry.surah, () => <AudioDownloadEntry>[]).add(entry);
+    }
+
+    final List<_SurahAyahDownloadsGroup> groups = grouped.entries
+        .map(
+          (entry) =>
+              _SurahAyahDownloadsGroup(surah: entry.key, entries: entry.value),
+        )
+        .toList();
+    groups.sort((a, b) => a.surah.compareTo(b.surah));
+    return groups;
+  }
+
+  Widget _buildAyahSurahTile(_SurahAyahDownloadsGroup group) {
+    return ExpansionTile(
+      leading: const Icon(Icons.folder_outlined),
+      collapsedShape: const Border(),
+      shape: const Border(),
+      title: Text(quran.getSurahName(group.surah)),
+      subtitle: Text(
+        '${group.ayahCount} ayahs • ${AudioDownloadService.formatBytes(group.sizeBytes)}',
+      ),
+      childrenPadding: const EdgeInsets.fromLTRB(44, 0, 8, 8),
+      children: group.entries
+          .map((entry) => _buildNestedDownloadTile(entry))
+          .toList(growable: false),
     );
   }
 
@@ -331,6 +384,23 @@ class _DownloadsPageState extends State<DownloadsPage> {
   Widget _buildDownloadTile(AudioDownloadEntry entry) {
     return ListTile(
       leading: const Icon(Icons.offline_pin_rounded),
+      title: Text(entry.title),
+      subtitle: Text(
+        '${entry.subtitle} • ${AudioDownloadService.formatBytes(entry.sizeBytes)}',
+      ),
+      trailing: IconButton(
+        tooltip: 'Delete download',
+        onPressed: () => _deleteEntry(entry),
+        icon: const Icon(Icons.delete_outline_rounded),
+      ),
+    );
+  }
+
+  Widget _buildNestedDownloadTile(AudioDownloadEntry entry) {
+    return ListTile(
+      dense: true,
+      visualDensity: VisualDensity.compact,
+      contentPadding: const EdgeInsets.only(left: 12, right: 0),
       title: Text(entry.title),
       subtitle: Text(
         '${entry.subtitle} • ${AudioDownloadService.formatBytes(entry.sizeBytes)}',
