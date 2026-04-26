@@ -11,6 +11,9 @@ class ReadingEntry {
   @HiveField(2)
   DateTime timestamp;
 
-  ReadingEntry(
-      {required this.surah, required this.verse, required this.timestamp});
+  ReadingEntry({
+    required this.surah,
+    required this.verse,
+    required this.timestamp,
+  });
 }

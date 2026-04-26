@@ -15,11 +15,11 @@ class Surah {
   @HiveField(4)
   int verses;
 
-
-  Surah(
-      {required this.id,
-      required this.transliteration,
-      required this.name,
-      required this.verses,
-      required this.englishName});
+  Surah({
+    required this.id,
+    required this.transliteration,
+    required this.name,
+    required this.verses,
+    required this.englishName,
+  });
 }

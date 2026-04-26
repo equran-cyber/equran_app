@@ -95,11 +95,10 @@ class _LastReadCardState extends State<LastReadCard> {
                       switchInCurve: Curves.easeOutCubic,
                       switchOutCurve: Curves.easeInCubic,
                       transitionBuilder: (child, animation) {
-                        final Animation<Offset> offsetAnimation =
-                            Tween<Offset>(
-                              begin: const Offset(0.04, 0),
-                              end: Offset.zero,
-                            ).animate(animation);
+                        final Animation<Offset> offsetAnimation = Tween<Offset>(
+                          begin: const Offset(0.04, 0),
+                          end: Offset.zero,
+                        ).animate(animation);
 
                         return FadeTransition(
                           opacity: animation,
@@ -264,64 +263,129 @@ class _LastReadEntryCard extends StatelessWidget {
               ],
             ),
           ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Row(
+          child: Stack(
+            children: <Widget>[
+              Positioned(
+                top: 0,
+                right: 67, // six sevennnnnn
+                child: _BookmarkRibbon(
+                  color: colorScheme.primary.withAlpha(isLight ? 58 : 74),
+                  edgeColor: colorScheme.primary.withAlpha(isLight ? 70 : 92),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        'Last Read',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 24,
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            'Last Read',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 24,
+                            ),
+                          ),
                         ),
+                        const SizedBox(width: 30),
+                        PopupMenuButton<String>(
+                          tooltip: 'More options',
+                          icon: const Icon(Icons.more_vert_rounded),
+                          onSelected: (value) => onMenuAction(value, entry),
+                          itemBuilder: (BuildContext context) =>
+                              const <PopupMenuEntry<String>>[
+                                PopupMenuItem<String>(
+                                  value: 'delete',
+                                  child: ListTile(
+                                    leading: Icon(Icons.delete_outline_rounded),
+                                    title: Text('Delete'),
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                ),
+                              ],
+                        ),
+                      ],
+                    ),
+
+                    Text(
+                      getSurahName(keySurah),
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 18,
                       ),
                     ),
-                    PopupMenuButton<String>(
-                      tooltip: 'More options',
-                      icon: const Icon(Icons.more_vert_rounded),
-                      onSelected: (value) => onMenuAction(value, entry),
-                      itemBuilder: (BuildContext context) =>
-                          const <PopupMenuEntry<String>>[
-                            PopupMenuItem<String>(
-                              value: 'delete',
-                              child: ListTile(
-                                leading: Icon(Icons.delete_outline_rounded),
-                                title: Text('Delete'),
-                                contentPadding: EdgeInsets.zero,
-                              ),
-                            ),
-                          ],
+                    const SizedBox(height: 2),
+                    Text(
+                      'Ayah $verse',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 15,
+                      ),
                     ),
+                    const SizedBox(height: 4),
                   ],
                 ),
-                
-                Text(
-                  getSurahName(keySurah),
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 18,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Ayah $verse',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                    fontSize: 15,
-                  ),
-                ),
-                const SizedBox(height: 4),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
+  }
+}
+
+class _BookmarkRibbon extends StatelessWidget {
+  const _BookmarkRibbon({required this.color, required this.edgeColor});
+
+  final Color color;
+  final Color edgeColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: const Size(22, 58),
+      painter: _BookmarkRibbonPainter(color: color, edgeColor: edgeColor),
+    );
+  }
+}
+
+class _BookmarkRibbonPainter extends CustomPainter {
+  const _BookmarkRibbonPainter({required this.color, required this.edgeColor});
+
+  final Color color;
+  final Color edgeColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint fill = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    final Paint edge = Paint()
+      ..color = edgeColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+
+    final Path path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width, size.height)
+      ..lineTo(size.width / 2, size.height - 9)
+      ..lineTo(0, size.height)
+      ..close();
+
+    canvas.drawPath(path, fill);
+    canvas.drawPath(path, edge);
+  }
+
+  @override
+  bool shouldRepaint(covariant _BookmarkRibbonPainter oldDelegate) {
+    return color != oldDelegate.color || edgeColor != oldDelegate.edgeColor;
   }
 }

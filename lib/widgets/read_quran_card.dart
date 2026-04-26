@@ -3,6 +3,7 @@ import 'dart:async' show unawaited;
 import 'package:equran/backend/favourites_db.dart';
 import 'package:equran/backend/android_audio_display_mode.dart';
 import 'package:equran/utils/app_radii.dart';
+import 'package:equran/utils/quran_text.dart';
 import 'package:flutter/material.dart';
 
 const int _favouriteNoteMaxLength = 80;
@@ -74,7 +75,7 @@ class ReadQuranCard extends StatelessWidget {
   });
 
   String get _favouriteKey {
-    return '$currentChapter-${currentVerse.toString().padLeft(3, '0')}';
+    return favouriteAyahKey(currentChapter, currentVerse);
   }
 
   Future<void> _showInputPrompt(BuildContext context) async {
@@ -116,6 +117,7 @@ class ReadQuranCard extends StatelessWidget {
       );
     } finally {
       unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
+      await WidgetsBinding.instance.endOfFrame;
       textController.dispose();
     }
   }
@@ -505,7 +507,7 @@ class ReadQuranCard extends StatelessWidget {
                           .toDouble(),
                       color: colorScheme.onSurfaceVariant.withAlpha(178),
                       height: 1.45,
-                      
+
                       fontWeight: FontWeight.w400,
                     ),
                   ),
@@ -582,11 +584,10 @@ class _OverflowMenuItem extends StatelessWidget {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
 
     return Row(
-      mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         Icon(icon, size: 19, color: colorScheme.onSurface.withAlpha(190)),
         const SizedBox(width: 12),
-        Text(label),
+        Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
       ],
     );
   }

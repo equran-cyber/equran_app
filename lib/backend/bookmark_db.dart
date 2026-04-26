@@ -29,10 +29,7 @@ class BookmarkDB extends BaseDB {
       await delete(entry.key);
     }
 
-    await put(
-      surah,
-      ReadingEntry(surah: surah, verse: verse, timestamp: now),
-    );
+    await put(surah, ReadingEntry(surah: surah, verse: verse, timestamp: now));
 
     while (length > 7) {
       removeOldestEntry();

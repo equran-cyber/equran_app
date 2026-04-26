@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 
 class NumberBadge extends StatelessWidget {
-  const NumberBadge({
-    super.key,
-    required this.label,
-    this.size = 44,
-  });
+  const NumberBadge({super.key, required this.label, this.size = 44});
 
   final String label;
   final double size;

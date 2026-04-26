@@ -31,11 +31,6 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  Future<String> getVersion() async {
-    final info = await PackageInfo.fromPlatform();
-    return "${info.version}+${info.buildNumber}";
-  }
-
   @override
   Widget build(BuildContext context) {
     final bool cardViewEnabled = SettingsDB().get(
@@ -458,6 +453,7 @@ class _SettingsPageState extends State<SettingsPage> {
               await BackupService.restoreFromPickedFile();
           if (!context.mounted) return;
           await _applyRestoredTheme(context);
+          if (!context.mounted) return;
           setState(() {});
           _showMessage(
             context,
@@ -486,18 +482,6 @@ class _SettingsPageState extends State<SettingsPage> {
         message: "WARNING: Are you sure you want to clear favourites?",
         onConfirm: () async => FavouritesDB().clear(),
       ),
-    );
-  }
-
-  Widget _buildVersionTile(BuildContext context) {
-    return FutureBuilder(
-      future: getVersion(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const ListTile(title: Text("Loading..."));
-        }
-        return ListTile(title: Text("Version: ${snapshot.data}"));
-      },
     );
   }
 
@@ -537,7 +521,9 @@ class _SettingsPageState extends State<SettingsPage> {
           TextButton(
             onPressed: () async {
               await onConfirm();
-              Navigator.of(context).pop();
+              if (context.mounted) {
+                Navigator.of(context).pop();
+              }
             },
             child: Text(
               "YES",

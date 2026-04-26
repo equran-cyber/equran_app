@@ -10,4 +10,6 @@ export 'playback_rate.dart';
 export 'quran_card.dart';
 export 'quran_card_list.dart';
 export 'read_quran_card.dart';
+export 'read_progress_bar.dart';
+export 'read_verse_player_bar.dart';
 export 'settings_switch.dart';

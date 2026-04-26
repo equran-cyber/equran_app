@@ -1,11 +1,12 @@
 import 'package:equran/backend/library.dart';
 import 'package:equran/home/library.dart';
 import 'package:equran/utils/app_radii.dart';
+import 'package:equran/utils/saved_ayah.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:quran/quran.dart' as quran;
 
-const int _favouriteNoteMaxLength = 80;
+const int _favouriteNoteMaxLength = 90;
 
 class FavouritesList extends StatefulWidget {
   const FavouritesList({super.key, required this.searchQuery});
@@ -35,7 +36,8 @@ class _FavouritesListState extends State<FavouritesList> {
     return ValueListenableBuilder(
       valueListenable: FavouritesDB().listener,
       builder: (BuildContext context, Box<dynamic> box, child) {
-        final List<_SavedAyah> items = _savedAyahs(widget.searchQuery);
+        final List<SavedAyah> items = _savedAyahs(widget.searchQuery);
+        final List<_FavouriteSurahGroup> groups = _groupBySurah(items);
 
         if (items.isEmpty) {
           return _buildEmptyState(context);
@@ -45,16 +47,15 @@ class _FavouritesListState extends State<FavouritesList> {
           controller: scrollController,
           thumbVisibility: true,
           interactive: true,
-          child: ListView.separated(
+          child: ListView.builder(
             controller: scrollController,
             physics: const BouncingScrollPhysics(),
-            itemCount: items.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 6),
+            itemCount: groups.length,
             itemBuilder: (context, index) {
-              final _SavedAyah ayah = items[index];
-              return _SavedAyahTile(
-                key: ValueKey<String>(ayah.key),
-                ayah: ayah,
+              final _FavouriteSurahGroup group = groups[index];
+              return _FavouriteSurahSection(
+                key: ValueKey<int>(group.surah),
+                group: group,
                 controller: _controller,
               );
             },
@@ -108,32 +109,120 @@ class _FavouritesListState extends State<FavouritesList> {
     );
   }
 
-  List<_SavedAyah> _savedAyahs(String searchQuery) {
-    final keys = FavouritesDB().getKeys().toList();
-    final List<_SavedAyah> parsed = <_SavedAyah>[];
-    final String query = searchQuery.trim().toLowerCase();
-    for (final dynamic raw in keys) {
-      final key = raw.toString();
-      final parts = key.split('-');
-      if (parts.length != 2) continue;
-      final int? surah = int.tryParse(parts[0]);
-      final int? verse = int.tryParse(parts[1]);
-      if (surah == null || verse == null) continue;
-      final _SavedAyah ayah = _SavedAyah(
-        key: key,
-        surah: surah,
-        verse: verse,
-        note: FavouritesDB().get(key, defaultValue: ''),
-      );
-      if (query.isEmpty || ayah.matches(query)) {
-        parsed.add(ayah);
-      }
+  List<SavedAyah> _savedAyahs(String searchQuery) {
+    return savedAyahsFromKeys(
+      keys: FavouritesDB().getKeys(),
+      noteForKey: (key) => FavouritesDB().get(key, defaultValue: ''),
+      searchQuery: searchQuery,
+    );
+  }
+
+  List<_FavouriteSurahGroup> _groupBySurah(List<SavedAyah> ayahs) {
+    final Map<int, List<SavedAyah>> bySurah = <int, List<SavedAyah>>{};
+
+    for (final SavedAyah ayah in ayahs) {
+      bySurah.putIfAbsent(ayah.surah, () => <SavedAyah>[]).add(ayah);
     }
-    parsed.sort((a, b) {
-      if (a.surah != b.surah) return a.surah.compareTo(b.surah);
-      return a.verse.compareTo(b.verse);
-    });
-    return parsed;
+
+    return bySurah.entries.map((entry) {
+      return _FavouriteSurahGroup(surah: entry.key, ayahs: entry.value);
+    }).toList();
+  }
+}
+
+class _FavouriteSurahGroup {
+  const _FavouriteSurahGroup({required this.surah, required this.ayahs});
+
+  final int surah;
+  final List<SavedAyah> ayahs;
+}
+
+class _FavouriteSurahSection extends StatelessWidget {
+  const _FavouriteSurahSection({
+    super.key,
+    required this.group,
+    required this.controller,
+  });
+
+  final _FavouriteSurahGroup group;
+  final TextEditingController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(AppRadii.medium),
+          border: Border.all(color: colorScheme.outlineVariant.withAlpha(150)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: colorScheme.secondaryContainer,
+                      borderRadius: BorderRadius.circular(AppRadii.small),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      group.surah.toString().padLeft(2, '0'),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: colorScheme.onSecondaryContainer,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          quran.getSurahName(group.surah),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          '${group.ayahs.length} favourited ${group.ayahs.length == 1 ? 'ayah' : 'ayahs'}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              for (int index = 0; index < group.ayahs.length; index++) ...[
+                _SavedAyahTile(
+                  key: ValueKey<String>(group.ayahs[index].key),
+                  ayah: group.ayahs[index],
+                  controller: controller,
+                  isLast: index == group.ayahs.length - 1,
+                ),
+                if (index != group.ayahs.length - 1) const SizedBox(height: 6),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -142,10 +231,12 @@ class _SavedAyahTile extends StatefulWidget {
     super.key,
     required this.ayah,
     required this.controller,
+    required this.isLast,
   });
 
-  final _SavedAyah ayah;
+  final SavedAyah ayah;
   final TextEditingController controller;
+  final bool isLast;
 
   @override
   State<_SavedAyahTile> createState() => _SavedAyahTileState();
@@ -160,7 +251,7 @@ class _SavedAyahTileState extends State<_SavedAyahTile> {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
-    final _SavedAyah ayah = widget.ayah;
+    final SavedAyah ayah = widget.ayah;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppRadii.medium),
@@ -225,14 +316,17 @@ class _SavedAyahTileState extends State<_SavedAyahTile> {
                 duration: const Duration(milliseconds: 160),
                 curve: Curves.easeOutCubic,
                 transform: Matrix4.translationValues(-_dragOffset, 0, 0),
-                child: Card(
-                  margin: EdgeInsets.zero,
-                  elevation: 1,
+                child: Material(
+                  color: colorScheme.surface,
+                  elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppRadii.medium),
+                    borderRadius: BorderRadius.circular(AppRadii.small),
+                    side: BorderSide(
+                      color: colorScheme.outlineVariant.withAlpha(95),
+                    ),
                   ),
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(AppRadii.medium),
+                    borderRadius: BorderRadius.circular(AppRadii.small),
                     onTap: () {
                       if (_dragOffset > 0) {
                         _close();
@@ -247,44 +341,85 @@ class _SavedAyahTileState extends State<_SavedAyahTile> {
                         ),
                       );
                     },
-                    child: ListTile(
-                      leading: Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: colorScheme.secondaryContainer,
-                          shape: BoxShape.circle,
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          ayah.surah.toString().padLeft(2, '0'),
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: colorScheme.onSecondaryContainer,
-                          ),
-                        ),
-                      ),
-                      title: Text(
-                        quran.getSurahName(ayah.surah),
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      subtitle: Column(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                      child: IntrinsicHeight(
+                        child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Text('Ayah ${ayah.verse}'),
-                          if (ayah.note.isNotEmpty)
-                            Text(
-                              ayah.note,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: colorScheme.onSurfaceVariant,
+                          Column(
+                            children: <Widget>[
+                              Container(
+                                width: 26,
+                                height: 26,
+                                decoration: BoxDecoration(
+                                  color: colorScheme.primaryContainer.withAlpha(
+                                    175,
+                                  ),
+                                  shape: BoxShape.circle,
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  ayah.verse.toString(),
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: colorScheme.onPrimaryContainer,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
                               ),
+                              if (ayah.note.isNotEmpty)
+                                Expanded(
+                                  child: Container(
+                                  width: 1,
+                                  
+                                  margin: const EdgeInsets.only(top: 4),
+                                  color: colorScheme.outlineVariant,
+                                ),
+                                )
+                            ],
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  'Ayah ${ayah.verse}',
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                if (ayah.note.isNotEmpty) ...<Widget>[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    ayah.note,
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                      height: 1.25,
+                                    ),
+                                  ),
+                                ] else
+                                  Text(
+                                    quran.getSurahNameArabic(ayah.surah),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                              ],
                             ),
+                          ),
+                          const SizedBox(width: 10),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                         ],
                       ),
+                      )
                     ),
                   ),
                 ),
@@ -300,29 +435,6 @@ class _SavedAyahTileState extends State<_SavedAyahTile> {
     setState(() {
       _dragOffset = 0;
     });
-  }
-}
-
-class _SavedAyah {
-  final String key;
-  final int surah;
-  final int verse;
-  final String note;
-
-  _SavedAyah({
-    required this.key,
-    required this.surah,
-    required this.verse,
-    required this.note,
-  });
-
-  bool matches(String query) {
-    return quran.getSurahName(surah).toLowerCase().contains(query) ||
-        quran.getSurahNameArabic(surah).toLowerCase().contains(query) ||
-        note.toLowerCase().contains(query) ||
-        surah.toString() == query ||
-        verse.toString() == query ||
-        'ayah $verse'.contains(query);
   }
 }
 

@@ -1,37 +1,9 @@
 import 'package:equran/backend/library.dart'
-    show
-        AudioDownloadEntry,
-        AudioDownloadService,
-        AudioDownloadType,
-        AudioDownloadsSummary;
+    show AudioDownloadEntry, AudioDownloadService, AudioDownloadsSummary;
 import 'package:equran/utils/app_radii.dart';
-import 'package:equran/utils/reciter.dart';
+import 'package:equran/utils/downloads_grouping.dart';
 import 'package:flutter/material.dart';
 import 'package:quran/quran.dart' as quran;
-
-class _ReciterDownloadsGroup {
-  const _ReciterDownloadsGroup({
-    required this.reciterCode,
-    required this.entries,
-  });
-
-  final String reciterCode;
-  final List<AudioDownloadEntry> entries;
-
-  List<AudioDownloadEntry> get surahs => entries
-      .where((entry) => entry.type == AudioDownloadType.surah)
-      .toList(growable: false);
-
-  List<AudioDownloadEntry> get ayahs => entries
-      .where((entry) => entry.type != AudioDownloadType.surah)
-      .toList(growable: false);
-
-  int get ayahCount =>
-      ayahs.fold<int>(0, (total, entry) => total + entry.ayahCount);
-
-  int get sizeBytes =>
-      entries.fold<int>(0, (total, entry) => total + entry.sizeBytes);
-}
 
 class _SurahAyahDownloadsGroup {
   const _SurahAyahDownloadsGroup({required this.surah, required this.entries});
@@ -142,8 +114,8 @@ class _DownloadsPageState extends State<DownloadsPage> {
         }
 
         final AudioDownloadsSummary summary = snapshot.data!;
-        final List<_ReciterDownloadsGroup> reciterGroups =
-            _groupDownloadsByReciter(summary);
+        final List<ReciterDownloadsGroup> reciterGroups =
+            groupDownloadsByReciter(summary);
         return RefreshIndicator(
           onRefresh: () async => _refresh(),
           child: ListView(
@@ -221,32 +193,6 @@ class _DownloadsPageState extends State<DownloadsPage> {
     );
   }
 
-  List<_ReciterDownloadsGroup> _groupDownloadsByReciter(
-    AudioDownloadsSummary summary,
-  ) {
-    final Map<String, List<AudioDownloadEntry>> grouped =
-        <String, List<AudioDownloadEntry>>{};
-    for (final AudioDownloadEntry entry in summary.allDownloads) {
-      grouped
-          .putIfAbsent(entry.reciterCode, () => <AudioDownloadEntry>[])
-          .add(entry);
-    }
-
-    final List<_ReciterDownloadsGroup> groups = grouped.entries
-        .map(
-          (entry) => _ReciterDownloadsGroup(
-            reciterCode: entry.key,
-            entries: entry.value,
-          ),
-        )
-        .toList();
-    groups.sort(
-      (a, b) =>
-          _reciterName(a.reciterCode).compareTo(_reciterName(b.reciterCode)),
-    );
-    return groups;
-  }
-
   Widget _buildEmptyDownloadsCard() {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
@@ -276,7 +222,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
     );
   }
 
-  Widget _buildReciterSection(_ReciterDownloadsGroup group) {
+  Widget _buildReciterSection(ReciterDownloadsGroup group) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
     final List<AudioDownloadEntry> surahs = group.surahs;
@@ -297,7 +243,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
             ListTile(
               leading: const Icon(Icons.record_voice_over_rounded),
               title: Text(
-                _reciterName(group.reciterCode),
+                reciterDisplayName(group.reciterCode),
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
@@ -411,14 +357,5 @@ class _DownloadsPageState extends State<DownloadsPage> {
         icon: const Icon(Icons.delete_outline_rounded),
       ),
     );
-  }
-
-  String _reciterName(String reciterCode) {
-    final String normalizedCode = AppReciter.normalizeCode(reciterCode);
-    final bool isKnownReciter = AppReciter.values.any(
-      (reciter) => reciter.code == normalizedCode,
-    );
-    if (!isKnownReciter) return 'Reciter $reciterCode';
-    return AppReciter.fromCode(normalizedCode).englishName;
   }
 }

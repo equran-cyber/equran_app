@@ -1,4 +1,3 @@
-import 'package:adaptive_theme/adaptive_theme.dart';
 import 'package:equran/backend/library.dart';
 import 'package:equran/utils/app_radii.dart';
 import 'package:equran/utils/debouncer.dart';
@@ -288,13 +287,16 @@ class _MainPageState extends State<MainPage>
   Widget _buildTabLabel(IconData icon, String label) {
     return Tab(
       height: 42,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(icon, size: 19),
-          const SizedBox(width: 6),
-          Text(label),
-        ],
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, size: 19),
+            const SizedBox(width: 6),
+            Text(label),
+          ],
+        ),
       ),
     );
   }
@@ -383,20 +385,6 @@ class _MainPageState extends State<MainPage>
     _ => "Surah name or number...",
   };
 
-  Future<void> _toggleQuickTheme() async {
-    final ThemeData theme = Theme.of(context);
-    final AdaptiveThemeMode mode = AdaptiveTheme.of(context).mode;
-    final bool isDark = mode.isSystem
-        ? theme.brightness == Brightness.dark
-        : mode.isDark;
-    final AdaptiveThemeMode nextMode = isDark
-        ? AdaptiveThemeMode.light
-        : AdaptiveThemeMode.dark;
-    await SettingsDB().put('themeMode', nextMode.isDark ? 'dark' : 'light');
-    if (!mounted) return;
-    AdaptiveTheme.of(context).setThemeMode(nextMode);
-  }
-
   Widget? _buildLastReadCard() {
     if (SettingsDB().get("showLastRead", defaultValue: true) != true) {
       return null;
@@ -422,10 +410,7 @@ class _MainPageState extends State<MainPage>
           switchInCurve: Curves.easeOutCubic,
           switchOutCurve: Curves.easeInCubic,
           transitionBuilder: (child, animation) {
-            return FadeTransition(
-              opacity: animation,
-              child: child,
-            );
+            return FadeTransition(opacity: animation, child: child);
           },
           child: currentChild,
         );

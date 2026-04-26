@@ -1,5 +1,6 @@
 import 'package:equran/backend/library.dart' show SettingsDB;
 import 'package:equran/utils/app_slider_theme.dart';
+import 'package:equran/utils/number_formatting.dart';
 import 'package:flutter/material.dart';
 import 'package:quran/quran.dart' as quran;
 
@@ -88,7 +89,7 @@ class _FontSliderState extends State<FontSlider> {
                     value: value,
                     min: min,
                     max: max,
-                    label: _formatToThreeSignificantFigures(value),
+                    label: formatCompactNumber(value),
                     onChanged: onChanged,
                   ),
                 ),
@@ -98,7 +99,7 @@ class _FontSliderState extends State<FontSlider> {
               SizedBox(
                 width: 56,
                 child: Text(
-                  _formatToThreeSignificantFigures(value),
+                  formatCompactNumber(value),
                   textAlign: TextAlign.end,
                 ),
               ),
@@ -108,13 +109,6 @@ class _FontSliderState extends State<FontSlider> {
       ),
     );
   }
-}
-
-String _formatToThreeSignificantFigures(double value) {
-  final String compact = value.toStringAsPrecision(3);
-  return compact.contains('.')
-      ? compact.replaceFirst(RegExp(r'\.?0+$'), '')
-      : compact;
 }
 
 class _FontPreview extends StatelessWidget {

@@ -81,10 +81,7 @@ class QuranCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Row(
                       children: <Widget>[
-                        Text(
-                          '${surah.verses} Ayahs',
-                          style: versesStyle,
-                        ),
+                        Text('${surah.verses} Ayahs', style: versesStyle),
                       ],
                     ),
                   ],

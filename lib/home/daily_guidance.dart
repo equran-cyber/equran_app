@@ -37,13 +37,15 @@ class _DailyGuidancePageState extends State<DailyGuidancePage> {
           final List<DailyGuidanceCategory> categories =
               snapshot.data ?? const <DailyGuidanceCategory>[];
           final List<DailyGuidanceCategory> filtered = categories
-              .map((category) => DailyGuidanceCategory(
-                    id: category.id,
-                    title: category.title,
-                    items: category.items
-                        .where((entry) => entry.matchesQuery(_query))
-                        .toList(),
-                  ))
+              .map(
+                (category) => DailyGuidanceCategory(
+                  id: category.id,
+                  title: category.title,
+                  items: category.items
+                      .where((entry) => entry.matchesQuery(_query))
+                      .toList(),
+                ),
+              )
               .where((category) => category.items.isNotEmpty)
               .toList();
 
@@ -135,7 +137,11 @@ class _GuidanceCard extends StatelessWidget {
             entry.arabic,
             textAlign: TextAlign.right,
             textDirection: TextDirection.rtl,
-            style: const TextStyle(fontFamily: 'Hafs', fontSize: 28, height: 1.5),
+            style: const TextStyle(
+              fontFamily: 'Hafs',
+              fontSize: 28,
+              height: 1.5,
+            ),
           ),
           if (entry.transliteration.isNotEmpty) ...<Widget>[
             const SizedBox(height: 8),

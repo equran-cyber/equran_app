@@ -10,6 +10,18 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+      - run: flutter test
+
   version:
     runs-on: ubuntu-latest
     outputs:
@@ -72,7 +84,7 @@ jobs:
           fi
 
   build-android:
-    needs: version
+    needs: [version, test]
     if: needs.version.outputs.should_run == 'true'
     runs-on: ubuntu-latest
 
@@ -111,7 +123,7 @@ jobs:
           path: build/app/outputs/flutter-apk/app-*-release.apk
 
   build-linux:
-    needs: version
+    needs: [version, test]
     if: needs.version.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -150,7 +162,7 @@ jobs:
           path: build/linux/x64/release/linux-release.zip
 
   build-windows:
-    needs: version
+    needs: [version, test]
     if: needs.version.outputs.should_run == 'true'
     runs-on: windows-latest
     steps:
@@ -176,7 +188,7 @@ jobs:
           path: build/windows/windows-release.zip
 
   release:
-    needs: [version, build-android, build-linux, build-windows]
+    needs: [version, test, build-android, build-linux, build-windows]
     if: needs.version.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:

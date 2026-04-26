@@ -119,22 +119,18 @@ class _JuzMetaChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: Color.alphaBlend(
-          colorScheme.secondary.withOpacity(0.10),
-          colorScheme.secondaryContainer.withOpacity(0.78),
+          colorScheme.secondary.withValues(alpha: 0.10),
+          colorScheme.secondaryContainer.withValues(alpha: 0.78),
         ),
         borderRadius: BorderRadius.circular(AppRadii.small),
         border: Border.all(
-          color: colorScheme.secondary.withOpacity(0.22),
+          color: colorScheme.secondary.withValues(alpha: 0.22),
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Icon(
-            icon,
-            size: 15,
-            color: colorScheme.onSurfaceVariant,
-          ),
+          Icon(icon, size: 15, color: colorScheme.onSurfaceVariant),
           const SizedBox(width: 6),
           Text(
             label,

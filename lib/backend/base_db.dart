@@ -19,8 +19,10 @@ class BaseDB {
       return;
     }
 
-    final Future<Box<dynamic>> openingFuture =
-        _openingBoxes.putIfAbsent(boxName, () => Hive.openBox(boxName));
+    final Future<Box<dynamic>> openingFuture = _openingBoxes.putIfAbsent(
+      boxName,
+      () => Hive.openBox(boxName),
+    );
 
     try {
       _box = await openingFuture;
@@ -62,7 +64,9 @@ class BaseDB {
   Box _requireBox() {
     final box = _box;
     if (box == null) {
-      throw StateError('Box "$boxName" is not initialized. Call initBox() first.');
+      throw StateError(
+        'Box "$boxName" is not initialized. Call initBox() first.',
+      );
     }
     return box;
   }

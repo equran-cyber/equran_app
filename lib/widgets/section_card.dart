@@ -33,7 +33,7 @@ class SectionCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Divider(
                 height: 1,
-                color: colorScheme.outlineVariant.withOpacity(0.5),
+                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
               ),
             ),
             ...children,

@@ -19,15 +19,17 @@ class QuranAudioService {
 
   Future<String> getSurahUrl(int surah) async {
     final reciter = selectedReciter;
-    final Map<String, dynamic> response =
-        await _getJson('$_baseUrl/$surah.json');
+    final Map<String, dynamic> response = await _getJson(
+      '$_baseUrl/$surah.json',
+    );
     return _extractAudioUrl(response, reciter);
   }
 
   Future<String> getAyahUrl(int surah, int ayah) async {
     final reciter = selectedReciter;
-    final Map<String, dynamic> response =
-        await _getJson('$_baseUrl/$surah/$ayah.json');
+    final Map<String, dynamic> response = await _getJson(
+      '$_baseUrl/$surah/$ayah.json',
+    );
     return _extractAudioUrl(response, reciter);
   }
 

@@ -12,6 +12,7 @@ import 'package:equran/backend/library.dart'
         SettingsDB;
 import 'package:equran/utils/app_radii.dart';
 import 'package:equran/utils/app_slider_theme.dart';
+import 'package:equran/utils/number_formatting.dart';
 import 'package:equran/utils/responsive_nav.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -315,23 +316,6 @@ class _PlayerPageState extends State<PlayerPage> {
 
   Future<String> _surahStreamUrl(int surah) =>
       QuranAudioService().getSurahUrl(surah);
-
-  String _time(Duration value) {
-    final int totalHours = value.inHours;
-    final String minutes = value.inMinutes
-        .remainder(60)
-        .toString()
-        .padLeft(2, '0');
-    final String seconds = value.inSeconds
-        .remainder(60)
-        .toString()
-        .padLeft(2, '0');
-    if (totalHours > 0) {
-      final String hours = totalHours.toString().padLeft(2, '0');
-      return '$hours:$minutes:$seconds';
-    }
-    return '$minutes:$seconds';
-  }
 
   int _wrapSurah(int value) {
     if (value < 1) return 114;
@@ -1050,7 +1034,7 @@ class _PlayerPageState extends State<PlayerPage> {
           return SizedBox(
             width: timeLabelWidth,
             child: Text(
-              _time(value),
+              formatDurationLabel(value),
               maxLines: 1,
               softWrap: false,
               textAlign: textAlign,

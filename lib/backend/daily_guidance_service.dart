@@ -49,7 +49,8 @@ class DailyGuidanceCategory {
   final List<DailyGuidanceEntry> items;
 
   factory DailyGuidanceCategory.fromJson(Map<String, dynamic> json) {
-    final List<dynamic> itemsRaw = json['items'] as List<dynamic>? ?? <dynamic>[];
+    final List<dynamic> itemsRaw =
+        json['items'] as List<dynamic>? ?? <dynamic>[];
     return DailyGuidanceCategory(
       id: (json['id'] as String? ?? '').trim(),
       title: (json['title'] as String? ?? '').trim(),
@@ -74,7 +75,8 @@ class DailyGuidanceService {
     if (cached != null) return cached;
 
     final String raw = await rootBundle.loadString(_assetPath);
-    final Map<String, dynamic> decoded = jsonDecode(raw) as Map<String, dynamic>;
+    final Map<String, dynamic> decoded =
+        jsonDecode(raw) as Map<String, dynamic>;
     final List<dynamic> categoriesRaw =
         decoded['categories'] as List<dynamic>? ?? <dynamic>[];
     final List<DailyGuidanceCategory> categories = categoriesRaw
