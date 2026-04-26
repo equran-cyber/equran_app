@@ -343,8 +343,7 @@ class _SavedAyahTileState extends State<_SavedAyahTile> {
                     },
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                      child: IntrinsicHeight(
-                        child: Row(
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           Column(
@@ -368,14 +367,12 @@ class _SavedAyahTileState extends State<_SavedAyahTile> {
                                 ),
                               ),
                               if (ayah.note.isNotEmpty)
-                                Expanded(
-                                  child: Container(
+                                Container(
                                   width: 1,
-                                  
+                                  height: _connectorHeightForNote(ayah.note),
                                   margin: const EdgeInsets.only(top: 4),
                                   color: colorScheme.outlineVariant,
                                 ),
-                                )
                             ],
                           ),
                           const SizedBox(width: 12),
@@ -419,7 +416,6 @@ class _SavedAyahTileState extends State<_SavedAyahTile> {
                           ),
                         ],
                       ),
-                      )
                     ),
                   ),
                 ),
@@ -436,6 +432,16 @@ class _SavedAyahTileState extends State<_SavedAyahTile> {
       _dragOffset = 0;
     });
   }
+}
+
+double _connectorHeightForNote(String note) {
+  if (note.isEmpty) return 0;
+
+  final int length = note.runes.length;
+
+  if (length <= 35) return 18;
+  if (length <= 75) return 32;
+  return 46;
 }
 
 void _showEditNoteDialog(
