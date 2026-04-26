@@ -21,37 +21,82 @@ Directory? _hiveDirectory;
 Directory? _documentsDirectory;
 bool _hiveInitialized = false;
 
-Future<void> initTestHarness() async {
+Future<void> initSettingsTestHarness() async {
   TestWidgetsFlutterBinding.ensureInitialized();
+
   GoogleFonts.config.allowRuntimeFetching = false;
   SharedPreferencesAsyncPlatform.instance =
       InMemorySharedPreferencesAsync.empty();
+
   _mockPathProvider();
 
   if (!_hiveInitialized) {
     _hiveDirectory = Directory.systemTemp.createTempSync('equran_hive_test_');
     Hive.init(_hiveDirectory!.path);
+    _hiveInitialized = true;
+  }
+
+  await SettingsDB().initBox();
+
+  // Clear only settings for this test.
+  // Use your actual settings box name if different.
+  if (Hive.isBoxOpen('settings')) {
+    await Hive.box('settings').clear();
+  }
+}
+
+Future<void> initTestHarness() async {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  GoogleFonts.config.allowRuntimeFetching = false;
+
+  SharedPreferencesAsyncPlatform.instance =
+      InMemorySharedPreferencesAsync.empty();
+
+  _mockPathProvider();
+
+  if (!_hiveInitialized) {
+    _hiveDirectory = Directory.systemTemp.createTempSync('equran_hive_test_');
+
+    Hive.init(_hiveDirectory!.path);
+
     if (!Hive.isAdapterRegistered(0)) {
       Hive.registerAdapter(ReadingEntryAdapter());
     }
     if (!Hive.isAdapterRegistered(1)) {
       Hive.registerAdapter(SurahAdapter());
     }
-    await BookmarkDB().initBox();
-    await SettingsDB().initBox();
-    await SurahDB().initBox();
-    await FavouritesDB().initBox();
+
+    await BookmarkDB().initBox().timeout(const Duration(seconds: 3));
+
+    await SettingsDB().initBox().timeout(const Duration(seconds: 3));
+
+    await SurahDB().initBox().timeout(const Duration(seconds: 3));
+
+    await FavouritesDB().initBox().timeout(const Duration(seconds: 3));
+
     _hiveInitialized = true;
   }
 
-  await clearTestData();
+  await clearTestData().timeout(const Duration(seconds: 3));
 }
 
 Future<void> clearTestData() async {
-  await BookmarkDB().clear();
-  await SettingsDB().clear();
-  await SurahDB().clear();
-  await FavouritesDB().clear();
+  if (Hive.isBoxOpen('bookmarks')) {
+    await Hive.box('bookmarks').clear().timeout(const Duration(seconds: 3));
+  }
+
+  if (Hive.isBoxOpen('settings')) {
+    await Hive.box('settings').clear().timeout(const Duration(seconds: 3));
+  }
+
+  if (Hive.isBoxOpen('surahs')) {
+    await Hive.box('surahs').clear().timeout(const Duration(seconds: 3));
+  }
+
+  if (Hive.isBoxOpen('favourites')) {
+    await Hive.box('favourites').clear().timeout(const Duration(seconds: 3));
+  }
 }
 
 Widget materialTestApp(Widget child) {
