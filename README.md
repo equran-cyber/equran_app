@@ -12,7 +12,7 @@
   <a href="https://github.com/ya27hw/equran_app/actions/workflows/deploy.yml">
     <img alt="Build and release workflow" src="https://img.shields.io/github/actions/workflow/status/ya27hw/equran_app/deploy.yml?branch=main&label=release%20build&style=for-the-badge">
   </a>
-  <img alt="Flutter" src="https://img.shields.io/badge/Flutter-%E2%89%A53.38.4-02569B?logo=flutter&logoColor=white&style=for-the-badge">
+  <img alt="Flutter" src="https://img.shields.io/badge/Flutter-%E2%89%A53.41.7-02569B?logo=flutter&logoColor=white&style=for-the-badge">
   <img alt="Release targets" src="https://img.shields.io/badge/release%20targets-Android%20%7C%20Linux%20%7C%20Windows-0f766e?style=for-the-badge">
 </p>
 
