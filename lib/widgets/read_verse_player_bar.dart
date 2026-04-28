@@ -15,6 +15,7 @@ class ReadVersePlayerBar extends StatelessWidget {
     required this.isMounted,
     required this.isVisible,
     required this.isMinimized,
+    required this.isMinimizedSettled,
     required this.isDragging,
     required this.isPlaying,
     required this.isLoading,
@@ -28,13 +29,16 @@ class ReadVersePlayerBar extends StatelessWidget {
     required this.positionListenable,
     required this.durationListenable,
     required this.onHidden,
+    required this.onMinimizedSettled,
     required this.onExpand,
     required this.onDismiss,
     required this.onVerticalDragStart,
     required this.onVerticalDragUpdate,
     required this.onVerticalDragEnd,
     required this.onVerticalDragCancel,
+    required this.onSeekStart,
     required this.onSeek,
+    required this.onSeekEnd,
     required this.onTogglePlayPause,
     required this.onContinuousPlaybackChanged,
     required this.onRepeatIntervalPressed,
@@ -46,6 +50,7 @@ class ReadVersePlayerBar extends StatelessWidget {
   final bool isMounted;
   final bool isVisible;
   final bool isMinimized;
+  final bool isMinimizedSettled;
   final bool isDragging;
   final bool isPlaying;
   final bool isLoading;
@@ -59,13 +64,16 @@ class ReadVersePlayerBar extends StatelessWidget {
   final ValueListenable<Duration> positionListenable;
   final ValueListenable<Duration> durationListenable;
   final VoidCallback onHidden;
+  final VoidCallback onMinimizedSettled;
   final VoidCallback onExpand;
   final VoidCallback onDismiss;
   final GestureDragStartCallback onVerticalDragStart;
   final GestureDragUpdateCallback onVerticalDragUpdate;
   final GestureDragEndCallback onVerticalDragEnd;
   final VoidCallback onVerticalDragCancel;
+  final ValueChanged<double> onSeekStart;
   final ValueChanged<double> onSeek;
+  final ValueChanged<double> onSeekEnd;
   final VoidCallback onTogglePlayPause;
   final ValueChanged<bool> onContinuousPlaybackChanged;
   final VoidCallback onRepeatIntervalPressed;
@@ -77,6 +85,45 @@ class ReadVersePlayerBar extends StatelessWidget {
     if (!isMounted) return const SizedBox.shrink();
 
     final double width = MediaQuery.sizeOf(context).width;
+    final Widget barBody = isMinimizedSettled
+        ? _buildMorphingBar(
+            context,
+            width,
+            collapseProgress: 1,
+            position: Duration.zero,
+            duration: Duration.zero,
+          )
+        : ValueListenableBuilder<Duration>(
+            valueListenable: positionListenable,
+            builder: (context, position, _) {
+              return ValueListenableBuilder<Duration>(
+                valueListenable: durationListenable,
+                builder: (context, duration, _) {
+                  return TweenAnimationBuilder<double>(
+                    tween: Tween<double>(end: collapseProgress),
+                    duration: isDragging
+                        ? Duration.zero
+                        : const Duration(milliseconds: 240),
+                    curve: Curves.easeOutCubic,
+                    onEnd: () {
+                      if (isMinimized && collapseProgress >= 1) {
+                        onMinimizedSettled();
+                      }
+                    },
+                    builder: (context, animatedCollapseProgress, _) {
+                      return _buildMorphingBar(
+                        context,
+                        width,
+                        collapseProgress: animatedCollapseProgress,
+                        position: position,
+                        duration: duration,
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          );
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
@@ -98,32 +145,7 @@ class ReadVersePlayerBar extends StatelessWidget {
           opacity: isVisible ? 1 : 0,
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
-          child: ValueListenableBuilder<Duration>(
-            valueListenable: positionListenable,
-            builder: (context, position, _) {
-              return ValueListenableBuilder<Duration>(
-                valueListenable: durationListenable,
-                builder: (context, duration, _) {
-                  return TweenAnimationBuilder<double>(
-                    tween: Tween<double>(end: collapseProgress),
-                    duration: isDragging
-                        ? Duration.zero
-                        : const Duration(milliseconds: 240),
-                    curve: Curves.easeOutCubic,
-                    builder: (context, animatedCollapseProgress, _) {
-                      return _buildMorphingBar(
-                        context,
-                        width,
-                        collapseProgress: animatedCollapseProgress,
-                        position: position,
-                        duration: duration,
-                      );
-                    },
-                  );
-                },
-              );
-            },
-          ),
+          child: barBody,
         ),
       ),
     );
@@ -173,7 +195,10 @@ class ReadVersePlayerBar extends StatelessWidget {
       0.0,
       1.0,
     );
-    final Widget expandedBody = width < 900
+    final bool renderExpandedBody = collapseProgress < 0.995;
+    final Widget expandedBody = !renderExpandedBody
+        ? const SizedBox.shrink()
+        : width < 900
         ? _buildCompactBody(context, position: position, duration: duration)
         : _buildWidescreenBody(
             context,
@@ -360,6 +385,10 @@ class ReadVersePlayerBar extends StatelessWidget {
                 child: Slider(
                   value: progress,
                   onChanged: duration.inMilliseconds <= 0 ? null : onSeek,
+                  onChangeStart: duration.inMilliseconds <= 0
+                      ? null
+                      : onSeekStart,
+                  onChangeEnd: duration.inMilliseconds <= 0 ? null : onSeekEnd,
                 ),
               ),
               Row(
@@ -472,6 +501,12 @@ class ReadVersePlayerBar extends StatelessWidget {
                             onChanged: duration.inMilliseconds <= 0
                                 ? null
                                 : onSeek,
+                            onChangeStart: duration.inMilliseconds <= 0
+                                ? null
+                                : onSeekStart,
+                            onChangeEnd: duration.inMilliseconds <= 0
+                                ? null
+                                : onSeekEnd,
                           ),
                         ),
                       ),

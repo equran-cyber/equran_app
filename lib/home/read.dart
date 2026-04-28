@@ -28,7 +28,14 @@ import 'package:equran/widgets/library.dart'
         ReadQuranCard,
         ReadVersePlayerBar;
 import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kDebugMode, kIsWeb;
+    show TargetPlatform, debugPrint, defaultTargetPlatform, kDebugMode, kIsWeb;
+import 'package:flutter/gestures.dart'
+    show
+        PointerCancelEvent,
+        PointerDownEvent,
+        PointerMoveEvent,
+        PointerSignalEvent,
+        PointerUpEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart'
     show
@@ -84,6 +91,8 @@ class _ReadPageState extends State<ReadPage> {
   static const double _playerBarExpandDistance = 34;
   static const double _playerBarDismissDistance = 52;
   static const double _playerBarMinVelocity = 220;
+  static const double _ayahDetailsArabicFontSize = 31.0;
+  static const Duration _lowRefreshIdleDelay = Duration(milliseconds: 900);
 
   final AudioPlayer _versePlayer = AudioPlayer();
   late int _currentVerse;
@@ -96,6 +105,7 @@ class _ReadPageState extends State<ReadPage> {
   bool _playerVisible = false;
   bool _playerMounted = false;
   bool _playerMinimized = false;
+  bool _playerMinimizedSettled = false;
   bool _isVersePlaying = false;
   bool _isVerseLoading = false;
   bool _isDownloadingSurahAyahs = false;
@@ -123,6 +133,7 @@ class _ReadPageState extends State<ReadPage> {
   StreamSubscription<void>? _playerCompleteSubscription;
   Timer? _pageScrollProgressTimer;
   Timer? _inlineVerseHighlightTimer;
+  Timer? _lowRefreshIdleTimer;
   final GlobalKey _pageViewViewportKey = GlobalKey();
   final GlobalKey _inlineSurahTextKey = GlobalKey();
   List<int>? _verseTextCumulativeLengths;
@@ -132,6 +143,8 @@ class _ReadPageState extends State<ReadPage> {
   bool _isProgrammaticPageScroll = false;
   bool _isScrubbingProgress = false;
   bool _isPreparingShareImage = false;
+  bool _isBottomPlayerSeeking = false;
+  int _progressVisualBlockCount = 0;
   int? _scrubStartVerse;
   double? _scrubStartDx;
   double? _scrubStartDy;
@@ -143,6 +156,8 @@ class _ReadPageState extends State<ReadPage> {
   double _playerCollapseProgress = 0;
   double _playerBarDragStartProgress = 0;
   bool _isDraggingPlayerBar = false;
+  bool _lowRefreshRequested = false;
+  int _activePointerCount = 0;
   int? _transliterationChapter;
   List<String> _chapterTransliterations = const <String>[];
 
@@ -176,7 +191,12 @@ class _ReadPageState extends State<ReadPage> {
       BookmarkDB().addReadingEntry(_currentChapter, _currentVerse);
     }
     unawaited(_setKeepScreenOn(false));
+    _lowRefreshIdleTimer?.cancel();
+    unawaited(
+      AndroidAudioDisplayMode.clearStaticMinimizedAudioRefreshRate(force: true),
+    );
     unawaited(AndroidAudioDisplayMode.setIdleAudioFrameRateEnabled(true));
+    unawaited(AndroidAudioDisplayMode.setVisualProgressActive(false));
     unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
     unawaited(AndroidAudioDisplayMode.setAudioPlaybackActive(false));
     _playerPositionSubscription?.cancel();
@@ -195,31 +215,193 @@ class _ReadPageState extends State<ReadPage> {
 
   void _notifyAudioUserActivity() {
     AndroidAudioDisplayMode.notifyUserActivity();
+    _clearLowRefreshForInteraction();
+    _scheduleLowRefreshAfterIdle();
   }
 
-  void _setPlayerMinimizedState(bool minimized) {
-    _playerMinimized = minimized;
-    unawaited(AndroidAudioDisplayMode.setIdleAudioFrameRateEnabled(!minimized));
+  void _handleReadPagePointerDown(PointerDownEvent event) {
+    _activePointerCount++;
+    _clearLowRefreshForInteraction(force: true);
+    AndroidAudioDisplayMode.notifyUserActivity();
+  }
+
+  void _handleReadPagePointerMove(PointerMoveEvent event) {
+    _clearLowRefreshForInteraction();
+    AndroidAudioDisplayMode.notifyUserActivity();
+  }
+
+  void _handleReadPagePointerUp(PointerUpEvent event) {
+    if (_activePointerCount > 0) {
+      _activePointerCount--;
+    }
+    AndroidAudioDisplayMode.notifyUserActivity();
+    _scheduleLowRefreshAfterIdle();
+  }
+
+  void _handleReadPagePointerCancel(PointerCancelEvent event) {
+    if (_activePointerCount > 0) {
+      _activePointerCount--;
+    }
+    AndroidAudioDisplayMode.notifyUserActivity();
+    _scheduleLowRefreshAfterIdle();
+  }
+
+  void _handleReadPagePointerSignal(PointerSignalEvent event) {
+    _clearLowRefreshForInteraction(force: true);
+    AndroidAudioDisplayMode.notifyUserActivity();
+    _scheduleLowRefreshAfterIdle();
+  }
+
+  bool get _shouldRequestLowRefresh {
+    final ModalRoute<dynamic>? route = ModalRoute.of(context);
+    return mounted &&
+        _playerMounted &&
+        _playerVisible &&
+        _playerMinimized &&
+        _playerMinimizedSettled &&
+        _activePointerCount == 0 &&
+        !_isDraggingPlayerBar &&
+        !_isBottomPlayerSeeking &&
+        !_isScrubbingProgress &&
+        _progressVisualBlockCount == 0 &&
+        (route?.isCurrent ?? true);
+  }
+
+  void _requestLowRefreshIfEligible({bool force = false}) {
+    _lowRefreshIdleTimer?.cancel();
+    _lowRefreshIdleTimer = null;
+
+    if (!_shouldRequestLowRefresh) {
+      _clearLowRefreshForInteraction();
+      return;
+    }
+
+    if (_lowRefreshRequested && !force) return;
+    _lowRefreshRequested = true;
+    debugPrint('ReadPage: requesting low refresh for static minimized player');
+    unawaited(
+      AndroidAudioDisplayMode.requestStaticMinimizedAudioRefreshRate(
+        force: force,
+      ),
+    );
+  }
+
+  void _clearLowRefreshForInteraction({bool force = false}) {
+    _lowRefreshIdleTimer?.cancel();
+    _lowRefreshIdleTimer = null;
+    if (!_lowRefreshRequested && !force) return;
+
+    _lowRefreshRequested = false;
+    unawaited(
+      AndroidAudioDisplayMode.clearStaticMinimizedAudioRefreshRate(
+        force: force,
+      ),
+    );
+  }
+
+  void _scheduleLowRefreshAfterIdle() {
+    _lowRefreshIdleTimer?.cancel();
+    _lowRefreshIdleTimer = null;
+    if (!_shouldRequestLowRefresh) return;
+
+    _lowRefreshIdleTimer = Timer(_lowRefreshIdleDelay, () {
+      if (!mounted) return;
+      _requestLowRefreshIfEligible();
+    });
   }
 
   Future<T> _withLowFpsSuppressed<T>(Future<T> Function() action) async {
     AndroidAudioDisplayMode.notifyUserActivity();
+    _pushProgressVisualBlock();
     unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(true));
     try {
       return await action();
     } finally {
+      _popProgressVisualBlock();
       unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
     }
   }
 
-  void _setPlayerPosition(Duration position) {
+  void _pushProgressVisualBlock() {
+    _clearLowRefreshForInteraction(force: true);
+    _progressVisualBlockCount++;
+    _syncBottomPlayerProgressPolicy();
+  }
+
+  void _popProgressVisualBlock() {
+    if (_progressVisualBlockCount > 0) {
+      _progressVisualBlockCount--;
+    }
+    _syncBottomPlayerProgressPolicy(syncPosition: true);
+    _requestLowRefreshIfEligible();
+  }
+
+  void _handleCardVisualOverlayChanged(bool visible) {
+    if (visible) {
+      _pushProgressVisualBlock();
+    } else {
+      _popProgressVisualBlock();
+    }
+  }
+
+  bool get _shouldRenderLivePlayerProgress {
+    // This is the single gate for audio-position driven UI. Minimized/static
+    // mode still receives audio ticks, but they only update _playerPosition.
+    return mounted &&
+        _playerMounted &&
+        _playerVisible &&
+        !_playerMinimized &&
+        !_playerMinimizedSettled &&
+        _progressVisualBlockCount == 0;
+  }
+
+  bool get _shouldAnimateBottomPlayerProgress {
+    return _shouldRenderLivePlayerProgress &&
+        _isVersePlaying &&
+        !_isBottomPlayerSeeking;
+  }
+
+  void _syncBottomPlayerProgressPolicy({bool syncPosition = false}) {
+    if (!mounted) return;
+
+    unawaited(
+      AndroidAudioDisplayMode.setVisualProgressActive(
+        _shouldAnimateBottomPlayerProgress,
+      ),
+    );
+
+    if (syncPosition && _shouldRenderLivePlayerProgress) {
+      _syncBottomPlayerProgressValue();
+      _syncBottomPlayerDurationValue();
+    }
+  }
+
+  void _syncBottomPlayerProgressValue() {
+    if (!mounted || !_shouldRenderLivePlayerProgress) return;
+    if (_playerPositionValue.value != _playerPosition) {
+      _playerPositionValue.value = _playerPosition;
+    }
+  }
+
+  void _syncBottomPlayerDurationValue() {
+    if (!mounted || !_shouldRenderLivePlayerProgress) return;
+    if (_playerDurationValue.value != _playerDuration) {
+      _playerDurationValue.value = _playerDuration;
+    }
+  }
+
+  void _setPlayerPosition(Duration position, {bool render = false}) {
     _playerPosition = position;
-    _playerPositionValue.value = position;
+    if (render || _shouldRenderLivePlayerProgress) {
+      _playerPositionValue.value = position;
+    }
   }
 
   void _setPlayerDuration(Duration duration) {
     _playerDuration = duration;
-    _playerDurationValue.value = duration;
+    if (_shouldRenderLivePlayerProgress) {
+      _playerDurationValue.value = duration;
+    }
   }
 
   void _syncPageProgressFromScroll() {
@@ -525,9 +707,11 @@ class _ReadPageState extends State<ReadPage> {
       },
       child: Listener(
         behavior: HitTestBehavior.translucent,
-        onPointerDown: (_) => _notifyAudioUserActivity(),
-        onPointerMove: (_) => _notifyAudioUserActivity(),
-        onPointerSignal: (_) => _notifyAudioUserActivity(),
+        onPointerDown: _handleReadPagePointerDown,
+        onPointerMove: _handleReadPagePointerMove,
+        onPointerUp: _handleReadPagePointerUp,
+        onPointerCancel: _handleReadPagePointerCancel,
+        onPointerSignal: _handleReadPagePointerSignal,
         child: Focus(
           autofocus: true,
           focusNode: _pageFocusNode,
@@ -643,6 +827,7 @@ class _ReadPageState extends State<ReadPage> {
       unawaited(
         AndroidAudioDisplayMode.setAudioPlaybackActive(_isVersePlaying),
       );
+      _syncBottomPlayerProgressPolicy();
     });
 
     _playerCompleteSubscription = _versePlayer.onPlayerComplete.listen((
@@ -667,6 +852,7 @@ class _ReadPageState extends State<ReadPage> {
     bool isSubmitting = false;
 
     AndroidAudioDisplayMode.notifyUserActivity();
+    _pushProgressVisualBlock();
     unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(true));
 
     int? selectedVerse;
@@ -790,6 +976,7 @@ class _ReadPageState extends State<ReadPage> {
       );
     } finally {
       sheetOpen = false;
+      _popProgressVisualBlock();
       unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
       await WidgetsBinding.instance.endOfFrame;
       controller.dispose();
@@ -867,11 +1054,9 @@ class _ReadPageState extends State<ReadPage> {
     bool continuous = false,
     bool smoothScroll = false,
     bool preservePlayerPresentationState = false,
+    bool preserveRefreshState = false,
   }) async {
     if (_isVerseLoading) return;
-
-    AndroidAudioDisplayMode.notifyUserActivity();
-    unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(true));
 
     final int requestId = ++_playbackRequestId;
     final bool shouldPreservePresentation =
@@ -882,11 +1067,23 @@ class _ReadPageState extends State<ReadPage> {
     final double nextPlayerCollapseProgress = shouldPreservePresentation
         ? _playerCollapseProgress
         : 0;
+    final bool nextPlayerMinimizedSettled =
+        nextPlayerMinimized && nextPlayerCollapseProgress >= 1;
+    final bool shouldPreserveLowRefresh =
+        preserveRefreshState && nextPlayerMinimizedSettled;
+    bool lowFpsSuppressed = false;
+    if (!shouldPreserveLowRefresh) {
+      AndroidAudioDisplayMode.notifyUserActivity();
+      _clearLowRefreshForInteraction(force: true);
+      lowFpsSuppressed = true;
+      unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(true));
+    }
+
     setState(() {
       _playerVisible = true;
       _playerMounted = true;
-      _setPlayerMinimizedState(false);
       _playerMinimized = nextPlayerMinimized;
+      _playerMinimizedSettled = nextPlayerMinimizedSettled;
       _playerCollapseProgress = nextPlayerCollapseProgress;
       _isDraggingPlayerBar = false;
       _isVerseLoading = true;
@@ -900,6 +1097,8 @@ class _ReadPageState extends State<ReadPage> {
       _setPlayerPosition(Duration.zero);
       _setPlayerDuration(Duration.zero);
     });
+    _syncBottomPlayerProgressPolicy();
+    _requestLowRefreshIfEligible(force: shouldPreserveLowRefresh);
     _updateDB();
     _scrollToVerseIfNeeded(verse, smooth: smoothScroll);
 
@@ -932,7 +1131,12 @@ class _ReadPageState extends State<ReadPage> {
           _isVerseLoading = false;
         });
       }
-      unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
+      if (lowFpsSuppressed) {
+        unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
+      }
+      if (preserveRefreshState) {
+        _requestLowRefreshIfEligible(force: true);
+      }
     }
   }
 
@@ -976,9 +1180,12 @@ class _ReadPageState extends State<ReadPage> {
     _throwIfPlaybackRequestCancelled(requestId);
     final double rate = _playbackRate();
     await _versePlayer.setPlaybackRate(rate);
-    final offlineFile = await AudioDownloadService().ayahFile(surah, verse);
+    final AudioDownloadService downloads = AudioDownloadService();
+    final File? offlineFile = kIsWeb
+        ? null
+        : await downloads.playbackAyahFile(surah, verse);
     _throwIfPlaybackRequestCancelled(requestId);
-    if (!kIsWeb && offlineFile.existsSync()) {
+    if (!kIsWeb && offlineFile != null && offlineFile.existsSync()) {
       await _versePlayer.play(DeviceFileSource(offlineFile.path));
     } else {
       final String url = await QuranAudioService().getAyahUrl(surah, verse);
@@ -989,6 +1196,9 @@ class _ReadPageState extends State<ReadPage> {
         await _versePlayer.play(BytesSource(bytes));
       } else {
         await _versePlayer.play(UrlSource(url));
+      }
+      if (!kIsWeb) {
+        unawaited(downloads.cacheAyah(surah, verse));
       }
     }
     await _versePlayer.setPlaybackRate(rate);
@@ -1014,9 +1224,7 @@ class _ReadPageState extends State<ReadPage> {
       if (_preloadingAyahKeys.contains(key)) continue;
       _preloadingAyahKeys.add(key);
       try {
-        if (!await downloads.hasAyah(surah, nextVerse)) {
-          await downloads.downloadAyah(surah, nextVerse);
-        }
+        await downloads.cacheAyah(surah, nextVerse);
       } catch (_) {
         // Best-effort preload; foreground playback should never wait on this.
       } finally {
@@ -1066,6 +1274,7 @@ class _ReadPageState extends State<ReadPage> {
         nextVerse,
         smoothScroll: true,
         preservePlayerPresentationState: true,
+        preserveRefreshState: true,
       );
       return;
     }
@@ -1077,6 +1286,7 @@ class _ReadPageState extends State<ReadPage> {
         continuous: true,
         smoothScroll: true,
         preservePlayerPresentationState: true,
+        preserveRefreshState: true,
       );
       return;
     }
@@ -1199,26 +1409,28 @@ class _ReadPageState extends State<ReadPage> {
 
   Future<void> _confirmDownloadCurrentSurahAyahs() async {
     final String surahName = quran.getSurahName(_currentChapter);
-    final bool? confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.download_for_offline_rounded),
-        title: const Text('Download All Ayahs?'),
-        content: Text(
-          'Download all ayah audio for $surahName for offline listening?',
+    final bool? confirm = await _withLowFpsSuppressed(() {
+      return showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          icon: const Icon(Icons.download_for_offline_rounded),
+          title: const Text('Download All Ayahs?'),
+          content: Text(
+            'Download all ayah audio for $surahName for offline listening?',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Download'),
+            ),
+          ],
         ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Download'),
-          ),
-        ],
-      ),
-    );
+      );
+    });
 
     if (confirm != true) return;
     await _downloadCurrentSurahAyahs();
@@ -1283,26 +1495,28 @@ class _ReadPageState extends State<ReadPage> {
   }
 
   Future<void> _confirmDeleteCurrentAyahDownload() async {
-    final bool? confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.warning_amber_rounded),
-        title: const Text('Delete Downloaded Ayah?'),
-        content: Text(
-          'This will remove ayah $_currentChapter:$_currentVerse from offline storage.',
+    final bool? confirm = await _withLowFpsSuppressed(() {
+      return showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          icon: const Icon(Icons.warning_amber_rounded),
+          title: const Text('Delete Downloaded Ayah?'),
+          content: Text(
+            'This will remove ayah $_currentChapter:$_currentVerse from offline storage.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
         ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
+      );
+    });
 
     if (confirm != true) return;
     await _deleteCurrentAyahDownload();
@@ -1355,10 +1569,11 @@ class _ReadPageState extends State<ReadPage> {
   Future<void> _stopBottomPlayer() async {
     if (!mounted) return;
     _playbackRequestId++;
+    _clearLowRefreshForInteraction(force: true);
     setState(() {
       _playerVisible = false;
-      _setPlayerMinimizedState(false);
       _playerMinimized = false;
+      _playerMinimizedSettled = false;
       _playerCollapseProgress = 0;
       _isDraggingPlayerBar = false;
       _isVersePlaying = false;
@@ -1369,12 +1584,17 @@ class _ReadPageState extends State<ReadPage> {
       _setPlayerPosition(Duration.zero);
       _setPlayerDuration(Duration.zero);
     });
+    _syncBottomPlayerProgressPolicy();
     await _versePlayer.stop();
     await _setKeepScreenOn(false);
     await AndroidAudioDisplayMode.setAudioPlaybackActive(false);
+    await AndroidAudioDisplayMode.clearStaticMinimizedAudioRefreshRate(
+      force: true,
+    );
   }
 
   void _toggleContinuousPlayback(bool value) {
+    _clearLowRefreshForInteraction(force: true);
     setState(() {
       _continuousPlayback = value;
       if (value) {
@@ -1382,8 +1602,8 @@ class _ReadPageState extends State<ReadPage> {
       }
       _playerVisible = true;
       _playerMounted = true;
-      _setPlayerMinimizedState(false);
       _playerMinimized = false;
+      _playerMinimizedSettled = false;
       _playerCollapseProgress = 0;
       _isDraggingPlayerBar = false;
       _playingVerse ??= _currentVerse;
@@ -1392,6 +1612,8 @@ class _ReadPageState extends State<ReadPage> {
         _repeatEndVerse = _currentVerse;
       }
     });
+    _syncBottomPlayerProgressPolicy();
+    _requestLowRefreshIfEligible();
     unawaited(_updateKeepScreenOn());
   }
 
@@ -1400,101 +1622,103 @@ class _ReadPageState extends State<ReadPage> {
     int start = _repeatIntervalEnabled ? _repeatStartVerse : _currentVerse;
     int end = _repeatIntervalEnabled ? _repeatEndVerse : _currentVerse;
 
-    final bool? enabled = await showModalBottomSheet<bool>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            return Listener(
-              behavior: HitTestBehavior.translucent,
-              onPointerDown: (_) => _notifyAudioUserActivity(),
-              onPointerMove: (_) => _notifyAudioUserActivity(),
-              onPointerSignal: (_) => _notifyAudioUserActivity(),
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Text(
-                        'Repeat Ayah Interval',
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: <Widget>[
-                          Column(
-                            children: <Widget>[
-                              const Text('From'),
-                              NumberPicker(
-                                minValue: 1,
-                                maxValue: _totalVerses,
-                                value: start,
-                                onChanged: (value) {
-                                  _notifyAudioUserActivity();
-                                  setSheetState(() {
-                                    start = value;
-                                    if (end < start) end = start;
-                                  });
-                                },
-                              ),
-                            ],
-                          ),
-                          Column(
-                            children: <Widget>[
-                              const Text('To'),
-                              NumberPicker(
-                                minValue: 1,
-                                maxValue: _totalVerses,
-                                value: end,
-                                onChanged: (value) {
-                                  _notifyAudioUserActivity();
-                                  setSheetState(() {
-                                    end = value;
-                                    if (start > end) start = end;
-                                  });
-                                },
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () {
-                                _notifyAudioUserActivity();
-                                Navigator.of(context).pop(false);
-                              },
-                              child: const Text('Disable'),
+    final bool? enabled = await _withLowFpsSuppressed(() {
+      return showModalBottomSheet<bool>(
+        context: context,
+        showDragHandle: true,
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setSheetState) {
+              return Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: (_) => _notifyAudioUserActivity(),
+                onPointerMove: (_) => _notifyAudioUserActivity(),
+                onPointerSignal: (_) => _notifyAudioUserActivity(),
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Text(
+                          'Repeat Ayah Interval',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: <Widget>[
+                            Column(
+                              children: <Widget>[
+                                const Text('From'),
+                                NumberPicker(
+                                  minValue: 1,
+                                  maxValue: _totalVerses,
+                                  value: start,
+                                  onChanged: (value) {
+                                    _notifyAudioUserActivity();
+                                    setSheetState(() {
+                                      start = value;
+                                      if (end < start) end = start;
+                                    });
+                                  },
+                                ),
+                              ],
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: FilledButton(
-                              onPressed: () {
-                                _notifyAudioUserActivity();
-                                Navigator.of(context).pop(true);
-                              },
-                              child: const Text('Repeat Interval'),
+                            Column(
+                              children: <Widget>[
+                                const Text('To'),
+                                NumberPicker(
+                                  minValue: 1,
+                                  maxValue: _totalVerses,
+                                  value: end,
+                                  onChanged: (value) {
+                                    _notifyAudioUserActivity();
+                                    setSheetState(() {
+                                      end = value;
+                                      if (start > end) start = end;
+                                    });
+                                  },
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () {
+                                  _notifyAudioUserActivity();
+                                  Navigator.of(context).pop(false);
+                                },
+                                child: const Text('Disable'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: FilledButton(
+                                onPressed: () {
+                                  _notifyAudioUserActivity();
+                                  Navigator.of(context).pop(true);
+                                },
+                                child: const Text('Repeat Interval'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            );
-          },
-        );
-      },
-    );
+              );
+            },
+          );
+        },
+      );
+    });
 
     if (enabled == null) return;
     if (!mounted) return;
@@ -1510,15 +1734,20 @@ class _ReadPageState extends State<ReadPage> {
     final bool shouldKeepCurrentPlayback =
         _isVersePlaying && currentPlayingVerse == start;
 
+    _clearLowRefreshForInteraction(force: true);
     setState(() {
       _repeatIntervalEnabled = true;
       _continuousPlayback = false;
       _playerVisible = true;
       _playerMounted = true;
+      _playerMinimized = false;
+      _playerMinimizedSettled = false;
+      _playerCollapseProgress = 0;
       _repeatStartVerse = start;
       _repeatEndVerse = end;
       _playingVerse = shouldKeepCurrentPlayback ? currentPlayingVerse : start;
     });
+    _requestLowRefreshIfEligible();
     unawaited(_updateKeepScreenOn());
     if (shouldKeepCurrentPlayback) {
       return;
@@ -1529,7 +1758,24 @@ class _ReadPageState extends State<ReadPage> {
   Future<void> _seekBottomPlayer(double value) async {
     if (_playerDuration.inMilliseconds <= 0) return;
     final int milliseconds = (_playerDuration.inMilliseconds * value).round();
-    await _versePlayer.seek(Duration(milliseconds: milliseconds));
+    final Duration position = Duration(milliseconds: milliseconds);
+    _setPlayerPosition(position, render: true);
+    await _versePlayer.seek(position);
+  }
+
+  void _handleBottomPlayerSeekStart(double value) {
+    _notifyAudioUserActivity();
+    _isBottomPlayerSeeking = true;
+    unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(true));
+    _syncBottomPlayerProgressPolicy();
+    unawaited(_seekBottomPlayer(value));
+  }
+
+  void _handleBottomPlayerSeekEnd(double value) {
+    unawaited(_seekBottomPlayer(value));
+    _isBottomPlayerSeeking = false;
+    unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
+    _syncBottomPlayerProgressPolicy();
   }
 
   void _scrollToVerseIfNeeded(int verse, {bool smooth = false}) {
@@ -1856,17 +2102,32 @@ class _ReadPageState extends State<ReadPage> {
 
   void _setPlayerMinimized(bool minimized) {
     if (!mounted || _playerMinimized == minimized) return;
+    _clearLowRefreshForInteraction(force: true);
     setState(() {
       _playerMinimized = minimized;
+      _playerMinimizedSettled = false;
       _playerCollapseProgress = minimized ? 1 : 0;
       _isDraggingPlayerBar = false;
     });
+    _syncBottomPlayerProgressPolicy(syncPosition: !minimized);
+    _requestLowRefreshIfEligible();
   }
 
   void _handlePlayerBarDragStart(DragStartDetails details) {
+    _notifyAudioUserActivity();
+    _clearLowRefreshForInteraction(force: true);
+    unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(true));
     _playerBarDragDistance = 0;
     _playerBarDragStartProgress = _playerCollapseProgress;
-    _isDraggingPlayerBar = true;
+    if (_playerMinimizedSettled) {
+      setState(() {
+        _isDraggingPlayerBar = true;
+        _playerMinimizedSettled = false;
+      });
+    } else {
+      _isDraggingPlayerBar = true;
+    }
+    _syncBottomPlayerProgressPolicy();
   }
 
   void _handlePlayerBarDragUpdate(DragUpdateDetails details) {
@@ -1880,12 +2141,27 @@ class _ReadPageState extends State<ReadPage> {
     });
   }
 
+  void _handlePlayerBarDragCancel() {
+    _playerBarDragDistance = 0;
+    _isDraggingPlayerBar = false;
+    if (_playerMinimized) {
+      setState(() {
+        _playerCollapseProgress = 1;
+        _playerMinimizedSettled = true;
+      });
+    }
+    unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
+    _syncBottomPlayerProgressPolicy();
+    _requestLowRefreshIfEligible();
+  }
+
   void _handlePlayerBarDragEnd(DragEndDetails details) {
     final double velocity = details.primaryVelocity ?? 0;
     final double distance = _playerBarDragDistance;
     final double progress = _playerCollapseProgress;
     _playerBarDragDistance = 0;
     _isDraggingPlayerBar = false;
+    unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
 
     if (_playerMinimized) {
       if (distance <= -_playerBarExpandDistance ||
@@ -1902,7 +2178,10 @@ class _ReadPageState extends State<ReadPage> {
       }
       setState(() {
         _playerCollapseProgress = 1;
+        _playerMinimizedSettled = true;
       });
+      _syncBottomPlayerProgressPolicy();
+      _requestLowRefreshIfEligible();
       return;
     }
 
@@ -1915,7 +2194,10 @@ class _ReadPageState extends State<ReadPage> {
 
     setState(() {
       _playerCollapseProgress = 0;
+      _playerMinimizedSettled = false;
     });
+    _syncBottomPlayerProgressPolicy();
+    _requestLowRefreshIfEligible();
   }
 
   void _resetCardSwipeGesture() {
@@ -1992,11 +2274,16 @@ class _ReadPageState extends State<ReadPage> {
   }
 
   Widget _buildVersePlayerBar() {
+    if (_playerMinimizedSettled) {
+      return _buildStaticMinimizedPlayerBar();
+    }
+
     return ReadVersePlayerBar(
       viewMode: _viewMode,
       isMounted: _playerMounted,
       isVisible: _playerVisible,
       isMinimized: _playerMinimized,
+      isMinimizedSettled: _playerMinimizedSettled,
       isDragging: _isDraggingPlayerBar,
       isPlaying: _isVersePlaying,
       isLoading: _isVerseLoading,
@@ -2010,13 +2297,16 @@ class _ReadPageState extends State<ReadPage> {
       positionListenable: _playerPositionValue,
       durationListenable: _playerDurationValue,
       onHidden: _handleVersePlayerHidden,
+      onMinimizedSettled: _handleVersePlayerMinimizedSettled,
       onExpand: () => _setPlayerMinimized(false),
       onDismiss: () => unawaited(_stopBottomPlayer()),
       onVerticalDragStart: _handlePlayerBarDragStart,
       onVerticalDragUpdate: _handlePlayerBarDragUpdate,
       onVerticalDragEnd: _handlePlayerBarDragEnd,
-      onVerticalDragCancel: () => _playerBarDragDistance = 0,
+      onVerticalDragCancel: _handlePlayerBarDragCancel,
+      onSeekStart: _handleBottomPlayerSeekStart,
       onSeek: (value) => unawaited(_seekBottomPlayer(value)),
+      onSeekEnd: _handleBottomPlayerSeekEnd,
       onTogglePlayPause: () => unawaited(_toggleBottomPlayer()),
       onContinuousPlaybackChanged: _toggleContinuousPlayback,
       onRepeatIntervalPressed: _handleRepeatIntervalPressed,
@@ -2025,11 +2315,139 @@ class _ReadPageState extends State<ReadPage> {
     );
   }
 
+  Widget _buildStaticMinimizedPlayerBar() {
+    if (!_playerMounted) return const SizedBox.shrink();
+
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final double width = MediaQuery.sizeOf(context).width;
+    final double horizontalInset = _viewMode
+        ? _readCardHorizontalInset(width)
+        : (width > 700 ? 16 : 8);
+    final int verse = _playingVerse ?? _currentVerse;
+
+    // Guaranteed static minimized mode: no ValueListenableBuilder, Slider,
+    // StreamBuilder, progress text, opacity wrapper, or progress subtree.
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => _setPlayerMinimized(false),
+      onVerticalDragStart: _handlePlayerBarDragStart,
+      onVerticalDragUpdate: _handlePlayerBarDragUpdate,
+      onVerticalDragEnd: _handlePlayerBarDragEnd,
+      onVerticalDragCancel: _handlePlayerBarDragCancel,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(horizontalInset, 0, horizontalInset, 10),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Color.alphaBlend(
+              colorScheme.primary.withAlpha(10),
+              colorScheme.surfaceContainerLow.withAlpha((0.92 * 255).round()),
+            ),
+            borderRadius: BorderRadius.circular(AppRadii.large),
+            border: Border.all(
+              color: colorScheme.outlineVariant.withAlpha((0.52 * 255).round()),
+            ),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: colorScheme.shadow.withAlpha((0.12 * 255).round()),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            top: false,
+            child: SizedBox(
+              height: 78,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                child: Stack(
+                  children: <Widget>[
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: Container(
+                          width: 30,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: colorScheme.onSurfaceVariant.withAlpha(132),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(AppRadii.large),
+                        onTap: () => _setPlayerMinimized(false),
+                        child: Row(
+                          children: <Widget>[
+                            Icon(
+                              _isVersePlaying
+                                  ? Icons.graphic_eq_rounded
+                                  : Icons.play_circle_outline_rounded,
+                              color: colorScheme.primary,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                '${quran.getSurahName(_currentChapter)} • Ayah $verse',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: colorScheme.onSurface,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              tooltip: 'Dismiss player',
+                              onPressed: () => unawaited(_stopBottomPlayer()),
+                              icon: const Icon(Icons.close_rounded),
+                              iconSize: 20,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _handleVersePlayerHidden() {
     if (!mounted || _playerVisible) return;
+    _clearLowRefreshForInteraction(force: true);
     setState(() {
       _playerMounted = false;
+      _playerMinimizedSettled = false;
     });
+    _syncBottomPlayerProgressPolicy();
+    _requestLowRefreshIfEligible();
+  }
+
+  void _handleVersePlayerMinimizedSettled() {
+    if (!mounted || !_playerVisible || !_playerMinimized) return;
+    if (_playerMinimizedSettled) return;
+    setState(() {
+      _playerMinimizedSettled = true;
+    });
+    _syncBottomPlayerProgressPolicy();
+    _requestLowRefreshIfEligible();
   }
 
   void _handleRepeatIntervalPressed() {
@@ -2473,6 +2891,8 @@ class _ReadPageState extends State<ReadPage> {
                             onShare: _shareCurrentAyahImage,
                             onSwitchTranslation:
                                 _showCardTranslationLanguagePicker,
+                            onVisualOverlayChanged:
+                                _handleCardVisualOverlayChanged,
                             onTafsir: () => _showTafsirSheet(_currentVerse),
                             onPrevious: _currentVerse > 1
                                 ? () {
@@ -2818,11 +3238,7 @@ class _ReadPageState extends State<ReadPage> {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
     final String transliteration = _transliterationForVerse(verse).trim();
-    final String translation = quran.getVerseTranslation(
-      _currentChapter,
-      verse,
-      translation: quran.Translation.values[_selectedTranslationIndex()],
-    );
+    int selectedTranslationIndex = _selectedTranslationIndex();
 
     await _withLowFpsSuppressed(() {
       return showModalBottomSheet<void>(
@@ -2831,58 +3247,87 @@ class _ReadPageState extends State<ReadPage> {
         useSafeArea: true,
         showDragHandle: true,
         builder: (context) {
-          return DraggableScrollableSheet(
-            expand: false,
-            initialChildSize: 0.52,
-            minChildSize: 0.36,
-            maxChildSize: 0.86,
-            builder: (context, controller) {
-              return ListView(
-                controller: controller,
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-                children: <Widget>[
-                  Text(
-                    '${quran.getSurahName(_currentChapter)} • Ayah $verse',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    quranVerseText(_currentChapter, verse),
-                    textDirection: TextDirection.rtl,
-                    textAlign: TextAlign.justify,
-                    style: TextStyle(
-                      fontFamily: 'Hafs',
-                      fontSize: SettingsDB().get(
-                        "fontSize",
-                        defaultValue: 31.0,
+          return StatefulBuilder(
+            builder: (context, setSheetState) {
+              final String translation = quran.getVerseTranslation(
+                _currentChapter,
+                verse,
+                translation: quran.Translation.values[selectedTranslationIndex],
+              );
+
+              Future<void> switchLanguage() async {
+                final int? value = await _showTranslationPickerDialog(
+                  selectedTranslationIndex,
+                );
+                if (value == null || !context.mounted) return;
+                await SettingsDB().put("translation", value);
+                setSheetState(() {
+                  selectedTranslationIndex = value;
+                });
+              }
+
+              return DraggableScrollableSheet(
+                expand: false,
+                initialChildSize: 0.52,
+                minChildSize: 0.36,
+                maxChildSize: 0.86,
+                builder: (context, controller) {
+                  return ListView(
+                    controller: controller,
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: Text(
+                              '${quran.getSurahName(_currentChapter)} • Ayah $verse',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Translation language',
+                            onPressed: switchLanguage,
+                            icon: const Icon(Icons.language_rounded),
+                          ),
+                        ],
                       ),
-                      height: 1.7,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                  ...<Widget>[
-                    const SizedBox(height: 18),
-                    Text(
-                      transliteration,
-                      textAlign: TextAlign.justify,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w500,
+                      const SizedBox(height: 18),
+                      Text(
+                        quranVerseText(_currentChapter, verse),
+                        textDirection: TextDirection.rtl,
+                        textAlign: TextAlign.justify,
+                        style: TextStyle(
+                          fontFamily: 'Hafs',
+                          fontSize: _ayahDetailsArabicFontSize,
+                          height: 1.7,
+                          color: colorScheme.onSurface,
+                        ),
                       ),
-                    ),
-                  ],
-                  const SizedBox(height: 18),
-                  Text(
-                    translation,
-                    textAlign: TextAlign.justify,
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: colorScheme.onSurface,
-                      height: 1.55,
-                    ),
-                  ),
-                ],
+                      if (transliteration.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 18),
+                        Text(
+                          transliteration,
+                          textAlign: TextAlign.justify,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 18),
+                      Text(
+                        translation,
+                        textAlign: TextAlign.justify,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: colorScheme.onSurface,
+                          height: 1.55,
+                        ),
+                      ),
+                    ],
+                  );
+                },
               );
             },
           );
@@ -2921,8 +3366,8 @@ class _ReadPageState extends State<ReadPage> {
   }
 
   Future<void> _openCardTranslationLanguagePicker() async {
-    final int? value = await _showTranslationPickerDialog(
-      _selectedTranslationIndex(),
+    final int? value = await _withLowFpsSuppressed(
+      () => _showTranslationPickerDialog(_selectedTranslationIndex()),
     );
     if (value == null || !mounted) return;
     SettingsDB().put("translation", value);

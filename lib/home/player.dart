@@ -175,11 +175,13 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _isCompletingTrack = false;
   bool _showProgressThumb = false;
   bool _isScrubbing = false;
+  int _progressVisualBlockCount = 0;
   double? _pendingSeekProgress;
   Duration? _scrubPreviewPosition;
 
   double _playbackRate = 1.0;
   Duration _position = Duration.zero;
+  Duration _displayedPosition = Duration.zero;
   Duration _duration = Duration.zero;
   Timer? _progressThumbTimer;
 
@@ -197,7 +199,6 @@ class _PlayerPageState extends State<PlayerPage> {
 
     _bindAudioListeners();
     _refreshDownloadState();
-    unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(true));
   }
 
   void _bindAudioListeners() {
@@ -206,9 +207,7 @@ class _PlayerPageState extends State<PlayerPage> {
         position,
       ) {
         if (_isScrubbing) return;
-        _safeSetState(() {
-          _position = position;
-        });
+        _setAudioPosition(position);
       });
 
       _fallbackDurationSubscription = _fallbackAudio.onDurationChanged.listen((
@@ -238,6 +237,7 @@ class _PlayerPageState extends State<PlayerPage> {
             state == ap.PlayerState.playing,
           ),
         );
+        _syncProgressVisualPolicy();
       });
 
       _fallbackCompleteSubscription = _fallbackAudio.onPlayerComplete.listen((
@@ -250,9 +250,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
     _positionSubscription = _justAudio.positionStream.listen((position) {
       if (_isScrubbing) return;
-      _safeSetState(() {
-        _position = position;
-      });
+      _setAudioPosition(position);
     });
 
     _durationSubscription = _justAudio.durationStream.listen((duration) {
@@ -277,6 +275,7 @@ class _PlayerPageState extends State<PlayerPage> {
         await _handleTrackComplete();
       }
       unawaited(AndroidAudioDisplayMode.setAudioPlaybackActive(state.playing));
+      _syncProgressVisualPolicy();
     });
   }
 
@@ -287,9 +286,11 @@ class _PlayerPageState extends State<PlayerPage> {
     try {
       _safeSetState(() {
         _position = Duration.zero;
+        _displayedPosition = Duration.zero;
         _isPlaying = false;
         _isPaused = false;
       });
+      _syncProgressVisualPolicy();
 
       if (_loopEnabled) {
         await _playSurah(_selectedSurah, forceRestart: true);
@@ -307,6 +308,62 @@ class _PlayerPageState extends State<PlayerPage> {
   void _safeSetState(VoidCallback fn) {
     if (!mounted) return;
     setState(fn);
+  }
+
+  bool get _shouldRenderProgressVisuals {
+    return mounted && !_isScrubbing && _progressVisualBlockCount == 0;
+  }
+
+  bool get _shouldAnimateProgressVisuals {
+    return _shouldRenderProgressVisuals && _isPlaying;
+  }
+
+  void _syncProgressVisualPolicy({bool syncPosition = false}) {
+    if (!mounted) return;
+
+    unawaited(
+      AndroidAudioDisplayMode.setVisualProgressActive(
+        _shouldAnimateProgressVisuals,
+      ),
+    );
+
+    if (syncPosition && _shouldRenderProgressVisuals) {
+      _syncDisplayedPosition();
+    }
+  }
+
+  void _setAudioPosition(Duration position) {
+    _position = position;
+    if (!_shouldRenderProgressVisuals || _displayedPosition == position) return;
+
+    setState(() {
+      _displayedPosition = position;
+    });
+  }
+
+  void _syncDisplayedPosition() {
+    if (!mounted) return;
+    if (_displayedPosition == _position) return;
+
+    setState(() {
+      _displayedPosition = _position;
+    });
+  }
+
+  Future<T> _withProgressVisualsPaused<T>(Future<T> Function() action) async {
+    AndroidAudioDisplayMode.notifyUserActivity();
+    _progressVisualBlockCount++;
+    _syncProgressVisualPolicy();
+    unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(true));
+    try {
+      return await action();
+    } finally {
+      if (_progressVisualBlockCount > 0) {
+        _progressVisualBlockCount--;
+      }
+      _syncProgressVisualPolicy(syncPosition: true);
+      unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
+    }
   }
 
   String _surahName(int surah) => _surahTransliterations[surah - 1];
@@ -368,6 +425,7 @@ class _PlayerPageState extends State<PlayerPage> {
       await _fallbackAudio.stop();
       _safeSetState(() {
         _position = Duration.zero;
+        _displayedPosition = Duration.zero;
         _duration = Duration.zero;
       });
 
@@ -390,6 +448,12 @@ class _PlayerPageState extends State<PlayerPage> {
       final String url = await _surahStreamUrl(surah);
       sourceUri = Uri.parse(url);
     }
+
+    _safeSetState(() {
+      _position = Duration.zero;
+      _displayedPosition = Duration.zero;
+      _duration = Duration.zero;
+    });
 
     await _justAudio.setAudioSource(
       ja.AudioSource.uri(
@@ -423,7 +487,12 @@ class _PlayerPageState extends State<PlayerPage> {
     } else {
       await _justAudio.pause();
     }
+    _safeSetState(() {
+      _isPlaying = false;
+      _isPaused = true;
+    });
     await AndroidAudioDisplayMode.setAudioPlaybackActive(false);
+    _syncProgressVisualPolicy();
   }
 
   Future<void> _stopCurrentTrack() async {
@@ -432,7 +501,12 @@ class _PlayerPageState extends State<PlayerPage> {
     } else {
       await _justAudio.stop();
     }
+    _safeSetState(() {
+      _isPlaying = false;
+      _isPaused = false;
+    });
     await AndroidAudioDisplayMode.setAudioPlaybackActive(false);
+    _syncProgressVisualPolicy();
   }
 
   Future<void> _seekCurrentTrack(Duration position) async {
@@ -509,7 +583,7 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   Duration _positionForProgress() {
-    return _scrubPreviewPosition ?? _position;
+    return _scrubPreviewPosition ?? _displayedPosition;
   }
 
   void _revealProgressThumb() {
@@ -545,6 +619,8 @@ class _PlayerPageState extends State<PlayerPage> {
       child: Slider(
         value: (_pendingSeekProgress ?? progress).clamp(0.0, 1.0),
         onChangeStart: (value) {
+          AndroidAudioDisplayMode.notifyUserActivity();
+          unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(true));
           _revealProgressThumb();
           _safeSetState(() {
             _isScrubbing = true;
@@ -552,6 +628,7 @@ class _PlayerPageState extends State<PlayerPage> {
             final int pendingMs = (_duration.inMilliseconds * value).round();
             _scrubPreviewPosition = Duration(milliseconds: pendingMs);
           });
+          _syncProgressVisualPolicy();
         },
         onChanged: (value) {
           _revealProgressThumb();
@@ -569,10 +646,13 @@ class _PlayerPageState extends State<PlayerPage> {
           } finally {
             _safeSetState(() {
               _position = Duration(milliseconds: pendingMs);
+              _displayedPosition = Duration(milliseconds: pendingMs);
               _isScrubbing = false;
               _pendingSeekProgress = null;
               _scrubPreviewPosition = null;
             });
+            _syncProgressVisualPolicy();
+            unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
           }
         },
       ),
@@ -707,58 +787,60 @@ class _PlayerPageState extends State<PlayerPage> {
   Future<void> _openSurahPickerSheet() async {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
-    final int? selectedSurah = await showModalBottomSheet<int>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      backgroundColor: colorScheme.surfaceContainer,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(AppRadii.large),
+    final int? selectedSurah = await _withProgressVisualsPaused(() {
+      return showModalBottomSheet<int>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        backgroundColor: colorScheme.surfaceContainer,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AppRadii.large),
+          ),
         ),
-      ),
-      builder: (context) {
-        final double screenHeight = MediaQuery.sizeOf(context).height;
-        final double initialSize = min(
-          0.62,
-          520 / screenHeight,
-        ).clamp(0.42, 0.62).toDouble();
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: initialSize,
-          minChildSize: 0.32,
-          maxChildSize: 0.94,
-          builder: (context, scrollController) {
-            return Material(
-              color: colorScheme.surfaceContainer,
-              child: Column(
-                children: <Widget>[
-                  ListTile(
-                    leading: const Icon(Icons.queue_music_rounded),
-                    title: Text(
-                      'Choose Surah',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
+        builder: (context) {
+          final double screenHeight = MediaQuery.sizeOf(context).height;
+          final double initialSize = min(
+            0.62,
+            520 / screenHeight,
+          ).clamp(0.42, 0.62).toDouble();
+          return DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: initialSize,
+            minChildSize: 0.32,
+            maxChildSize: 0.94,
+            builder: (context, scrollController) {
+              return Material(
+                color: colorScheme.surfaceContainer,
+                child: Column(
+                  children: <Widget>[
+                    ListTile(
+                      leading: const Icon(Icons.queue_music_rounded),
+                      title: Text(
+                        'Choose Surah',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
-                  ),
-                  const Divider(height: 1),
-                  Expanded(
-                    child: _buildSurahSelectionList(
-                      theme: theme,
-                      colorScheme: colorScheme,
-                      closeOnSelect: true,
-                      scrollController: scrollController,
+                    const Divider(height: 1),
+                    Expanded(
+                      child: _buildSurahSelectionList(
+                        theme: theme,
+                        colorScheme: colorScheme,
+                        closeOnSelect: true,
+                        scrollController: scrollController,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      );
+    });
 
     await _selectSurah(selectedSurah);
   }
@@ -826,6 +908,7 @@ class _PlayerPageState extends State<PlayerPage> {
         _loadedFromOffline = null;
         _safeSetState(() {
           _position = Duration.zero;
+          _displayedPosition = Duration.zero;
           _duration = Duration.zero;
           _isPlaying = false;
           _isPaused = false;
@@ -849,28 +932,30 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   Future<void> _confirmDeleteSurahDownload() async {
-    final bool? confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          icon: const Icon(Icons.warning_amber_rounded),
-          title: const Text('Delete Downloaded MP3?'),
-          content: Text(
-            'This will remove ${_surahName(_selectedSurah)} from offline storage.',
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
+    final bool? confirm = await _withProgressVisualsPaused(() {
+      return showDialog<bool>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            icon: const Icon(Icons.warning_amber_rounded),
+            title: const Text('Delete Downloaded MP3?'),
+            content: Text(
+              'This will remove ${_surahName(_selectedSurah)} from offline storage.',
             ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Delete'),
-            ),
-          ],
-        );
-      },
-    );
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Delete'),
+              ),
+            ],
+          );
+        },
+      );
+    });
 
     if (confirm == true) {
       await _deleteSurahDownloadConfirmed();
@@ -880,6 +965,7 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void dispose() {
     unawaited(AndroidAudioDisplayMode.setAudioPlaybackActive(false));
+    unawaited(AndroidAudioDisplayMode.setVisualProgressActive(false));
     unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
     _progressThumbTimer?.cancel();
     _positionSubscription?.cancel();
@@ -1069,6 +1155,19 @@ class _PlayerPageState extends State<PlayerPage> {
         );
 
         final Widget speedButton = MenuAnchor(
+          onOpen: () {
+            _progressVisualBlockCount++;
+            _syncProgressVisualPolicy();
+            AndroidAudioDisplayMode.notifyUserActivity();
+            unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(true));
+          },
+          onClose: () {
+            if (_progressVisualBlockCount > 0) {
+              _progressVisualBlockCount--;
+            }
+            _syncProgressVisualPolicy(syncPosition: true);
+            unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
+          },
           style: MenuStyle(
             backgroundColor: WidgetStatePropertyAll(
               colorScheme.surfaceContainer,

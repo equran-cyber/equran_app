@@ -38,6 +38,7 @@ class _PlayButtonState extends State<PlayButton> {
   StreamSubscription<Duration>? _durationSubscription;
   StreamSubscription<void>? _completeSubscription;
   StreamSubscription<PlayerState>? _stateSubscription;
+  Timer? _progressVisualTimer;
 
   bool _isPlaying = false;
   bool _isLoading = false;
@@ -46,6 +47,7 @@ class _PlayButtonState extends State<PlayButton> {
   bool _hasError = false;
 
   double _progress = 0.0;
+  double _latestProgress = 0.0;
   Duration _duration = Duration.zero;
 
   @override
@@ -67,11 +69,22 @@ class _PlayButtonState extends State<PlayButton> {
       _safeSetState(() {
         _isPlaying = false;
         _progress = 0.0;
+        _latestProgress = 0.0;
       });
+      _syncProgressVisuals();
+      unawaited(AndroidAudioDisplayMode.setVisualProgressActive(false));
+      unawaited(AndroidAudioDisplayMode.setAudioPlaybackActive(false));
     });
 
     // Listen for errors
     _stateSubscription = _audioPlayer.onPlayerStateChanged.listen((state) {
+      final bool playing = state == PlayerState.playing;
+      unawaited(AndroidAudioDisplayMode.setAudioPlaybackActive(playing));
+      unawaited(AndroidAudioDisplayMode.setVisualProgressActive(playing));
+      if (!playing) {
+        _progressVisualTimer?.cancel();
+        _progressVisualTimer = null;
+      }
       if (state == PlayerState.stopped && _isPlaying) {
         _safeSetState(() {
           _hasError = true;
@@ -91,10 +104,29 @@ class _PlayButtonState extends State<PlayButton> {
 
   void _updateProgress(Duration position) {
     if (_duration.inMilliseconds > 0) {
-      _safeSetState(() {
-        _progress = position.inMilliseconds / _duration.inMilliseconds;
-      });
+      _latestProgress = position.inMilliseconds / _duration.inMilliseconds;
     }
+  }
+
+  void _syncProgressVisuals() {
+    if (!mounted || !_isPlaying) {
+      _progressVisualTimer?.cancel();
+      _progressVisualTimer = null;
+      return;
+    }
+
+    _progressVisualTimer ??= Timer.periodic(
+      const Duration(milliseconds: 250),
+      (_) => _flushProgressVisual(),
+    );
+    _flushProgressVisual();
+  }
+
+  void _flushProgressVisual() {
+    if (!mounted || !_isPlaying || _progress == _latestProgress) return;
+    setState(() {
+      _progress = _latestProgress.clamp(0.0, 1.0).toDouble();
+    });
   }
 
   Uint8List? _getCachedAudio(String url) {
@@ -138,6 +170,9 @@ class _PlayButtonState extends State<PlayButton> {
 
   @override
   void dispose() {
+    unawaited(AndroidAudioDisplayMode.setVisualProgressActive(false));
+    unawaited(AndroidAudioDisplayMode.setAudioPlaybackActive(false));
+    _progressVisualTimer?.cancel();
     _positionSubscription?.cancel();
     _durationSubscription?.cancel();
     _completeSubscription?.cancel();
@@ -147,12 +182,13 @@ class _PlayButtonState extends State<PlayButton> {
   }
 
   Future<void> _playAudio(String url) async {
+    final AudioDownloadService downloads = AudioDownloadService();
     if (!kIsWeb) {
-      final File offlineFile = await AudioDownloadService().ayahFile(
+      final File? offlineFile = await downloads.playbackAyahFile(
         widget.surah,
         widget.ayah,
       );
-      if (offlineFile.existsSync()) {
+      if (offlineFile != null && offlineFile.existsSync()) {
         await _audioPlayer.play(DeviceFileSource(offlineFile.path));
         return;
       }
@@ -167,6 +203,9 @@ class _PlayButtonState extends State<PlayButton> {
     try {
       final Uint8List bytes = await _downloadAudioBytes(url);
       _cacheAudio(url, bytes);
+      if (!kIsWeb) {
+        unawaited(downloads.cacheAyah(widget.surah, widget.ayah));
+      }
       await _audioPlayer.play(BytesSource(bytes));
     } catch (_) {
       if (!kIsWeb) {
@@ -322,6 +361,9 @@ class _PlayButtonState extends State<PlayButton> {
           _isLoading = false;
           _isPlaying = false;
         });
+        _syncProgressVisuals();
+        unawaited(AndroidAudioDisplayMode.setVisualProgressActive(false));
+        unawaited(AndroidAudioDisplayMode.setAudioPlaybackActive(false));
       } else {
         final String resolvedUrl = await widget.url;
         if (resolvedUrl.isEmpty) {
@@ -342,6 +384,7 @@ class _PlayButtonState extends State<PlayButton> {
           _isLoading = false;
           _isPlaying = true;
         });
+        _syncProgressVisuals();
       }
     } catch (_) {
       _safeSetState(() {
@@ -349,6 +392,9 @@ class _PlayButtonState extends State<PlayButton> {
         _isPlaying = false;
         _hasError = true;
       });
+      _syncProgressVisuals();
+      unawaited(AndroidAudioDisplayMode.setVisualProgressActive(false));
+      unawaited(AndroidAudioDisplayMode.setAudioPlaybackActive(false));
 
       // Show error message to user
       if (mounted) {

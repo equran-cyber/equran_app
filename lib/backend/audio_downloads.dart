@@ -78,8 +78,12 @@ class AudioDownloadsSummary {
 class AudioDownloadService {
   static const String _surahDirectoryName = 'surah_audio';
   static const String _ayahDirectoryName = 'ayah_audio';
+  static const String _tempAyahDirectoryName = 'ayah_audio_cache';
+  static const int _maxTempCachedAyahs = 10;
   static final Map<String, Future<List<File>>> _surahAyahDownloads =
       <String, Future<List<File>>>{};
+  static final Map<String, Future<File>> _tempAyahDownloads =
+      <String, Future<File>>{};
 
   Future<Directory> _audioDirectory(String directoryName) async {
     final Directory baseDir = await getApplicationDocumentsDirectory();
@@ -90,9 +94,21 @@ class AudioDownloadService {
     return dir;
   }
 
+  Future<Directory> _tempAudioDirectory(String directoryName) async {
+    final Directory baseDir = await getTemporaryDirectory();
+    final Directory dir = Directory('${baseDir.path}/$directoryName');
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  }
+
   Future<Directory> surahDirectory() => _audioDirectory(_surahDirectoryName);
 
   Future<Directory> ayahDirectory() => _audioDirectory(_ayahDirectoryName);
+
+  Future<Directory> tempAyahDirectory() =>
+      _tempAudioDirectory(_tempAyahDirectoryName);
 
   String _reciterCode() => QuranAudioService().selectedReciter.code;
 
@@ -114,6 +130,11 @@ class AudioDownloadService {
     return File('${dir.path}/${ayahFileName(surah, ayah)}');
   }
 
+  Future<File> tempAyahFile(int surah, int ayah) async {
+    final Directory dir = await tempAyahDirectory();
+    return File('${dir.path}/${ayahFileName(surah, ayah)}');
+  }
+
   Future<bool> hasSurah(int surah) async {
     final File file = await surahFile(surah);
     return _isCompleteDownload(file);
@@ -122,6 +143,26 @@ class AudioDownloadService {
   Future<bool> hasAyah(int surah, int ayah) async {
     final File file = await ayahFile(surah, ayah);
     return _isCompleteDownload(file);
+  }
+
+  Future<bool> hasTempAyah(int surah, int ayah) async {
+    final File file = await tempAyahFile(surah, ayah);
+    return _isCompleteDownload(file);
+  }
+
+  Future<File?> playbackAyahFile(int surah, int ayah) async {
+    final File downloadedFile = await ayahFile(surah, ayah);
+    if (_isCompleteDownload(downloadedFile)) {
+      return downloadedFile;
+    }
+
+    final File tempFile = await tempAyahFile(surah, ayah);
+    if (_isCompleteDownload(tempFile)) {
+      await _touchFile(tempFile);
+      return tempFile;
+    }
+
+    return null;
   }
 
   bool isSurahAyahsDownloadInProgress(int surah) {
@@ -156,8 +197,26 @@ class AudioDownloadService {
     int ayah, {
     AudioDownloadProgressCallback? onProgress,
   }) async {
-    final String url = await QuranAudioService().getAyahUrl(surah, ayah);
     final File file = await ayahFile(surah, ayah);
+    if (_isCompleteDownload(file)) {
+      return file;
+    }
+
+    final File tempFile = await tempAyahFile(surah, ayah);
+    if (_isCompleteDownload(tempFile)) {
+      await _copyFile(tempFile, file);
+      onProgress?.call(
+        const DownloadProgress(
+          receivedBytes: 1,
+          totalBytes: 1,
+          completedFiles: 1,
+          totalFiles: 1,
+        ),
+      );
+      return file;
+    }
+
+    final String url = await QuranAudioService().getAyahUrl(surah, ayah);
     await _downloadToFile(
       url,
       file,
@@ -172,6 +231,43 @@ class AudioDownloadService {
               ),
             ),
     );
+    return file;
+  }
+
+  Future<File> cacheAyah(int surah, int ayah) async {
+    final File? playbackFile = await playbackAyahFile(surah, ayah);
+    if (playbackFile != null) {
+      await _enforceTempAyahCacheLimit();
+      return playbackFile;
+    }
+
+    final String downloadKey = '${_reciterCode()}-$surah-$ayah';
+    final Future<File>? activeDownload = _tempAyahDownloads[downloadKey];
+    if (activeDownload != null) {
+      return activeDownload;
+    }
+
+    final Future<File> download = _cacheAyahFile(surah, ayah);
+    _tempAyahDownloads[downloadKey] = download;
+    void clearActiveDownload() {
+      if (identical(_tempAyahDownloads[downloadKey], download)) {
+        _tempAyahDownloads.remove(downloadKey);
+      }
+    }
+
+    download.then<void>(
+      (_) => clearActiveDownload(),
+      onError: (_, _) => clearActiveDownload(),
+    );
+    return download;
+  }
+
+  Future<File> _cacheAyahFile(int surah, int ayah) async {
+    final String url = await QuranAudioService().getAyahUrl(surah, ayah);
+    final File file = await tempAyahFile(surah, ayah);
+    await _downloadToFile(url, file);
+    await _touchFile(file);
+    await _enforceTempAyahCacheLimit();
     return file;
   }
 
@@ -216,6 +312,13 @@ class AudioDownloadService {
     for (int ayah = 1; ayah <= totalAyahs; ayah++) {
       final File file = await ayahFile(surah, ayah);
       if (_isCompleteDownload(file)) {
+        files[ayah - 1] = file;
+        continue;
+      }
+
+      final File tempFile = await tempAyahFile(surah, ayah);
+      if (_isCompleteDownload(tempFile)) {
+        await _copyFile(tempFile, file);
         files[ayah - 1] = file;
         continue;
       }
@@ -338,6 +441,58 @@ class AudioDownloadService {
       rethrow;
     } finally {
       client.close();
+    }
+  }
+
+  Future<void> _copyFile(File source, File destination) async {
+    final File partialFile = File('${destination.path}.part');
+    if (await partialFile.exists()) {
+      await partialFile.delete();
+    }
+    await source.copy(partialFile.path);
+    if (await destination.exists()) {
+      await destination.delete();
+    }
+    await partialFile.rename(destination.path);
+  }
+
+  Future<void> _touchFile(File file) async {
+    try {
+      await file.setLastModified(DateTime.now());
+    } catch (_) {
+      // Cache ordering is best-effort; playback should not depend on it.
+    }
+  }
+
+  Future<void> _enforceTempAyahCacheLimit() async {
+    final Directory dir = await tempAyahDirectory();
+    final List<File> files = <File>[];
+    for (final FileSystemEntity entity in dir.listSync()) {
+      if (entity is! File) continue;
+      if (entity.path.endsWith('.part')) {
+        try {
+          await entity.delete();
+        } catch (_) {
+          // Temporary cache cleanup is best-effort.
+        }
+        continue;
+      }
+      if (!_isCompleteDownload(entity)) continue;
+      files.add(entity);
+    }
+
+    files.sort((File a, File b) {
+      return a.lastModifiedSync().compareTo(b.lastModifiedSync());
+    });
+
+    while (files.length > _maxTempCachedAyahs) {
+      final File oldest = files.removeAt(0);
+      try {
+        await oldest.delete();
+      } catch (_) {
+        // Temporary cache cleanup is best-effort and must never affect user
+        // downloads, which live in a separate documents directory.
+      }
     }
   }
 

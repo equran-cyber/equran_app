@@ -41,6 +41,7 @@ class ReadQuranCard extends StatelessWidget {
   final VoidCallback? onShare;
   final VoidCallback? onTafsir;
   final VoidCallback? onSwitchTranslation;
+  final ValueChanged<bool>? onVisualOverlayChanged;
   final bool isPlaying;
   final bool isDownloading;
   final bool isDownloaded;
@@ -69,6 +70,7 @@ class ReadQuranCard extends StatelessWidget {
     this.onShare,
     this.onTafsir,
     this.onSwitchTranslation,
+    this.onVisualOverlayChanged,
     this.isPlaying = false,
     this.isDownloading = false,
     this.isDownloaded = false,
@@ -81,6 +83,7 @@ class ReadQuranCard extends StatelessWidget {
   Future<void> _showInputPrompt(BuildContext context) async {
     final TextEditingController textController = TextEditingController();
     AndroidAudioDisplayMode.notifyUserActivity();
+    onVisualOverlayChanged?.call(true);
     unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(true));
     try {
       await showDialog<void>(
@@ -116,6 +119,7 @@ class ReadQuranCard extends StatelessWidget {
         },
       );
     } finally {
+      onVisualOverlayChanged?.call(false);
       unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
       await WidgetsBinding.instance.endOfFrame;
       textController.dispose();
@@ -277,6 +281,15 @@ class ReadQuranCard extends StatelessWidget {
             position: PopupMenuPosition.under,
             padding: EdgeInsets.zero,
             borderRadius: BorderRadius.circular(10),
+            onOpened: () {
+              AndroidAudioDisplayMode.notifyUserActivity();
+              onVisualOverlayChanged?.call(true);
+              unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(true));
+            },
+            onCanceled: () {
+              onVisualOverlayChanged?.call(false);
+              unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
+            },
             child: SizedBox(
               height: actionSize,
               width: actionSize,
@@ -289,6 +302,8 @@ class ReadQuranCard extends StatelessWidget {
               ),
             ),
             onSelected: (action) {
+              onVisualOverlayChanged?.call(false);
+              unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
               switch (action) {
                 case _CardOverflowAction.downloadOrDelete:
                   if (isDownloaded) {
