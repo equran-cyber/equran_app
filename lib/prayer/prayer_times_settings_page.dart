@@ -1,7 +1,9 @@
 import 'package:equran/prayer/manual_prayer_location_page.dart';
 import 'package:equran/prayer/prayer_location_service.dart';
+import 'package:equran/prayer/prayer_map_location_page.dart';
 import 'package:equran/prayer/prayer_models.dart';
 import 'package:equran/prayer/prayer_settings_store.dart';
+import 'package:equran/prayer/prayer_times_service.dart';
 import 'package:equran/utils/app_radii.dart';
 import 'package:equran/widgets/app_selection_dialog.dart';
 import 'package:flutter/material.dart';
@@ -17,6 +19,7 @@ class PrayerTimesSettingsPage extends StatefulWidget {
 class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
   final PrayerSettingsStore _store = PrayerSettingsStore();
   final PrayerLocationService _locationService = const PrayerLocationService();
+  final PrayerTimesService _service = const PrayerTimesService();
   late PrayerTimeSettings _settings;
   PrayerLocation? _location;
   bool _isLocating = false;
@@ -48,7 +51,7 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
                 leading: const Icon(Icons.my_location_rounded),
                 title: const Text('Use current location'),
                 subtitle: const Text(
-                  'Request permission and save GPS coordinates.',
+                  "Save this device's location for prayer calculations.",
                 ),
                 trailing: _isLocating
                     ? const SizedBox.square(
@@ -59,8 +62,14 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
                 onTap: _isLocating ? null : _useCurrentLocation,
               ),
               ListTile(
+                leading: const Icon(Icons.map_outlined),
+                title: const Text('Choose on map'),
+                subtitle: const Text('Move the map under a centered pin.'),
+                onTap: () => _chooseOnMap(_location),
+              ),
+              ListTile(
                 leading: const Icon(Icons.edit_location_alt_outlined),
-                title: const Text('Choose manually'),
+                title: const Text('Enter coordinates manually'),
                 subtitle: const Text('Enter latitude and longitude.'),
                 onTap: () => _chooseManually(_location),
               ),
@@ -78,12 +87,12 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
           _buildSettingsGroup(
             context: context,
             title: 'Calculation',
-            subtitle: 'Method, Asr, and time format',
+            subtitle: _calculationSubtitle,
             icon: Icons.calculate_outlined,
             children: <Widget>[
               ListTile(
                 title: const Text('Calculation method'),
-                subtitle: Text(_settings.method.label),
+                subtitle: Text(_methodSubtitle),
                 onTap: _selectCalculationMethod,
               ),
               ListTile(
@@ -617,7 +626,7 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
 
     final PrayerLocation? location = result.location;
     if (location == null) {
-      _showMessage(result.message ?? 'Unable to get location.');
+      _showLocationError(result);
       return;
     }
     await _store.saveLocation(location);
@@ -634,6 +643,20 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
         builder: (BuildContext context) =>
             ManualPrayerLocationPage(initialLocation: initialLocation),
       ),
+    );
+    if (location == null) return;
+    await _store.saveLocation(location);
+    if (!mounted) return;
+    setState(() {
+      _location = location;
+    });
+    _showMessage('Location saved.');
+  }
+
+  Future<void> _chooseOnMap(PrayerLocation? initialLocation) async {
+    final PrayerLocation? location = await showPrayerMapLocationPicker(
+      context,
+      initialLocation,
     );
     if (location == null) return;
     await _store.saveLocation(location);
@@ -670,12 +693,54 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
   String get _locationSubtitle {
     final PrayerLocation? location = _location;
     if (location == null) return 'Choose a location before calculating';
-    return '${location.label} • ${location.latitude.toStringAsFixed(4)}, ${location.longitude.toStringAsFixed(4)}';
+    return location.displayLabel;
+  }
+
+  String get _calculationSubtitle {
+    return _methodSubtitle;
+  }
+
+  String get _methodSubtitle {
+    final PrayerLocation? location = _location;
+    if (_settings.method == PrayerCalculationMethod.auto && location == null) {
+      return 'Best method after location is saved';
+    }
+    final PrayerCalculationMethod effectiveMethod =
+        _settings.method == PrayerCalculationMethod.auto && location != null
+        ? _service.effectiveMethodFor(location: location, settings: _settings)
+        : _settings.method;
+    return prayerMethodDisplayLabel(
+      settings: _settings,
+      effectiveMethod: effectiveMethod,
+    );
   }
 
   String _offsetLabel(int offset) {
     if (offset == 0) return 'No manual adjustment';
     return '${offset > 0 ? '+' : ''}$offset minutes';
+  }
+
+  void _showLocationError(PrayerLocationResult result) {
+    final String message = result.message ?? 'Unable to get location.';
+    final PrayerLocationFailureReason? reason = result.failureReason;
+    final SnackBarAction? action = switch (reason) {
+      PrayerLocationFailureReason.servicesDisabled => SnackBarAction(
+        label: 'Settings',
+        onPressed: () {
+          _locationService.openLocationSettings();
+        },
+      ),
+      PrayerLocationFailureReason.permissionDeniedForever => SnackBarAction(
+        label: 'App settings',
+        onPressed: () {
+          _locationService.openAppSettings();
+        },
+      ),
+      _ => null,
+    };
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message), action: action));
   }
 }
 

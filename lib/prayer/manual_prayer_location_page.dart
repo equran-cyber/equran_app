@@ -2,6 +2,22 @@ import 'package:equran/prayer/prayer_models.dart';
 import 'package:equran/utils/app_radii.dart';
 import 'package:flutter/material.dart';
 
+String? validatePrayerCoordinate(
+  String? value, {
+  required double min,
+  required double max,
+  required String label,
+}) {
+  final double? parsed = double.tryParse(value?.trim() ?? '');
+  final String fieldName = label.toLowerCase();
+  if ((value ?? '').trim().isEmpty) return 'Enter $fieldName.';
+  if (parsed == null) return '$label should be a number.';
+  if (parsed < min || parsed > max) {
+    return '$label must be between ${min.toStringAsFixed(0)} and ${max.toStringAsFixed(0)}.';
+  }
+  return null;
+}
+
 class ManualPrayerLocationPage extends StatefulWidget {
   const ManualPrayerLocationPage({super.key, this.initialLocation});
 
@@ -53,7 +69,7 @@ class _ManualPrayerLocationPageState extends State<ManualPrayerLocationPage> {
     final ColorScheme colors = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Choose Location')),
+      appBar: AppBar(title: const Text('Choose location manually')),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -86,7 +102,7 @@ class _ManualPrayerLocationPageState extends State<ManualPrayerLocationPage> {
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
-                                    'Manual Coordinates',
+                                    'Coordinates for prayer times',
                                     style: theme.textTheme.titleMedium
                                         ?.copyWith(fontWeight: FontWeight.w800),
                                   ),
@@ -95,7 +111,7 @@ class _ManualPrayerLocationPageState extends State<ManualPrayerLocationPage> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Enter latitude and longitude for the place you want to use for prayer calculations.',
+                              'Enter the latitude and longitude for the city, area, or address you want to use.',
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: colors.onSurfaceVariant,
                               ),
@@ -106,7 +122,9 @@ class _ManualPrayerLocationPageState extends State<ManualPrayerLocationPage> {
                               textInputAction: TextInputAction.next,
                               decoration: const InputDecoration(
                                 labelText: 'Location label',
-                                hintText: 'Home, work, or selected location',
+                                hintText: 'Home, work, or city name',
+                                helperText:
+                                    'Optional. This is shown instead of coordinates.',
                                 prefixIcon: Icon(Icons.label_outline_rounded),
                               ),
                             ),
@@ -121,15 +139,17 @@ class _ManualPrayerLocationPageState extends State<ManualPrayerLocationPage> {
                               textInputAction: TextInputAction.next,
                               decoration: const InputDecoration(
                                 labelText: 'Latitude',
-                                hintText: 'Between -90 and 90',
+                                hintText: 'Example: 25.2048',
+                                helperText: 'Use a value between -90 and 90.',
                                 prefixIcon: Icon(Icons.explore_outlined),
                               ),
-                              validator: (String? value) => _validateCoordinate(
-                                value,
-                                min: -90,
-                                max: 90,
-                                label: 'Latitude',
-                              ),
+                              validator: (String? value) =>
+                                  validatePrayerCoordinate(
+                                    value,
+                                    min: -90,
+                                    max: 90,
+                                    label: 'Latitude',
+                                  ),
                             ),
                             const SizedBox(height: 14),
                             TextFormField(
@@ -142,15 +162,17 @@ class _ManualPrayerLocationPageState extends State<ManualPrayerLocationPage> {
                               textInputAction: TextInputAction.done,
                               decoration: const InputDecoration(
                                 labelText: 'Longitude',
-                                hintText: 'Between -180 and 180',
+                                hintText: 'Example: 55.2708',
+                                helperText: 'Use a value between -180 and 180.',
                                 prefixIcon: Icon(Icons.public_rounded),
                               ),
-                              validator: (String? value) => _validateCoordinate(
-                                value,
-                                min: -180,
-                                max: 180,
-                                label: 'Longitude',
-                              ),
+                              validator: (String? value) =>
+                                  validatePrayerCoordinate(
+                                    value,
+                                    min: -180,
+                                    max: 180,
+                                    label: 'Longitude',
+                                  ),
                               onFieldSubmitted: (_) => _save(),
                             ),
                           ],
@@ -179,7 +201,7 @@ class _ManualPrayerLocationPageState extends State<ManualPrayerLocationPage> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                'Map picking is planned for a later phase. This screen saves precise coordinates without requiring Google Maps setup.',
+                                'Saved on this device and used only for local prayer-time calculation.',
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: colors.onSurfaceVariant,
                                   height: 1.35,
@@ -204,20 +226,6 @@ class _ManualPrayerLocationPageState extends State<ManualPrayerLocationPage> {
         ),
       ),
     );
-  }
-
-  String? _validateCoordinate(
-    String? value, {
-    required double min,
-    required double max,
-    required String label,
-  }) {
-    final double? parsed = double.tryParse(value?.trim() ?? '');
-    if (parsed == null) return '$label is required.';
-    if (parsed < min || parsed > max) {
-      return '$label must be between ${min.toStringAsFixed(0)} and ${max.toStringAsFixed(0)}.';
-    }
-    return null;
   }
 
   void _save() {

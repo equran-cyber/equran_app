@@ -68,6 +68,55 @@ void main() {
       );
     });
 
+    test('formats compact calculation method labels', () {
+      expect(
+        prayerMethodDisplayLabel(
+          settings: PrayerTimeSettings.defaults(),
+          effectiveMethod: PrayerCalculationMethod.muslimWorldLeague,
+        ),
+        'MWL',
+      );
+      expect(
+        prayerMethodDisplayLabel(
+          settings: const PrayerTimeSettings(
+            method: PrayerCalculationMethod.northAmerica,
+          ),
+          effectiveMethod: PrayerCalculationMethod.northAmerica,
+        ),
+        'ISNA',
+      );
+      expect(
+        prayerMethodDisplayLabel(
+          settings: const PrayerTimeSettings(
+            method: PrayerCalculationMethod.custom,
+          ),
+          effectiveMethod: PrayerCalculationMethod.custom,
+        ),
+        'Custom',
+      );
+    });
+
+    test('uses friendly location display labels', () {
+      expect(
+        const PrayerLocation(
+          latitude: 12.34,
+          longitude: 56.78,
+          label: '12.3400, 56.7800',
+          mode: PrayerLocationMode.currentDevice,
+        ).displayLabel,
+        'Current device location',
+      );
+      expect(
+        const PrayerLocation(
+          latitude: 12.34,
+          longitude: 56.78,
+          label: 'Home',
+          mode: PrayerLocationMode.manual,
+        ).displayLabel,
+        'Home',
+      );
+    });
+
     test('calculates the six displayed timings only', () {
       final PrayerDay day = service.calculateDay(
         date: DateTime(2026, 5, 4),
@@ -199,6 +248,38 @@ void main() {
       expect(next.entry.kind, PrayerTimeKind.dhuhr);
       expect(next.countdown, const Duration(hours: 5, minutes: 40));
     });
+
+    test(
+      'advances at the displayed prayer minute when times include seconds',
+      () {
+        final PrayerDay baseDay = _fakeDay(DateTime(2026, 5, 4));
+        final PrayerDay day = PrayerDay(
+          date: baseDay.date,
+          location: baseDay.location,
+          settings: baseDay.settings,
+          effectiveMethod: baseDay.effectiveMethod,
+          entries: baseDay.entries
+              .map(
+                (PrayerTimeEntry entry) => entry.kind == PrayerTimeKind.dhuhr
+                    ? PrayerTimeEntry(
+                        kind: entry.kind,
+                        time: entry.time.add(const Duration(seconds: 42)),
+                        offsetMinutes: entry.offsetMinutes,
+                      )
+                    : entry,
+              )
+              .toList(growable: false),
+        );
+
+        final NextPrayer next = service.nextPrayer(
+          day: day,
+          now: DateTime(2026, 5, 4, 12, 10),
+        );
+
+        expect(next.entry.kind, PrayerTimeKind.asr);
+        expect(next.countdown, const Duration(hours: 3, minutes: 20));
+      },
+    );
 
     test('rolls next prayer to tomorrow Fajr after Isha', () {
       final PrayerDay today = _fakeDay(DateTime(2026, 5, 4));

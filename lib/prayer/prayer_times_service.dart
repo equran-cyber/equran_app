@@ -4,7 +4,6 @@ import 'package:equran/prayer/prayer_models.dart';
 class PrayerTimesService {
   const PrayerTimesService();
 
-
   PrayerDay calculateDay({
     required DateTime date,
     required PrayerLocation location,
@@ -105,12 +104,14 @@ class PrayerTimesService {
     PrayerDay? tomorrow,
   }) {
     final DateTime localNow = now.toLocal();
+    final DateTime displayNow = _floorToMinute(localNow);
     for (final PrayerTimeKind kind in PrayerTimeKind.nextPrayerOrder) {
       final PrayerTimeEntry entry = day.entryFor(kind);
-      if (entry.time.isAfter(localNow)) {
+      final DateTime displayTime = _floorToMinute(entry.time);
+      if (displayTime.isAfter(displayNow)) {
         return NextPrayer(
           entry: entry,
-          countdown: entry.time.difference(localNow),
+          countdown: displayTime.difference(localNow),
         );
       }
     }
@@ -121,13 +122,14 @@ class PrayerTimesService {
     final DateTime nextFajr = tomorrow == null
         ? fajr.time.add(const Duration(days: 1))
         : fajr.time;
+    final DateTime displayNextFajr = _floorToMinute(nextFajr);
     return NextPrayer(
       entry: PrayerTimeEntry(
         kind: PrayerTimeKind.fajr,
         time: nextFajr,
         offsetMinutes: fajr.offsetMinutes,
       ),
-      countdown: nextFajr.difference(localNow),
+      countdown: displayNextFajr.difference(localNow),
     );
   }
 
@@ -201,5 +203,9 @@ class PrayerTimesService {
   DateTime _withOffset(DateTime time, int minutes) {
     if (minutes == 0) return time;
     return time.add(Duration(minutes: minutes));
+  }
+
+  DateTime _floorToMinute(DateTime time) {
+    return DateTime(time.year, time.month, time.day, time.hour, time.minute);
   }
 }

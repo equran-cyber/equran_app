@@ -64,7 +64,15 @@ Screenshots are not currently included in this repository. Add images under `met
 - **Hive** for lightweight local persistence.
 - **just_audio**, **just_audio_background**, and **audioplayers** for playback flows.
 - **quran** package for Quran text and metadata.
+- **flutter_map** for the prayer location picker with open map tiles.
 - Local assets for Hafs font, transliteration, daily content, and tafsir data.
+
+### Map Tiles
+
+The prayer location picker uses `flutter_map` with an OpenStreetMap-compatible
+tile URL and a configured User-Agent. Public tile servers have usage policies;
+production builds with significant traffic should use an appropriate tile
+provider or self-hosted tiles and comply with the chosen provider's terms.
 
 ## Getting Started
 

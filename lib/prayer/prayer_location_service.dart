@@ -55,6 +55,10 @@ abstract class PrayerPositionProvider {
   Future<PrayerLocationPermissionStatus> requestPermission();
 
   Future<PrayerRawPosition> getCurrentPosition();
+
+  Future<bool> openLocationSettings();
+
+  Future<bool> openAppSettings();
 }
 
 class GeolocatorPrayerPositionProvider implements PrayerPositionProvider {
@@ -89,6 +93,16 @@ class GeolocatorPrayerPositionProvider implements PrayerPositionProvider {
     );
   }
 
+  @override
+  Future<bool> openLocationSettings() {
+    return Geolocator.openLocationSettings();
+  }
+
+  @override
+  Future<bool> openAppSettings() {
+    return Geolocator.openAppSettings();
+  }
+
   PrayerLocationPermissionStatus _mapPermission(LocationPermission permission) {
     return switch (permission) {
       LocationPermission.denied => PrayerLocationPermissionStatus.denied,
@@ -116,7 +130,7 @@ class PrayerLocationService {
       if (!serviceEnabled) {
         return PrayerLocationResult.failure(
           reason: PrayerLocationFailureReason.servicesDisabled,
-          message: 'Location services are disabled.',
+          message: 'Turn on location services to use your current location.',
         );
       }
 
@@ -129,7 +143,8 @@ class PrayerLocationService {
       if (permission == PrayerLocationPermissionStatus.denied) {
         return PrayerLocationResult.failure(
           reason: PrayerLocationFailureReason.permissionDenied,
-          message: 'Location permission was denied.',
+          message:
+              'Location permission is needed to calculate prayer times from your current device location.',
         );
       }
 
@@ -137,7 +152,7 @@ class PrayerLocationService {
         return PrayerLocationResult.failure(
           reason: PrayerLocationFailureReason.permissionDeniedForever,
           message:
-              'Location permission is permanently denied. Enable it from app settings.',
+              'Location permission is blocked. Enable it from app settings to use current location.',
         );
       }
 
@@ -146,16 +161,25 @@ class PrayerLocationService {
         PrayerLocation(
           latitude: position.latitude,
           longitude: position.longitude,
-          label: 'Current location',
+          label: PrayerLocationMode.currentDevice.label,
           mode: PrayerLocationMode.currentDevice,
         ),
       );
     } catch (_) {
       return PrayerLocationResult.failure(
         reason: PrayerLocationFailureReason.unavailable,
-        message: 'Unable to get your current location.',
+        message:
+            'We could not read your current location. Try again or enter coordinates manually.',
       );
     }
+  }
+
+  Future<bool> openLocationSettings() {
+    return _provider.openLocationSettings();
+  }
+
+  Future<bool> openAppSettings() {
+    return _provider.openAppSettings();
   }
 
   String coordinateLabel(double latitude, double longitude) {

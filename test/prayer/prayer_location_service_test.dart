@@ -23,7 +23,7 @@ void main() {
         expect(result.isSuccess, true);
         expect(result.location?.latitude, 12.34);
         expect(result.location?.longitude, 56.78);
-        expect(result.location?.label, 'Current location');
+        expect(result.location?.label, 'Current device location');
         expect(result.location?.mode, PrayerLocationMode.currentDevice);
       },
     );
@@ -98,6 +98,16 @@ class _FakePositionProvider implements PrayerPositionProvider {
   @override
   Future<PrayerRawPosition> getCurrentPosition() async {
     return position;
+  }
+
+  @override
+  Future<bool> openAppSettings() async {
+    return true;
+  }
+
+  @override
+  Future<bool> openLocationSettings() async {
+    return true;
   }
 
   @override

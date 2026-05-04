@@ -61,6 +61,23 @@ enum PrayerCalculationMethod {
       orElse: () => PrayerCalculationMethod.auto,
     );
   }
+
+  String get shortLabel {
+    return switch (this) {
+      PrayerCalculationMethod.auto => 'Auto',
+      PrayerCalculationMethod.muslimWorldLeague => 'MWL',
+      PrayerCalculationMethod.egyptian => 'Egyptian',
+      PrayerCalculationMethod.ummAlQura => 'Umm al-Qura',
+      PrayerCalculationMethod.dubai => 'Dubai',
+      PrayerCalculationMethod.kuwait => 'Kuwait',
+      PrayerCalculationMethod.qatar => 'Qatar',
+      PrayerCalculationMethod.karachi => 'Karachi',
+      PrayerCalculationMethod.northAmerica => 'ISNA',
+      PrayerCalculationMethod.singapore => 'Singapore',
+      PrayerCalculationMethod.turkiye => 'Turkey',
+      PrayerCalculationMethod.custom => 'Custom',
+    };
+  }
 }
 
 enum PrayerAsrMethod {
@@ -138,6 +155,20 @@ class PrayerLocation {
   final String? countryCode;
   final PrayerLocationMode mode;
 
+  String get displayLabel {
+    final String trimmedLabel = label.trim();
+    if (trimmedLabel.isEmpty ||
+        trimmedLabel == 'Current location' ||
+        _looksLikeCoordinateLabel(trimmedLabel)) {
+      return mode.label;
+    }
+    return trimmedLabel;
+  }
+
+  String get coordinateLabel {
+    return '${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)}';
+  }
+
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
       'latitude': latitude,
@@ -147,6 +178,16 @@ class PrayerLocation {
       'mode': mode.id,
     };
   }
+}
+
+String prayerMethodDisplayLabel({
+  required PrayerTimeSettings settings,
+  required PrayerCalculationMethod effectiveMethod,
+}) {
+  return switch (settings.method) {
+    PrayerCalculationMethod.custom => 'Custom',
+    _ => effectiveMethod.shortLabel,
+  };
 }
 
 class PrayerOffsets {
@@ -335,4 +376,10 @@ double? _readDouble(dynamic value) {
   if (value is int) return value.toDouble();
   if (value is String) return double.tryParse(value);
   return null;
+}
+
+bool _looksLikeCoordinateLabel(String value) {
+  return RegExp(
+    r'^\s*-?\d{1,2}(?:\.\d+)?\s*,\s*-?\d{1,3}(?:\.\d+)?\s*$',
+  ).hasMatch(value);
 }
