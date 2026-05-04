@@ -27,6 +27,7 @@ void main() {
     expect(find.text('Home'), findsWidgets);
     expect(find.text('Player'), findsOneWidget);
     expect(find.text('Downloads'), findsOneWidget);
+    expect(find.text('Prayer Times'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
 
     await tester.tap(find.byType(Switch).first);

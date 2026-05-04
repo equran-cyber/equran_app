@@ -2,6 +2,7 @@ import 'package:adaptive_theme/adaptive_theme.dart';
 import 'package:equran/backend/library.dart'
     show BookmarkDB, FavouritesDB, SettingsDB;
 import 'package:equran/backend/backup_service.dart';
+import 'package:equran/prayer/prayer_times_settings_page.dart';
 import 'package:equran/utils/app_theme.dart';
 import 'package:equran/utils/app_radii.dart';
 import 'package:equran/utils/library.dart';
@@ -116,6 +117,26 @@ class _SettingsPageState extends State<SettingsPage> {
             children: <Widget>[
               _buildReciterTile(context),
               const PlayBackSlider(),
+            ],
+          ),
+          _buildSettingsGroup(
+            context: context,
+            title: "Prayer Times",
+            subtitle: "Location and calculation settings",
+            icon: Icons.access_time_outlined,
+            children: <Widget>[
+              ListTile(
+                leading: const Icon(Icons.tune_rounded),
+                title: const Text('Prayer Times settings'),
+                subtitle: const Text(
+                  'Manage location, method, Asr, time format, and offsets.',
+                ),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (context) => const PrayerTimesSettingsPage(),
+                  ),
+                ),
+              ),
             ],
           ),
           _buildSettingsGroup(

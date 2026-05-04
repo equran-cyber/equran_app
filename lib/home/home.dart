@@ -4,6 +4,7 @@ import 'package:equran/home/downloads.dart';
 import 'package:equran/home/main_page.dart';
 import 'package:equran/home/player.dart';
 import 'package:equran/home/settings.dart';
+import 'package:equran/prayer/prayer_times_page.dart';
 import 'package:equran/utils/responsive_nav.dart';
 import 'package:flutter/material.dart';
 
@@ -52,6 +53,12 @@ class _HomePageState extends State<HomePage> {
       Icon(Icons.download_done_outlined),
       Icon(Icons.download_done_rounded),
       DownloadsPage(),
+    ),
+    Destinations(
+      'Prayer Times',
+      Icon(Icons.access_time_outlined),
+      Icon(Icons.schedule_rounded),
+      PrayerTimesPage(),
     ),
     Destinations(
       'Settings',
