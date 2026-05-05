@@ -51,6 +51,8 @@ class BackupService {
     'fontSize',
     'fontSizeTranslation',
     'playbackRate',
+    'prayerTimeSettings',
+    'prayerLocation',
   };
 
   static Future<String?> exportBackupFile() async {
@@ -142,9 +144,10 @@ class BackupService {
     final Map<String, dynamic> payload = <String, dynamic>{
       'schemaVersion': _schemaVersion,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
-      'settings': rawSettings.map(
-        (dynamic key, dynamic value) => MapEntry(key.toString(), value),
-      ),
+      'settings': rawSettings.map((dynamic key, dynamic value) {
+        final String settingKey = key.toString();
+        return MapEntry(settingKey, _settingValueForBackup(settingKey, value));
+      }),
       'favourites': rawFavourites.map(
         (dynamic key, dynamic value) => MapEntry(key.toString(), value),
       ),
@@ -259,6 +262,10 @@ class BackupService {
           entry.value,
           const <double>[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0],
         ),
+        'prayerTimeSettings' => _sanitizePrayerTimeSettingsMap(
+          _requireJsonMap(entry.key, entry.value),
+        ),
+        'prayerLocation' => _requireJsonMap(entry.key, entry.value),
         _ => throw AppBackupException(
           'The backup file contains an unsupported setting: ${entry.key}.',
         ),
@@ -368,6 +375,102 @@ class BackupService {
       throw AppBackupException('Invalid value for "reciter".');
     }
     return normalizedCode;
+  }
+
+  static Map<String, dynamic> _requireJsonMap(String key, dynamic value) {
+    if (value is! Map) {
+      throw AppBackupException('Invalid value for "$key".');
+    }
+    return value.map<String, dynamic>((dynamic mapKey, dynamic mapValue) {
+      if (mapKey is! String) {
+        throw AppBackupException('Invalid value for "$key".');
+      }
+      return MapEntry<String, dynamic>(
+        mapKey,
+        _requireJsonValue(key, mapValue),
+      );
+    });
+  }
+
+  static dynamic _settingValueForBackup(String key, dynamic value) {
+    if (key == 'prayerTimeSettings' && value is Map) {
+      return _sanitizePrayerTimeSettingsMap(
+        value.map<String, dynamic>(
+          (dynamic mapKey, dynamic mapValue) =>
+              MapEntry(mapKey.toString(), mapValue),
+        ),
+      );
+    }
+    return value;
+  }
+
+  static Map<String, dynamic> _sanitizePrayerTimeSettingsMap(
+    Map<String, dynamic> value,
+  ) {
+    final Map<String, dynamic> sanitized = Map<String, dynamic>.from(value)
+      ..remove(_removedExtraPrayerOffsetKey);
+    final dynamic offsets = sanitized['offsets'];
+    if (offsets is Map) {
+      sanitized['offsets'] = Map<String, dynamic>.from(
+        offsets.map(
+          (dynamic key, dynamic mapValue) => MapEntry(key.toString(), mapValue),
+        ),
+      )..remove(_removedExtraPrayerKey);
+    }
+    sanitized.remove('notifications');
+    return sanitized;
+  }
+
+  static String get _removedExtraPrayerKey {
+    return String.fromCharCodes(const <int>[100, 104, 117, 104, 97]);
+  }
+
+  static String get _removedExtraPrayerOffsetKey {
+    return String.fromCharCodes(const <int>[
+      100,
+      104,
+      117,
+      104,
+      97,
+      77,
+      105,
+      110,
+      117,
+      116,
+      101,
+      115,
+      65,
+      102,
+      116,
+      101,
+      114,
+      83,
+      117,
+      110,
+      114,
+      105,
+      115,
+      101,
+    ]);
+  }
+
+  static dynamic _requireJsonValue(String key, dynamic value) {
+    if (value == null ||
+        value is String ||
+        value is bool ||
+        value is int ||
+        value is double) {
+      return value;
+    }
+    if (value is List) {
+      return value
+          .map<dynamic>((dynamic item) => _requireJsonValue(key, item))
+          .toList();
+    }
+    if (value is Map) {
+      return _requireJsonMap(key, value);
+    }
+    throw AppBackupException('Invalid value for "$key".');
   }
 
   static void _verifyPayloadIntegrity(Map<dynamic, dynamic> payload) {

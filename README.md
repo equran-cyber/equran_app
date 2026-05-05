@@ -64,7 +64,37 @@ Screenshots are not currently included in this repository. Add images under `met
 - **Hive** for lightweight local persistence.
 - **just_audio**, **just_audio_background**, and **audioplayers** for playback flows.
 - **quran** package for Quran text and metadata.
+- **flutter_map** for the prayer location picker with open map tiles.
 - Local assets for Hafs font, transliteration, daily content, and tafsir data.
+
+### Map Tiles
+
+The prayer location picker uses `flutter_map` with an OpenStreetMap-compatible
+tile URL and a configured User-Agent. Public tile servers have usage policies;
+production builds with significant traffic should use an appropriate tile
+provider or self-hosted tiles and comply with the chosen provider's terms.
+
+### Prayer Times
+
+Prayer times are calculated locally with `adhan_dart`. Saved prayer locations
+store a readable label, country code when available, and an offline-resolved
+IANA timezone ID from `lat_lng_to_timezone` such as `Europe/London` or
+`Asia/Muscat`. If the location timezone cannot be resolved, the app falls back
+to the device timezone and keeps running.
+
+Prayer reminders use `flutter_local_notifications` with OS scheduled
+notifications. Android 13+ requires `POST_NOTIFICATIONS`, which is requested
+when reminders are enabled. The app schedules inexact local notifications, so
+it does not request `SCHEDULE_EXACT_ALARM` or `USE_EXACT_ALARM`. Android builds
+also enable core library desugaring for scheduled notification support.
+
+To test reminders on a real device, save a Prayer Times location, open Prayer
+Times settings, enable Prayer Reminders, enable one or more prayers, and choose
+an offset. Deny notification permission once to verify the UI disables reminders
+instead of pretending they are scheduled. Change the saved location, calculation
+method, offsets, or timezone setting and confirm reminders are rescheduled.
+Confirm Sunrise remains display-only and no Dhuha reminder appears. Reopen the
+app the next day to refresh the rolling scheduled reminder window.
 
 ## Getting Started
 
