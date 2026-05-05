@@ -5,6 +5,7 @@ import 'package:equran/prayer/manual_prayer_location_page.dart';
 import 'package:equran/prayer/prayer_map_location_page.dart';
 import 'package:equran/prayer/prayer_location_service.dart';
 import 'package:equran/prayer/prayer_models.dart';
+import 'package:equran/prayer/prayer_notification_service.dart';
 import 'package:equran/prayer/prayer_settings_store.dart';
 import 'package:equran/prayer/prayer_times_settings_page.dart';
 import 'package:equran/prayer/prayer_times_service.dart';
@@ -17,11 +18,13 @@ class PrayerTimesPage extends StatefulWidget {
     this.enableLiveCountdown = true,
     this.initialNow,
     this.mapLocationPicker,
+    this.locationService,
   });
 
   final bool enableLiveCountdown;
   final DateTime? initialNow;
   final PrayerLocationPicker? mapLocationPicker;
+  final PrayerLocationService? locationService;
 
   @override
   State<PrayerTimesPage> createState() => _PrayerTimesPageState();
@@ -29,8 +32,10 @@ class PrayerTimesPage extends StatefulWidget {
 
 class _PrayerTimesPageState extends State<PrayerTimesPage> {
   final PrayerTimesService _service = const PrayerTimesService();
-  final PrayerLocationService _locationService = const PrayerLocationService();
+  final PrayerNotificationService _notificationService =
+      PrayerNotificationService();
   final PrayerSettingsStore _store = PrayerSettingsStore();
+  late final PrayerLocationService _locationService;
   Timer? _timer;
   late DateTime _now;
   bool _isLocating = false;
@@ -38,6 +43,7 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
   @override
   void initState() {
     super.initState();
+    _locationService = widget.locationService ?? const PrayerLocationService();
     _now = widget.initialNow ?? DateTime.now();
     if (widget.enableLiveCountdown) {
       _scheduleNextRefresh();
@@ -80,13 +86,18 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
             );
           }
 
+          final DateTime todayDate = _service.calendarDateForInstant(
+            instant: _now,
+            location: location,
+            settings: settings,
+          );
           final PrayerDay today = _service.calculateDay(
-            date: _now,
+            date: todayDate,
             location: location,
             settings: settings,
           );
           final PrayerDay tomorrow = _service.calculateDay(
-            date: _now.add(const Duration(days: 1)),
+            date: DateTime(todayDate.year, todayDate.month, todayDate.day + 1),
             location: location,
             settings: settings,
           );
@@ -246,6 +257,16 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
                   label: _formatDate(day.date),
                 ),
                 _InfoPill(icon: Icons.calculate_outlined, label: methodLabel),
+                _InfoPill(
+                  icon: Icons.public_rounded,
+                  label: _timezoneChipLabel(day),
+                ),
+                _InfoPill(
+                  icon: Icons.notifications_none_rounded,
+                  label: _reminderChipLabel(settings.reminderSettings),
+                  tooltip: 'Prayer reminder settings',
+                  onTap: _openPrayerSettings,
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -451,6 +472,7 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
     final PrayerLocation? location = result.location;
     if (location != null) {
       await _store.saveLocation(location);
+      await _rescheduleReminders(location);
       if (!mounted) return;
       _showMessage('Location saved.');
       return;
@@ -467,7 +489,7 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
       ),
     );
     if (location == null) return;
-    await _store.saveLocation(location);
+    await _saveResolvedLocation(location);
     if (!mounted) return;
     _showMessage('Location saved.');
   }
@@ -477,7 +499,7 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
         widget.mapLocationPicker ?? showPrayerMapLocationPicker;
     final PrayerLocation? location = await picker(context, initialLocation);
     if (location == null) return;
-    await _store.saveLocation(location);
+    await _saveResolvedLocation(location);
     if (!mounted) return;
     _showMessage('Location saved.');
   }
@@ -500,15 +522,55 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
             Navigator.of(sheetContext).pop();
             _chooseOnMap(location);
           },
-          onSave: (PrayerLocation updatedLocation) async {
-            await _store.saveLocation(updatedLocation);
-            if (!mounted) return;
+          onSave: (_LocationDetailsSave detailsSave) async {
+            await _saveResolvedLocation(
+              detailsSave.location,
+              previousLocation: location,
+              preserveCustomLabel: detailsSave.preserveCustomLabel,
+            );
+            if (!mounted || !sheetContext.mounted) return;
             Navigator.of(sheetContext).pop();
             _showMessage('Location saved.');
           },
         );
       },
     );
+  }
+
+  Future<void> _saveResolvedLocation(
+    PrayerLocation location, {
+    PrayerLocation? previousLocation,
+    bool preserveCustomLabel = false,
+  }) async {
+    final PrayerLocation resolvedLocation = await _locationService
+        .resolveLocationForSave(
+          location,
+          previousLocation: previousLocation ?? _store.getLocation(),
+          preserveCustomLabel: preserveCustomLabel,
+        );
+    await _store.saveLocation(resolvedLocation);
+    await _rescheduleReminders(resolvedLocation);
+  }
+
+  Future<void> _rescheduleReminders(PrayerLocation location) async {
+    final PrayerTimeSettings settings = _store.getSettings();
+    final PrayerNotificationScheduleResult result = await _notificationService
+        .reschedule(
+          settings: settings,
+          location: location,
+        );
+    if (result.status == PrayerNotificationScheduleStatus.permissionDenied &&
+        settings.reminderSettings.remindersEnabled) {
+      await _store.saveSettings(
+        settings.copyWith(
+          reminderSettings: settings.reminderSettings.copyWith(
+            remindersEnabled: false,
+          ),
+        ),
+      );
+      if (!mounted) return;
+      _showMessage('Notification permission is off. Reminders were disabled.');
+    }
   }
 
   void _openPrayerSettings() {
@@ -603,7 +665,7 @@ class _LocationDetailsSheet extends StatefulWidget {
   final bool isLocating;
   final VoidCallback onUpdateCurrentLocation;
   final VoidCallback onChooseMap;
-  final Future<void> Function(PrayerLocation location) onSave;
+  final Future<void> Function(_LocationDetailsSave location) onSave;
 
   @override
   State<_LocationDetailsSheet> createState() => _LocationDetailsSheetState();
@@ -614,24 +676,32 @@ class _LocationDetailsSheetState extends State<_LocationDetailsSheet> {
   late final TextEditingController _labelController;
   late final TextEditingController _latitudeController;
   late final TextEditingController _longitudeController;
+  late final String _initialLabel;
+  late final String _initialLatitudeText;
+  late final String _initialLongitudeText;
+  bool _advancedExpanded = false;
+  bool _hasFieldChanges = false;
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    _labelController = TextEditingController(
-      text: widget.location.displayLabel,
-    );
-    _latitudeController = TextEditingController(
-      text: widget.location.latitude.toStringAsFixed(6),
-    );
-    _longitudeController = TextEditingController(
-      text: widget.location.longitude.toStringAsFixed(6),
-    );
+    _initialLabel = widget.location.displayLabel;
+    _initialLatitudeText = widget.location.latitude.toStringAsFixed(6);
+    _initialLongitudeText = widget.location.longitude.toStringAsFixed(6);
+    _labelController = TextEditingController(text: _initialLabel);
+    _latitudeController = TextEditingController(text: _initialLatitudeText);
+    _longitudeController = TextEditingController(text: _initialLongitudeText);
+    _labelController.addListener(_updateFieldChanges);
+    _latitudeController.addListener(_updateFieldChanges);
+    _longitudeController.addListener(_updateFieldChanges);
   }
 
   @override
   void dispose() {
+    _labelController.removeListener(_updateFieldChanges);
+    _latitudeController.removeListener(_updateFieldChanges);
+    _longitudeController.removeListener(_updateFieldChanges);
     _labelController.dispose();
     _latitudeController.dispose();
     _longitudeController.dispose();
@@ -680,80 +750,47 @@ class _LocationDetailsSheetState extends State<_LocationDetailsSheet> {
                 ],
               ),
               const SizedBox(height: 16),
-              TextFormField(
-                controller: _labelController,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'Location label',
-                  hintText: 'Home, work, or city name',
-                  prefixIcon: Icon(Icons.label_outline_rounded),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _latitudeController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  signed: true,
-                  decimal: true,
-                ),
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'Latitude',
-                  helperText: 'Use a value between -90 and 90.',
-                  prefixIcon: Icon(Icons.explore_outlined),
-                ),
-                validator: (String? value) => validatePrayerCoordinate(
-                  value,
-                  min: -90,
-                  max: 90,
-                  label: 'Latitude',
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _longitudeController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  signed: true,
-                  decimal: true,
-                ),
-                textInputAction: TextInputAction.done,
-                decoration: const InputDecoration(
-                  labelText: 'Longitude',
-                  helperText: 'Use a value between -180 and 180.',
-                  prefixIcon: Icon(Icons.public_rounded),
-                ),
-                validator: (String? value) => validatePrayerCoordinate(
-                  value,
-                  min: -180,
-                  max: 180,
-                  label: 'Longitude',
-                ),
-                onFieldSubmitted: (_) => _save(),
-              ),
+              _SavedLocationPanel(location: widget.location),
               const SizedBox(height: 14),
-              FilledButton.icon(
-                onPressed: _isSaving ? null : _save,
-                icon: _isSaving
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.check_rounded),
-                label: const Text('Save changes'),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: widget.isLocating || _isSaving
+              _LocationActionRow(
+                icon: Icons.my_location_rounded,
+                title: 'Update current location',
+                subtitle: 'Use this device location',
+                onTap: widget.isLocating || _isSaving
                     ? null
                     : widget.onUpdateCurrentLocation,
-                icon: const Icon(Icons.my_location_rounded),
-                label: const Text('Update current location'),
               ),
               const SizedBox(height: 8),
-              TextButton.icon(
-                onPressed: _isSaving ? null : widget.onChooseMap,
-                icon: const Icon(Icons.map_outlined),
-                label: const Text('Choose on map'),
+              _LocationActionRow(
+                icon: Icons.map_outlined,
+                title: 'Choose on map',
+                subtitle: 'Move the map pin to a place',
+                onTap: _isSaving ? null : widget.onChooseMap,
+              ),
+              const SizedBox(height: 14),
+              _buildAdvancedCoordinates(context),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: _advancedExpanded
+                    ? Padding(
+                        key: const ValueKey<String>('save-location-changes'),
+                        padding: const EdgeInsets.only(top: 14),
+                        child: FilledButton.icon(
+                          onPressed: _isSaving || !_hasFieldChanges
+                              ? null
+                              : _save,
+                          icon: _isSaving
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.check_rounded),
+                          label: const Text('Save changes'),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
               ),
             ],
           ),
@@ -762,7 +799,108 @@ class _LocationDetailsSheetState extends State<_LocationDetailsSheet> {
     );
   }
 
+  Widget _buildAdvancedCoordinates(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(AppRadii.medium),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadii.medium),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+          childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+          initiallyExpanded: _advancedExpanded,
+          maintainState: true,
+          onExpansionChanged: (bool expanded) {
+            setState(() {
+              _advancedExpanded = expanded;
+            });
+          },
+          leading: Icon(Icons.tune_rounded, color: colors.primary),
+          title: Text(
+            'Advanced coordinates',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          subtitle: _advancedExpanded
+              ? null
+              : Text(
+                  'Edit only if you need precise coordinates',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+          children: <Widget>[
+            TextFormField(
+              controller: _labelController,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Location label',
+                hintText: 'Home, work, or city name',
+                prefixIcon: Icon(Icons.label_outline_rounded),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _latitudeController,
+              keyboardType: const TextInputType.numberWithOptions(
+                signed: true,
+                decimal: true,
+              ),
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Latitude',
+                helperText: 'Use a value between -90 and 90.',
+                prefixIcon: Icon(Icons.explore_outlined),
+              ),
+              validator: _advancedExpanded
+                  ? (String? value) => validatePrayerCoordinate(
+                      value,
+                      min: -90,
+                      max: 90,
+                      label: 'Latitude',
+                    )
+                  : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _longitudeController,
+              keyboardType: const TextInputType.numberWithOptions(
+                signed: true,
+                decimal: true,
+              ),
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: 'Longitude',
+                helperText: 'Use a value between -180 and 180.',
+                prefixIcon: Icon(Icons.public_rounded),
+              ),
+              validator: _advancedExpanded
+                  ? (String? value) => validatePrayerCoordinate(
+                      value,
+                      min: -180,
+                      max: 180,
+                      label: 'Longitude',
+                    )
+                  : null,
+              onFieldSubmitted: (_) {
+                if (_hasFieldChanges) _save();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _save() async {
+    if (!_advancedExpanded && !_hasFieldChanges) return;
     if (_formKey.currentState?.validate() != true) return;
     setState(() {
       _isSaving = true;
@@ -776,16 +914,21 @@ class _LocationDetailsSheetState extends State<_LocationDetailsSheet> {
     final bool coordinatesChanged =
         latitude != widget.location.latitude ||
         longitude != widget.location.longitude;
+    final bool labelChanged = label != _initialLabel;
 
     await widget.onSave(
-      PrayerLocation(
-        latitude: latitude,
-        longitude: longitude,
-        label: label,
-        mode: coordinatesChanged
-            ? PrayerLocationMode.manual
-            : widget.location.mode,
-        countryCode: coordinatesChanged ? null : widget.location.countryCode,
+      _LocationDetailsSave(
+        location: PrayerLocation(
+          latitude: latitude,
+          longitude: longitude,
+          label: coordinatesChanged && !labelChanged ? 'Saved location' : label,
+          mode: coordinatesChanged
+              ? PrayerLocationMode.manual
+              : widget.location.mode,
+          countryCode: coordinatesChanged ? null : widget.location.countryCode,
+          timezoneId: coordinatesChanged ? null : widget.location.timezoneId,
+        ),
+        preserveCustomLabel: labelChanged,
       ),
     );
 
@@ -793,6 +936,168 @@ class _LocationDetailsSheetState extends State<_LocationDetailsSheet> {
     setState(() {
       _isSaving = false;
     });
+  }
+
+  void _updateFieldChanges() {
+    final bool hasChanges =
+        _labelController.text.trim() != _initialLabel ||
+        _latitudeController.text.trim() != _initialLatitudeText ||
+        _longitudeController.text.trim() != _initialLongitudeText;
+    if (hasChanges == _hasFieldChanges) return;
+    setState(() {
+      _hasFieldChanges = hasChanges;
+    });
+  }
+}
+
+class _LocationDetailsSave {
+  const _LocationDetailsSave({
+    required this.location,
+    required this.preserveCustomLabel,
+  });
+
+  final PrayerLocation location;
+  final bool preserveCustomLabel;
+}
+
+class _SavedLocationPanel extends StatelessWidget {
+  const _SavedLocationPanel({required this.location});
+
+  final PrayerLocation location;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.primaryContainer.withValues(alpha: 0.34),
+        borderRadius: BorderRadius.circular(AppRadii.medium),
+        border: Border.all(color: colors.primary.withValues(alpha: 0.18)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Icon(Icons.place_outlined, color: colors.primary, size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    location.displayLabel,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      height: 1.15,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    _locationPrivacyText(location),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _locationPrivacyText(PrayerLocation location) {
+  final String? timezoneId = location.timezoneId;
+  final String timezoneText =
+      timezoneId == null || timezoneId.isEmpty ? '' : ' Timezone: $timezoneId.';
+  return 'Used locally for prayer-time calculation. Coordinates are stored on this device.$timezoneText';
+}
+
+class _LocationActionRow extends StatelessWidget {
+  const _LocationActionRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+    final bool enabled = onTap != null;
+
+    return Material(
+      color: colors.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(AppRadii.medium),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadii.medium),
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadii.medium),
+            border: Border.all(color: colors.outlineVariant),
+          ),
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: colors.secondaryContainer.withValues(
+                    alpha: enabled ? 0.58 : 0.28,
+                  ),
+                  borderRadius: BorderRadius.circular(AppRadii.small),
+                ),
+                child: Icon(
+                  icon,
+                  color: enabled
+                      ? colors.onSecondaryContainer
+                      : colors.onSurfaceVariant,
+                  size: 21,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: enabled ? null : colors.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: colors.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -976,19 +1281,27 @@ class _PrayerTimeCard extends StatelessWidget {
 }
 
 class _InfoPill extends StatelessWidget {
-  const _InfoPill({required this.icon, required this.label});
+  const _InfoPill({
+    required this.icon,
+    required this.label,
+    this.tooltip,
+    this.onTap,
+  });
 
   final IconData icon;
   final String label;
+  final String? tooltip;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
-    return DecoratedBox(
+    final BorderRadius borderRadius = BorderRadius.circular(AppRadii.small);
+    final Widget pill = DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surface.withValues(alpha: 0.66),
-        borderRadius: BorderRadius.circular(AppRadii.small),
+        borderRadius: borderRadius,
         border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.7)),
       ),
       child: Padding(
@@ -1013,7 +1326,35 @@ class _InfoPill extends StatelessWidget {
         ),
       ),
     );
+    final VoidCallback? onTap = this.onTap;
+    if (onTap == null) return pill;
+    return Tooltip(
+      message: tooltip ?? label,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(borderRadius: borderRadius, onTap: onTap, child: pill),
+      ),
+    );
   }
+}
+
+String _reminderChipLabel(PrayerReminderSettings reminders) {
+  if (!reminders.remindersEnabled || reminders.enabledPrayerCount == 0) {
+    return 'Reminders off';
+  }
+  final int enabledCount = reminders.enabledPrayerCount;
+  if (enabledCount == PrayerTimeKind.reminderOrder.length) {
+    return 'Reminders on';
+  }
+  return '$enabledCount reminders on';
+}
+
+String _timezoneChipLabel(PrayerDay day) {
+  final String? timezoneId = day.timezoneId;
+  if (day.usesLocationTimezone && timezoneId != null) {
+    return 'Location time - $timezoneId';
+  }
+  return 'Device time - ${day.date.timeZoneName}';
 }
 
 String _formatTime(DateTime time, bool use24HourFormat) {

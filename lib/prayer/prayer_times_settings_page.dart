@@ -2,6 +2,7 @@ import 'package:equran/prayer/manual_prayer_location_page.dart';
 import 'package:equran/prayer/prayer_location_service.dart';
 import 'package:equran/prayer/prayer_map_location_page.dart';
 import 'package:equran/prayer/prayer_models.dart';
+import 'package:equran/prayer/prayer_notification_service.dart';
 import 'package:equran/prayer/prayer_settings_store.dart';
 import 'package:equran/prayer/prayer_times_service.dart';
 import 'package:equran/utils/app_radii.dart';
@@ -19,10 +20,13 @@ class PrayerTimesSettingsPage extends StatefulWidget {
 class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
   final PrayerSettingsStore _store = PrayerSettingsStore();
   final PrayerLocationService _locationService = const PrayerLocationService();
+  final PrayerNotificationService _notificationService =
+      PrayerNotificationService();
   final PrayerTimesService _service = const PrayerTimesService();
   late PrayerTimeSettings _settings;
   PrayerLocation? _location;
   bool _isLocating = false;
+  bool _isUpdatingReminders = false;
 
   @override
   void initState() {
@@ -84,6 +88,7 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
                 ),
             ],
           ),
+          _buildPrayerRemindersSection(context),
           _buildSettingsGroup(
             context: context,
             title: 'Calculation',
@@ -106,6 +111,14 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
                   _settings.use24HourFormat ? '24-hour' : '12-hour',
                 ),
                 onTap: _selectTimeFormat,
+              ),
+              SwitchListTile(
+                title: const Text('Use location timezone'),
+                subtitle: Text(_timezoneSettingSubtitle),
+                value: _settings.useLocationTimezone,
+                onChanged: (bool enabled) => _saveSettings(
+                  _settings.copyWith(useLocationTimezone: enabled),
+                ),
               ),
               if (_settings.method == PrayerCalculationMethod.custom)
                 _buildCustomMethodCard(theme),
@@ -172,6 +185,79 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPrayerRemindersSection(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+    final PrayerReminderSettings reminders = _settings.reminderSettings;
+    final bool remindersOn = reminders.remindersEnabled;
+
+    return _buildSettingsGroup(
+      context: context,
+      title: 'Prayer Reminders',
+      subtitle: _reminderSubtitle,
+      icon: Icons.notifications_active_outlined,
+      children: <Widget>[
+        SwitchListTile(
+          secondary: _isUpdatingReminders
+              ? const SizedBox.square(
+                  dimension: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.notifications_none_rounded),
+          title: const Text('Prayer reminders'),
+          subtitle: Text(
+            remindersOn
+                ? 'Local notifications are scheduled on this device.'
+                : 'Off until you enable them.',
+          ),
+          value: remindersOn,
+          onChanged: _isUpdatingReminders ? null : _toggleGlobalReminders,
+        ),
+        if (remindersOn && _location == null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              'Choose a location before reminders can be scheduled.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.onSurfaceVariant,
+                height: 1.35,
+              ),
+            ),
+          ),
+        AnimatedCrossFade(
+          firstChild: const SizedBox.shrink(),
+          secondChild: Column(
+            children: <Widget>[
+              for (final PrayerTimeKind prayer in PrayerTimeKind.reminderOrder)
+                SwitchListTile(
+                  title: Text(prayer.label),
+                  subtitle: const Text('Notify at the saved prayer time.'),
+                  value: reminders.prayerToggleFor(prayer),
+                  onChanged: _isUpdatingReminders
+                      ? null
+                      : (bool enabled) =>
+                            _togglePrayerReminder(prayer, enabled),
+                ),
+              ListTile(
+                leading: const Icon(Icons.schedule_rounded),
+                title: const Text('Reminder time'),
+                subtitle: Text(
+                  _reminderOffsetLabel(reminders.reminderOffsetMinutes),
+                ),
+                enabled: !_isUpdatingReminders,
+                onTap: _isUpdatingReminders ? null : _selectReminderOffset,
+              ),
+            ],
+          ),
+          crossFadeState: remindersOn
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
+          duration: const Duration(milliseconds: 180),
+        ),
+      ],
     );
   }
 
@@ -262,7 +348,7 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
                 title: 'Maghrib angle',
                 currentValue: _settings.customMaghribAngle,
                 min: 0,
-                max: 10,
+                max: 30,
                 emptyLabel: 'Leave blank to use sunset.',
                 onChanged: (double? value) =>
                     _saveSettings(_settings.withCustomMaghribAngle(value)),
@@ -363,6 +449,73 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
     );
     if (use24HourFormat == null) return;
     await _saveSettings(_settings.copyWith(use24HourFormat: use24HourFormat));
+  }
+
+  Future<void> _toggleGlobalReminders(bool enabled) async {
+    final PrayerReminderSettings reminders = _settings.reminderSettings;
+    if (!enabled) {
+      await _saveReminderSettings(reminders.copyWith(remindersEnabled: false));
+      return;
+    }
+
+    setState(() {
+      _isUpdatingReminders = true;
+    });
+    final PrayerNotificationPermissionStatus permission =
+        await _notificationService.requestPermission();
+    if (!mounted) return;
+    setState(() {
+      _isUpdatingReminders = false;
+    });
+
+    if (permission != PrayerNotificationPermissionStatus.granted) {
+      await _notificationService.cancelPrayerNotifications();
+      _showMessage(
+        permission == PrayerNotificationPermissionStatus.unsupported
+            ? 'Prayer reminders are not supported on this platform.'
+            : 'Notification permission is off. Prayer reminders were not enabled.',
+      );
+      return;
+    }
+
+    await _saveReminderSettings(reminders.copyWith(remindersEnabled: true));
+  }
+
+  Future<void> _togglePrayerReminder(
+    PrayerTimeKind prayer,
+    bool enabled,
+  ) async {
+    await _saveReminderSettings(
+      _settings.reminderSettings.copyWithPrayer(prayer, enabled),
+    );
+  }
+
+  Future<void> _selectReminderOffset() async {
+    final int? selected = await _showSelectionDialog<int>(
+      title: 'Reminder Time',
+      icon: Icons.schedule_rounded,
+      selectedValue: _settings.reminderSettings.reminderOffsetMinutes,
+      options: const <AppSelectionOption<int>>[
+        AppSelectionOption<int>(value: 0, title: 'At prayer time'),
+        AppSelectionOption<int>(value: 5, title: '5 minutes before'),
+        AppSelectionOption<int>(value: 10, title: '10 minutes before'),
+        AppSelectionOption<int>(value: 15, title: '15 minutes before'),
+        AppSelectionOption<int>(value: 30, title: '30 minutes before'),
+      ],
+    );
+    if (selected == null) return;
+    await _saveReminderSettings(
+      _settings.reminderSettings.copyWith(reminderOffsetMinutes: selected),
+    );
+  }
+
+  Future<void> _saveReminderSettings(
+    PrayerReminderSettings reminderSettings,
+  ) async {
+    final PrayerTimeSettings settings = _settings.copyWith(
+      reminderSettings: reminderSettings,
+    );
+    await _saveSettings(settings);
   }
 
   Future<T?> _showSelectionDialog<T>({
@@ -629,10 +782,12 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
       _showLocationError(result);
       return;
     }
-    await _store.saveLocation(location);
+    final PrayerLocation resolvedLocation = await _saveResolvedLocation(
+      location,
+    );
     if (!mounted) return;
     setState(() {
-      _location = location;
+      _location = resolvedLocation;
     });
     _showMessage('Location saved.');
   }
@@ -645,10 +800,12 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
       ),
     );
     if (location == null) return;
-    await _store.saveLocation(location);
+    final PrayerLocation resolvedLocation = await _saveResolvedLocation(
+      location,
+    );
     if (!mounted) return;
     setState(() {
-      _location = location;
+      _location = resolvedLocation;
     });
     _showMessage('Location saved.');
   }
@@ -659,16 +816,27 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
       initialLocation,
     );
     if (location == null) return;
-    await _store.saveLocation(location);
+    final PrayerLocation resolvedLocation = await _saveResolvedLocation(
+      location,
+    );
     if (!mounted) return;
     setState(() {
-      _location = location;
+      _location = resolvedLocation;
     });
     _showMessage('Location saved.');
   }
 
+  Future<PrayerLocation> _saveResolvedLocation(PrayerLocation location) async {
+    final PrayerLocation resolvedLocation = await _locationService
+        .resolveLocationForSave(location, previousLocation: _location);
+    await _store.saveLocation(resolvedLocation);
+    await _rescheduleReminders(location: resolvedLocation);
+    return resolvedLocation;
+  }
+
   Future<void> _clearLocation() async {
     await _store.clearLocation();
+    await _rescheduleReminders(locationCleared: true);
     if (!mounted) return;
     setState(() {
       _location = null;
@@ -678,10 +846,39 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
 
   Future<void> _saveSettings(PrayerTimeSettings settings) async {
     await _store.saveSettings(settings);
+    final PrayerNotificationScheduleResult reminderResult =
+        await _rescheduleReminders(settings: settings);
+    PrayerTimeSettings savedSettings = settings;
+    if (reminderResult.status ==
+            PrayerNotificationScheduleStatus.permissionDenied &&
+        settings.reminderSettings.remindersEnabled) {
+      savedSettings = settings.copyWith(
+        reminderSettings: settings.reminderSettings.copyWith(
+          remindersEnabled: false,
+        ),
+      );
+      await _store.saveSettings(savedSettings);
+      if (mounted) {
+        _showMessage(
+          'Notification permission is off. Reminders were disabled.',
+        );
+      }
+    }
     if (!mounted) return;
     setState(() {
-      _settings = settings;
+      _settings = savedSettings;
     });
+  }
+
+  Future<PrayerNotificationScheduleResult> _rescheduleReminders({
+    PrayerTimeSettings? settings,
+    PrayerLocation? location,
+    bool locationCleared = false,
+  }) async {
+    return _notificationService.reschedule(
+      settings: settings ?? _settings,
+      location: locationCleared ? null : location ?? _location,
+    );
   }
 
   void _showMessage(String message) {
@@ -698,6 +895,30 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
 
   String get _calculationSubtitle {
     return _methodSubtitle;
+  }
+
+  String get _timezoneSettingSubtitle {
+    if (!_settings.useLocationTimezone) {
+      return 'Using this device timezone.';
+    }
+    final String? timezoneId = _location?.timezoneId;
+    if (timezoneId == null || timezoneId.isEmpty) {
+      return 'Using device timezone until the location timezone is available.';
+    }
+    return 'Display prayer times using $timezoneId.';
+  }
+
+  String get _reminderSubtitle {
+    final PrayerReminderSettings reminders = _settings.reminderSettings;
+    if (!reminders.remindersEnabled || reminders.enabledPrayerCount == 0) {
+      return 'Reminders off';
+    }
+    if (_location == null) return 'On, waiting for location';
+    final int enabledCount = reminders.enabledPrayerCount;
+    if (enabledCount == PrayerTimeKind.reminderOrder.length) {
+      return 'All prayer reminders on';
+    }
+    return '$enabledCount reminders on';
   }
 
   String get _methodSubtitle {
@@ -718,6 +939,11 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
   String _offsetLabel(int offset) {
     if (offset == 0) return 'No manual adjustment';
     return '${offset > 0 ? '+' : ''}$offset minutes';
+  }
+
+  String _reminderOffsetLabel(int offset) {
+    if (offset == 0) return 'At prayer time';
+    return '$offset minutes before prayer';
   }
 
   void _showLocationError(PrayerLocationResult result) {
@@ -774,6 +1000,8 @@ extension PrayerCustomSettingsUpdate on PrayerTimeSettings {
       asrMethod: asrMethod,
       offsets: offsets,
       use24HourFormat: use24HourFormat,
+      useLocationTimezone: useLocationTimezone,
+      reminderSettings: reminderSettings,
     );
   }
 
@@ -787,6 +1015,8 @@ extension PrayerCustomSettingsUpdate on PrayerTimeSettings {
       asrMethod: asrMethod,
       offsets: offsets,
       use24HourFormat: use24HourFormat,
+      useLocationTimezone: useLocationTimezone,
+      reminderSettings: reminderSettings,
     );
   }
 }

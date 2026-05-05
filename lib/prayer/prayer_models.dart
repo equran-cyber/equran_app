@@ -28,6 +28,14 @@ enum PrayerTimeKind {
     isha,
   ];
 
+  static const List<PrayerTimeKind> reminderOrder = <PrayerTimeKind>[
+    fajr,
+    dhuhr,
+    asr,
+    maghrib,
+    isha,
+  ];
+
   static PrayerTimeKind fromId(String? id) {
     return PrayerTimeKind.values.firstWhere(
       (PrayerTimeKind kind) => kind.id == id,
@@ -121,6 +129,7 @@ class PrayerLocation {
     required this.label,
     required this.mode,
     this.countryCode,
+    this.timezoneId,
   });
 
   static PrayerLocation? fromJson(Map<dynamic, dynamic>? json) {
@@ -132,19 +141,25 @@ class PrayerLocation {
     }
     final dynamic labelValue = json['label'];
     final dynamic countryCodeValue = json['countryCode'];
+    final dynamic timezoneValue = json['timezoneId'];
     final String? countryCode =
         countryCodeValue is String && countryCodeValue.trim().isNotEmpty
         ? countryCodeValue.trim().toUpperCase()
         : null;
+    final String? timezoneId =
+        timezoneValue is String && timezoneValue.trim().isNotEmpty
+        ? timezoneValue.trim()
+        : null;
     final String label = labelValue is String && labelValue.trim().isNotEmpty
         ? labelValue.trim()
-        : 'Selected location';
+        : 'Saved location';
 
     return PrayerLocation(
       latitude: latitude.clamp(-90, 90).toDouble(),
       longitude: longitude.clamp(-180, 180).toDouble(),
       label: label,
       countryCode: countryCode,
+      timezoneId: timezoneId,
       mode: PrayerLocationMode.fromId(json['mode'] as String?),
     );
   }
@@ -153,14 +168,18 @@ class PrayerLocation {
   final double longitude;
   final String label;
   final String? countryCode;
+  final String? timezoneId;
   final PrayerLocationMode mode;
 
   String get displayLabel {
     final String trimmedLabel = label.trim();
     if (trimmedLabel.isEmpty ||
         trimmedLabel == 'Current location' ||
+        trimmedLabel == 'Current device location' ||
+        trimmedLabel == 'Manual location' ||
+        trimmedLabel == 'Selected location' ||
         _looksLikeCoordinateLabel(trimmedLabel)) {
-      return mode.label;
+      return 'Saved location';
     }
     return trimmedLabel;
   }
@@ -175,8 +194,27 @@ class PrayerLocation {
       'longitude': longitude,
       'label': label,
       'countryCode': countryCode,
+      'timezoneId': timezoneId,
       'mode': mode.id,
     };
+  }
+
+  PrayerLocation copyWith({
+    double? latitude,
+    double? longitude,
+    String? label,
+    String? countryCode,
+    String? timezoneId,
+    PrayerLocationMode? mode,
+  }) {
+    return PrayerLocation(
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      label: label ?? this.label,
+      countryCode: countryCode ?? this.countryCode,
+      timezoneId: timezoneId ?? this.timezoneId,
+      mode: mode ?? this.mode,
+    );
   }
 }
 
@@ -242,6 +280,113 @@ class PrayerOffsets {
   }
 }
 
+class PrayerReminderSettings {
+  const PrayerReminderSettings({
+    this.remindersEnabled = false,
+    this.fajrEnabled = true,
+    this.dhuhrEnabled = true,
+    this.asrEnabled = true,
+    this.maghribEnabled = true,
+    this.ishaEnabled = true,
+    this.reminderOffsetMinutes = 0,
+  });
+
+  factory PrayerReminderSettings.fromJson(Map<dynamic, dynamic>? json) {
+    if (json == null) return const PrayerReminderSettings();
+    return PrayerReminderSettings(
+      remindersEnabled: json['remindersEnabled'] == true,
+      fajrEnabled: _readBool(json['fajrEnabled'], defaultValue: true),
+      dhuhrEnabled: _readBool(json['dhuhrEnabled'], defaultValue: true),
+      asrEnabled: _readBool(json['asrEnabled'], defaultValue: true),
+      maghribEnabled: _readBool(json['maghribEnabled'], defaultValue: true),
+      ishaEnabled: _readBool(json['ishaEnabled'], defaultValue: true),
+      reminderOffsetMinutes: _readInt(
+        json['reminderOffsetMinutes'],
+      ).clamp(0, 120).toInt(),
+    );
+  }
+
+  final bool remindersEnabled;
+  final bool fajrEnabled;
+  final bool dhuhrEnabled;
+  final bool asrEnabled;
+  final bool maghribEnabled;
+  final bool ishaEnabled;
+  final int reminderOffsetMinutes;
+
+  bool prayerToggleFor(PrayerTimeKind prayer) {
+    return switch (prayer) {
+      PrayerTimeKind.fajr => fajrEnabled,
+      PrayerTimeKind.dhuhr => dhuhrEnabled,
+      PrayerTimeKind.asr => asrEnabled,
+      PrayerTimeKind.maghrib => maghribEnabled,
+      PrayerTimeKind.isha => ishaEnabled,
+      PrayerTimeKind.sunrise => false,
+    };
+  }
+
+  bool isReminderActiveFor(PrayerTimeKind prayer) {
+    return remindersEnabled && prayerToggleFor(prayer);
+  }
+
+  List<PrayerTimeKind> get enabledPrayerKinds {
+    if (!remindersEnabled) return const <PrayerTimeKind>[];
+    return PrayerTimeKind.reminderOrder
+        .where(prayerToggleFor)
+        .toList(growable: false);
+  }
+
+  int get enabledPrayerCount => enabledPrayerKinds.length;
+
+  PrayerReminderSettings copyWith({
+    bool? remindersEnabled,
+    bool? fajrEnabled,
+    bool? dhuhrEnabled,
+    bool? asrEnabled,
+    bool? maghribEnabled,
+    bool? ishaEnabled,
+    int? reminderOffsetMinutes,
+  }) {
+    return PrayerReminderSettings(
+      remindersEnabled: remindersEnabled ?? this.remindersEnabled,
+      fajrEnabled: fajrEnabled ?? this.fajrEnabled,
+      dhuhrEnabled: dhuhrEnabled ?? this.dhuhrEnabled,
+      asrEnabled: asrEnabled ?? this.asrEnabled,
+      maghribEnabled: maghribEnabled ?? this.maghribEnabled,
+      ishaEnabled: ishaEnabled ?? this.ishaEnabled,
+      reminderOffsetMinutes:
+          reminderOffsetMinutes?.clamp(0, 120).toInt() ??
+          this.reminderOffsetMinutes,
+    );
+  }
+
+  PrayerReminderSettings copyWithPrayer(
+    PrayerTimeKind prayer,
+    bool enabled,
+  ) {
+    return switch (prayer) {
+      PrayerTimeKind.fajr => copyWith(fajrEnabled: enabled),
+      PrayerTimeKind.dhuhr => copyWith(dhuhrEnabled: enabled),
+      PrayerTimeKind.asr => copyWith(asrEnabled: enabled),
+      PrayerTimeKind.maghrib => copyWith(maghribEnabled: enabled),
+      PrayerTimeKind.isha => copyWith(ishaEnabled: enabled),
+      PrayerTimeKind.sunrise => this,
+    };
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'remindersEnabled': remindersEnabled,
+      'fajrEnabled': fajrEnabled,
+      'dhuhrEnabled': dhuhrEnabled,
+      'asrEnabled': asrEnabled,
+      'maghribEnabled': maghribEnabled,
+      'ishaEnabled': ishaEnabled,
+      'reminderOffsetMinutes': reminderOffsetMinutes,
+    };
+  }
+}
+
 class PrayerTimeSettings {
   const PrayerTimeSettings({
     this.method = PrayerCalculationMethod.auto,
@@ -252,6 +397,8 @@ class PrayerTimeSettings {
     this.asrMethod = PrayerAsrMethod.standard,
     this.offsets = const PrayerOffsets(),
     this.use24HourFormat = false,
+    this.useLocationTimezone = true,
+    this.reminderSettings = const PrayerReminderSettings(),
   });
 
   factory PrayerTimeSettings.defaults() {
@@ -269,6 +416,10 @@ class PrayerTimeSettings {
       asrMethod: PrayerAsrMethod.fromId(json['asrMethod'] as String?),
       offsets: PrayerOffsets.fromJson(json['offsets'] as Map?),
       use24HourFormat: json['use24HourFormat'] == true,
+      useLocationTimezone: json['useLocationTimezone'] != false,
+      reminderSettings: PrayerReminderSettings.fromJson(
+        json['reminderSettings'] as Map?,
+      ),
     );
   }
 
@@ -280,6 +431,8 @@ class PrayerTimeSettings {
   final PrayerAsrMethod asrMethod;
   final PrayerOffsets offsets;
   final bool use24HourFormat;
+  final bool useLocationTimezone;
+  final PrayerReminderSettings reminderSettings;
 
   PrayerTimeSettings copyWith({
     PrayerCalculationMethod? method,
@@ -290,6 +443,8 @@ class PrayerTimeSettings {
     PrayerAsrMethod? asrMethod,
     PrayerOffsets? offsets,
     bool? use24HourFormat,
+    bool? useLocationTimezone,
+    PrayerReminderSettings? reminderSettings,
   }) {
     return PrayerTimeSettings(
       method: method ?? this.method,
@@ -300,6 +455,8 @@ class PrayerTimeSettings {
       asrMethod: asrMethod ?? this.asrMethod,
       offsets: offsets ?? this.offsets,
       use24HourFormat: use24HourFormat ?? this.use24HourFormat,
+      useLocationTimezone: useLocationTimezone ?? this.useLocationTimezone,
+      reminderSettings: reminderSettings ?? this.reminderSettings,
     );
   }
 
@@ -313,6 +470,8 @@ class PrayerTimeSettings {
       'asrMethod': asrMethod.id,
       'offsets': offsets.toJson(),
       'use24HourFormat': use24HourFormat,
+      'useLocationTimezone': useLocationTimezone,
+      'reminderSettings': reminderSettings.toJson(),
     };
   }
 }
@@ -336,6 +495,8 @@ class PrayerDay {
     required this.settings,
     required this.effectiveMethod,
     required this.entries,
+    required this.timezoneId,
+    required this.usesLocationTimezone,
   });
 
   final DateTime date;
@@ -343,6 +504,8 @@ class PrayerDay {
   final PrayerTimeSettings settings;
   final PrayerCalculationMethod effectiveMethod;
   final List<PrayerTimeEntry> entries;
+  final String? timezoneId;
+  final bool usesLocationTimezone;
 
   PrayerTimeEntry entryFor(PrayerTimeKind kind) {
     return entries.firstWhere((PrayerTimeEntry entry) => entry.kind == kind);
@@ -369,6 +532,16 @@ int? _readNullableInt(dynamic value) {
   if (value is double) return value.round();
   if (value is String) return int.tryParse(value);
   return null;
+}
+
+bool _readBool(dynamic value, {required bool defaultValue}) {
+  if (value is bool) return value;
+  if (value is String) {
+    final String normalized = value.trim().toLowerCase();
+    if (normalized == 'true') return true;
+    if (normalized == 'false') return false;
+  }
+  return defaultValue;
 }
 
 double? _readDouble(dynamic value) {

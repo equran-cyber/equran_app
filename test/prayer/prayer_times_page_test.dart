@@ -1,4 +1,5 @@
 import 'package:equran/prayer/prayer_models.dart';
+import 'package:equran/prayer/prayer_location_service.dart';
 import 'package:equran/prayer/prayer_settings_store.dart';
 import 'package:equran/prayer/prayer_times_page.dart';
 import 'package:equran/prayer/prayer_times_service.dart';
@@ -131,6 +132,16 @@ void main() {
         PrayerTimesPage(
           enableLiveCountdown: false,
           initialNow: DateTime(2026, 5, 4, 10),
+          locationService: PrayerLocationService(
+            reverseGeocoder:
+                _FakeReverseGeocoder(const <PrayerAddressPlacemark>[
+                  PrayerAddressPlacemark(
+                    locality: 'Makkah',
+                    country: 'Saudi Arabia',
+                    isoCountryCode: 'SA',
+                  ),
+                ]),
+          ),
           mapLocationPicker:
               (BuildContext context, PrayerLocation? initialLocation) async {
                 pickerCalled = true;
@@ -153,8 +164,9 @@ void main() {
     expect(pickerCalled, true);
     expect(saved?.latitude, 12.34567);
     expect(saved?.longitude, 76.54321);
-    expect(saved?.label, 'Selected location');
-    expect(find.text('Selected location'), findsOneWidget);
+    expect(saved?.label, 'Makkah, Saudi Arabia');
+    expect(saved?.countryCode, 'SA');
+    expect(find.text('Makkah, Saudi Arabia'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 250));
@@ -179,20 +191,31 @@ void main() {
         PrayerTimesPage(
           enableLiveCountdown: false,
           initialNow: DateTime(2026, 5, 4, 10),
+          locationService: PrayerLocationService(
+            reverseGeocoder:
+                _FakeReverseGeocoder(const <PrayerAddressPlacemark>[
+                  PrayerAddressPlacemark(
+                    locality: 'Makkah',
+                    country: 'Saudi Arabia',
+                    isoCountryCode: 'SA',
+                  ),
+                ]),
+          ),
         ),
       ),
     );
     await tester.pump();
 
-    expect(find.text('Manual location'), findsOneWidget);
+    expect(find.text('Saved location'), findsOneWidget);
     expect(find.text('35.7806, -78.6389'), findsNothing);
 
     await tester.tap(find.byKey(const Key('prayer_location_summary')));
     await tester.pump(const Duration(milliseconds: 250));
 
     expect(find.text('Location details'), findsOneWidget);
-    expect(find.text('Latitude'), findsOneWidget);
-    expect(find.text('Longitude'), findsOneWidget);
+    expect(find.text('Advanced coordinates'), findsOneWidget);
+    expect(find.text('Latitude'), findsNothing);
+    expect(find.text('Longitude'), findsNothing);
     expect(find.text('Choose on map'), findsOneWidget);
     expect(find.text('Enter coordinates manually'), findsNothing);
     expect(find.text('Clear location'), findsNothing);
@@ -204,6 +227,16 @@ void main() {
   testWidgets('edits saved location fields inline', (
     WidgetTester tester,
   ) async {
+    final PrayerLocationService locationService = PrayerLocationService(
+      reverseGeocoder: _FakeReverseGeocoder(const <PrayerAddressPlacemark>[
+        PrayerAddressPlacemark(
+          locality: 'Makkah',
+          country: 'Saudi Arabia',
+          isoCountryCode: 'SA',
+        ),
+      ]),
+    );
+
     await tester.runAsync(() {
       return PrayerSettingsStore().saveLocation(
         const PrayerLocation(
@@ -220,6 +253,7 @@ void main() {
         PrayerTimesPage(
           enableLiveCountdown: false,
           initialNow: DateTime(2026, 5, 4, 10),
+          locationService: locationService,
         ),
       ),
     );
@@ -228,6 +262,57 @@ void main() {
     await tester.tap(find.byKey(const Key('prayer_location_summary')));
     await tester.pump(const Duration(milliseconds: 250));
 
+    await _expandAdvancedCoordinates(tester);
+    await tester.enterText(find.byType(TextFormField).at(1), '12.34567');
+    await tester.enterText(find.byType(TextFormField).at(2), '76.54321');
+    await tester.tap(find.text('Save changes'));
+    await tester.pump(const Duration(milliseconds: 250));
+
+    final PrayerLocation? saved = PrayerSettingsStore().getLocation();
+    expect(saved?.label, 'Makkah, Saudi Arabia');
+    expect(saved?.latitude, 12.34567);
+    expect(saved?.longitude, 76.54321);
+    expect(saved?.mode, PrayerLocationMode.manual);
+    expect(saved?.countryCode, 'SA');
+    expect(find.text('Makkah, Saudi Arabia'), findsOneWidget);
+  });
+
+  testWidgets('coordinate edit with custom label preserves explicit override', (
+    WidgetTester tester,
+  ) async {
+    final _FakeReverseGeocoder reverseGeocoder = _FakeReverseGeocoder(
+      const <PrayerAddressPlacemark>[
+        PrayerAddressPlacemark(locality: 'Makkah', country: 'Saudi Arabia'),
+      ],
+    );
+    await tester.runAsync(() {
+      return PrayerSettingsStore().saveLocation(
+        const PrayerLocation(
+          latitude: 35.78056,
+          longitude: -78.6389,
+          label: 'Test location',
+          mode: PrayerLocationMode.manual,
+        ),
+      );
+    });
+
+    await tester.pumpWidget(
+      materialTestApp(
+        PrayerTimesPage(
+          enableLiveCountdown: false,
+          initialNow: DateTime(2026, 5, 4, 10),
+          locationService: PrayerLocationService(
+            reverseGeocoder: reverseGeocoder,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('prayer_location_summary')));
+    await tester.pump(const Duration(milliseconds: 250));
+
+    await _expandAdvancedCoordinates(tester);
     await tester.enterText(find.byType(TextFormField).at(0), 'Edited place');
     await tester.enterText(find.byType(TextFormField).at(1), '12.34567');
     await tester.enterText(find.byType(TextFormField).at(2), '76.54321');
@@ -238,8 +323,78 @@ void main() {
     expect(saved?.label, 'Edited place');
     expect(saved?.latitude, 12.34567);
     expect(saved?.longitude, 76.54321);
-    expect(saved?.mode, PrayerLocationMode.manual);
-    expect(saved?.countryCode, isNull);
+    expect(reverseGeocoder.calls, 1);
     expect(find.text('Edited place'), findsOneWidget);
   });
+
+  testWidgets('preserves manual label edits when coordinates do not change', (
+    WidgetTester tester,
+  ) async {
+    final _FakeReverseGeocoder reverseGeocoder = _FakeReverseGeocoder(
+      const <PrayerAddressPlacemark>[
+        PrayerAddressPlacemark(locality: 'Resolved City', country: 'Oman'),
+      ],
+    );
+    await tester.runAsync(() {
+      return PrayerSettingsStore().saveLocation(
+        const PrayerLocation(
+          latitude: 35.78056,
+          longitude: -78.6389,
+          label: 'Test location',
+          mode: PrayerLocationMode.manual,
+          countryCode: 'US',
+        ),
+      );
+    });
+
+    await tester.pumpWidget(
+      materialTestApp(
+        PrayerTimesPage(
+          enableLiveCountdown: false,
+          initialNow: DateTime(2026, 5, 4, 10),
+          locationService: PrayerLocationService(
+            reverseGeocoder: reverseGeocoder,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('prayer_location_summary')));
+    await tester.pump(const Duration(milliseconds: 250));
+
+    await _expandAdvancedCoordinates(tester);
+    await tester.enterText(find.byType(TextFormField).at(0), 'Edited place');
+    await tester.tap(find.text('Save changes'));
+    await tester.pump(const Duration(milliseconds: 250));
+
+    final PrayerLocation? saved = PrayerSettingsStore().getLocation();
+    expect(saved?.label, 'Edited place');
+    expect(saved?.latitude, 35.78056);
+    expect(saved?.longitude, -78.6389);
+    expect(saved?.countryCode, 'US');
+    expect(reverseGeocoder.calls, 0);
+    expect(find.text('Edited place'), findsOneWidget);
+  });
+}
+
+Future<void> _expandAdvancedCoordinates(WidgetTester tester) async {
+  await tester.tap(find.text('Advanced coordinates'));
+  await tester.pump(const Duration(milliseconds: 250));
+}
+
+class _FakeReverseGeocoder implements PrayerReverseGeocoder {
+  _FakeReverseGeocoder(this.placemarks);
+
+  final List<PrayerAddressPlacemark> placemarks;
+  int calls = 0;
+
+  @override
+  Future<List<PrayerAddressPlacemark>> placemarksFromCoordinates(
+    double latitude,
+    double longitude,
+  ) async {
+    calls += 1;
+    return placemarks;
+  }
 }

@@ -13,7 +13,7 @@ void main() {
 
     expect(location.latitude, 12.34567);
     expect(location.longitude, 76.54321);
-    expect(location.label, 'Selected location');
+    expect(location.label, 'Saved location');
     expect(location.mode, PrayerLocationMode.manual);
   });
 

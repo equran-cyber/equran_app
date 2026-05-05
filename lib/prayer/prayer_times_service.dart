@@ -1,5 +1,7 @@
 import 'package:adhan_dart/adhan_dart.dart' as adhan;
 import 'package:equran/prayer/prayer_models.dart';
+import 'package:equran/prayer/prayer_timezone_service.dart';
+import 'package:timezone/timezone.dart' as timezone;
 
 class PrayerTimesService {
   const PrayerTimesService();
@@ -9,6 +11,10 @@ class PrayerTimesService {
     required PrayerLocation location,
     required PrayerTimeSettings settings,
   }) {
+    final timezone.Location? prayerTimezone = _prayerTimezoneFor(
+      location: location,
+      settings: settings,
+    );
     final PrayerCalculationMethod effectiveMethod = effectiveMethodFor(
       location: location,
       settings: settings,
@@ -16,21 +22,30 @@ class PrayerTimesService {
     final adhan.CalculationParameters parameters = _parametersFor(
       effectiveMethod,
       settings,
+      
     );
-    // Changge date var to something to test functionality
-    // date = DateTime(2030, 4, 17);
-    final DateTime localDate = DateTime(date.year, date.month, date.day);
+    final DateTime localDate = prayerTimezone == null
+        ? DateTime(date.year, date.month, date.day)
+        : timezone.TZDateTime(
+            prayerTimezone,
+            date.year,
+            date.month,
+            date.day,
+          );
     final adhan.PrayerTimes baseTimes = adhan.PrayerTimes(
       coordinates: adhan.Coordinates(location.latitude, location.longitude),
       date: localDate,
       calculationParameters: parameters,
       precision: true,
     );
-    final DateTime baseSunrise = _local(baseTimes.sunrise);
+    final DateTime baseSunrise = _displayTime(
+      baseTimes.sunrise,
+      prayerTimezone,
+    );
 
     final Map<PrayerTimeKind, DateTime> times = <PrayerTimeKind, DateTime>{
       PrayerTimeKind.fajr: _withOffset(
-        _local(baseTimes.fajr),
+        _displayTime(baseTimes.fajr, prayerTimezone),
         settings.offsets.fajr,
       ),
       PrayerTimeKind.sunrise: _withOffset(
@@ -38,19 +53,19 @@ class PrayerTimesService {
         settings.offsets.sunrise,
       ),
       PrayerTimeKind.dhuhr: _withOffset(
-        _local(baseTimes.dhuhr),
+        _displayTime(baseTimes.dhuhr, prayerTimezone),
         settings.offsets.dhuhr,
       ),
       PrayerTimeKind.asr: _withOffset(
-        _local(baseTimes.asr),
+        _displayTime(baseTimes.asr, prayerTimezone),
         settings.offsets.asr,
       ),
       PrayerTimeKind.maghrib: _withOffset(
-        _local(baseTimes.maghrib),
+        _displayTime(baseTimes.maghrib, prayerTimezone),
         settings.offsets.maghrib,
       ),
       PrayerTimeKind.isha: _withOffset(
-        _local(baseTimes.isha),
+        _displayTime(baseTimes.isha, prayerTimezone),
         settings.offsets.isha,
       ),
     };
@@ -60,6 +75,8 @@ class PrayerTimesService {
       location: location,
       settings: settings,
       effectiveMethod: effectiveMethod,
+      timezoneId: prayerTimezone?.name,
+      usesLocationTimezone: prayerTimezone != null,
       entries: PrayerTimeKind.displayOrder
           .map(
             (PrayerTimeKind kind) => PrayerTimeEntry(
@@ -80,6 +97,21 @@ class PrayerTimesService {
       return settings.method;
     }
     return bestMethodForLocation(location);
+  }
+
+  DateTime calendarDateForInstant({
+    required DateTime instant,
+    required PrayerLocation location,
+    required PrayerTimeSettings settings,
+  }) {
+    final timezone.Location? prayerTimezone = _prayerTimezoneFor(
+      location: location,
+      settings: settings,
+    );
+    final DateTime zonedInstant = prayerTimezone == null
+        ? instant.toLocal()
+        : timezone.TZDateTime.from(instant.toUtc(), prayerTimezone);
+    return DateTime(zonedInstant.year, zonedInstant.month, zonedInstant.day);
   }
 
   PrayerCalculationMethod bestMethodForLocation(PrayerLocation location) {
@@ -138,13 +170,18 @@ class PrayerTimesService {
     required PrayerLocation location,
     required PrayerTimeSettings settings,
   }) {
+    final DateTime todayDate = calendarDateForInstant(
+      instant: now,
+      location: location,
+      settings: settings,
+    );
     final PrayerDay today = calculateDay(
-      date: now,
+      date: todayDate,
       location: location,
       settings: settings,
     );
     final PrayerDay tomorrow = calculateDay(
-      date: now.add(const Duration(days: 1)),
+      date: DateTime(todayDate.year, todayDate.month, todayDate.day + 1),
       location: location,
       settings: settings,
     );
@@ -193,11 +230,23 @@ class PrayerTimesService {
       parameters.maghribAngle = settings.customMaghribAngle;
     }
 
+    parameters.highLatitudeRule = adhan.HighLatitudeRule.seventhOfTheNight;
+
     return parameters;
   }
 
-  DateTime _local(DateTime time) {
-    return time.isUtc ? time.toLocal() : time;
+  timezone.Location? _prayerTimezoneFor({
+    required PrayerLocation location,
+    required PrayerTimeSettings settings,
+  }) {
+    if (!settings.useLocationTimezone) return null;
+    return PrayerTimezoneService.locationForId(location.timezoneId);
+  }
+
+  DateTime _displayTime(DateTime time, timezone.Location? prayerTimezone) {
+    final DateTime utcTime = time.isUtc ? time : time.toUtc();
+    if (prayerTimezone == null) return utcTime.toLocal();
+    return timezone.TZDateTime.from(utcTime, prayerTimezone);
   }
 
   DateTime _withOffset(DateTime time, int minutes) {
@@ -206,6 +255,16 @@ class PrayerTimesService {
   }
 
   DateTime _floorToMinute(DateTime time) {
+    if (time is timezone.TZDateTime) {
+      return timezone.TZDateTime(
+        time.location,
+        time.year,
+        time.month,
+        time.day,
+        time.hour,
+        time.minute,
+      );
+    }
     return DateTime(time.year, time.month, time.day, time.hour, time.minute);
   }
 }

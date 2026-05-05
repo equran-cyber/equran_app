@@ -30,7 +30,7 @@ PrayerLocation prayerLocationFromMapSelection({
   return PrayerLocation(
     latitude: latitude,
     longitude: longitude,
-    label: 'Selected location',
+    label: 'Saved location',
     mode: PrayerLocationMode.manual,
   );
 }

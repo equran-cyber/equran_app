@@ -2,6 +2,7 @@ import 'package:equran/prayer/prayer_models.dart';
 import 'package:equran/prayer/prayer_settings_store.dart';
 import 'package:equran/prayer/prayer_times_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:timezone/timezone.dart' as timezone;
 
 import '../helpers/test_harness.dart';
 
@@ -104,7 +105,7 @@ void main() {
           label: '12.3400, 56.7800',
           mode: PrayerLocationMode.currentDevice,
         ).displayLabel,
-        'Current device location',
+        'Saved location',
       );
       expect(
         const PrayerLocation(
@@ -202,6 +203,8 @@ void main() {
           isha: 6,
         ),
         use24HourFormat: true,
+        useLocationTimezone: false,
+        reminderSettings: const PrayerReminderSettings(remindersEnabled: true),
       );
 
       final PrayerTimeSettings restored = PrayerTimeSettings.fromJson(
@@ -216,6 +219,134 @@ void main() {
       expect(restored.asrMethod, PrayerAsrMethod.hanafi);
       expect(restored.offsets.asr, 4);
       expect(restored.use24HourFormat, true);
+      expect(restored.useLocationTimezone, false);
+      expect(restored.reminderSettings.remindersEnabled, true);
+    });
+
+    test('default notification and timezone settings are safe', () {
+      final PrayerTimeSettings settings = PrayerTimeSettings.defaults();
+
+      expect(settings.useLocationTimezone, true);
+      expect(settings.reminderSettings.remindersEnabled, false);
+      expect(
+        settings.reminderSettings.prayerToggleFor(PrayerTimeKind.fajr),
+        true,
+      );
+      expect(
+        settings.reminderSettings.prayerToggleFor(PrayerTimeKind.sunrise),
+        false,
+      );
+    });
+
+    test('serializes location timezone fields', () {
+      const PrayerLocation location = PrayerLocation(
+        latitude: 51.5072,
+        longitude: -0.1276,
+        label: 'London',
+        mode: PrayerLocationMode.manual,
+        timezoneId: 'Europe/London',
+      );
+
+      final PrayerLocation? restored = PrayerLocation.fromJson(
+        location.toJson(),
+      );
+
+      expect(restored?.timezoneId, 'Europe/London');
+    });
+
+    test('uses selected location timezone when available', () {
+      const PrayerLocation london = PrayerLocation(
+        latitude: 51.5072,
+        longitude: -0.1276,
+        label: 'London',
+        mode: PrayerLocationMode.manual,
+        timezoneId: 'Europe/London',
+      );
+
+      final PrayerDay day = service.calculateDay(
+        date: DateTime(2026, 5, 4),
+        location: london,
+        settings: PrayerTimeSettings.defaults(),
+      );
+
+      expect(day.usesLocationTimezone, true);
+      expect(day.timezoneId, 'Europe/London');
+      expect(
+        day.entryFor(PrayerTimeKind.dhuhr).time,
+        isA<timezone.TZDateTime>(),
+      );
+    });
+
+    test('calendar date follows selected location timezone', () {
+      const PrayerLocation london = PrayerLocation(
+        latitude: 51.5072,
+        longitude: -0.1276,
+        label: 'London',
+        mode: PrayerLocationMode.manual,
+        timezoneId: 'Europe/London',
+      );
+
+      final DateTime calendarDate = service.calendarDateForInstant(
+        instant: DateTime.utc(2026, 5, 4, 23, 30),
+        location: london,
+        settings: PrayerTimeSettings.defaults(),
+      );
+
+      expect(calendarDate, DateTime(2026, 5, 5));
+    });
+
+    test('falls back to device timezone when location timezone is missing', () {
+      final PrayerDay day = service.calculateDay(
+        date: DateTime(2026, 5, 4),
+        location: testLocation,
+        settings: PrayerTimeSettings.defaults(),
+      );
+
+      expect(day.usesLocationTimezone, false);
+      expect(day.timezoneId, isNull);
+    });
+
+    test('can disable location timezone', () {
+      final PrayerDay day = service.calculateDay(
+        date: DateTime(2026, 5, 4),
+        location: testLocation.copyWith(timezoneId: 'America/New_York'),
+        settings: PrayerTimeSettings.defaults().copyWith(
+          useLocationTimezone: false,
+        ),
+      );
+
+      expect(day.usesLocationTimezone, false);
+      expect(day.timezoneId, isNull);
+    });
+
+    test('next prayer works with location timezone DateTimes', () {
+      final PrayerLocation london = testLocation.copyWith(
+        timezoneId: 'Europe/London',
+      );
+      final PrayerTimeSettings settings = PrayerTimeSettings.defaults();
+      final PrayerDay day = service.calculateDay(
+        date: DateTime(2026, 5, 4),
+        location: london,
+        settings: settings,
+      );
+      final PrayerDay tomorrow = service.calculateDay(
+        date: DateTime(2026, 5, 5),
+        location: london,
+        settings: settings,
+      );
+      final DateTime beforeDhuhr = day
+          .entryFor(PrayerTimeKind.dhuhr)
+          .time
+          .subtract(const Duration(minutes: 10));
+
+      final NextPrayer next = service.nextPrayer(
+        day: day,
+        tomorrow: tomorrow,
+        now: beforeDhuhr,
+      );
+
+      expect(next.entry.kind, PrayerTimeKind.dhuhr);
+      expect(next.countdown.inMinutes, greaterThanOrEqualTo(9));
     });
 
     test('ignores retired extra-prayer settings without crashing', () {
@@ -258,6 +389,8 @@ void main() {
           location: baseDay.location,
           settings: baseDay.settings,
           effectiveMethod: baseDay.effectiveMethod,
+          timezoneId: baseDay.timezoneId,
+          usesLocationTimezone: baseDay.usesLocationTimezone,
           entries: baseDay.entries
               .map(
                 (PrayerTimeEntry entry) => entry.kind == PrayerTimeKind.dhuhr
@@ -333,6 +466,8 @@ PrayerDay _fakeDay(DateTime date) {
     ),
     settings: PrayerTimeSettings.defaults(),
     effectiveMethod: PrayerCalculationMethod.muslimWorldLeague,
+    timezoneId: null,
+    usesLocationTimezone: false,
     entries: <PrayerTimeEntry>[
       PrayerTimeEntry(
         kind: PrayerTimeKind.fajr,
