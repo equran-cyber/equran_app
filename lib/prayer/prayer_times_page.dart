@@ -38,6 +38,7 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
   late final PrayerLocationService _locationService;
   Timer? _timer;
   late DateTime _now;
+  DateTime? _selectedDate;
   bool _isLocating = false;
 
   @override
@@ -96,17 +97,41 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
             location: location,
             settings: settings,
           );
-          final PrayerDay tomorrow = _service.calculateDay(
-            date: DateTime(todayDate.year, todayDate.month, todayDate.day + 1),
-            location: location,
-            settings: settings,
+          final DateTime selectedDate = _selectedDate ?? todayDate;
+          final bool isViewingToday = _isSameCalendarDate(
+            selectedDate,
+            todayDate,
           );
-          final NextPrayer nextPrayer = _service.nextPrayer(
-            day: today,
-            tomorrow: tomorrow,
-            now: _now,
-          );
-          final _PrayerHeroTiming heroTiming = _heroTimingFor(nextPrayer);
+          final PrayerDay selectedDay = isViewingToday
+              ? today
+              : _service.calculateDay(
+                  date: selectedDate,
+                  location: location,
+                  settings: settings,
+                );
+          final _PrayerHeroTiming heroTiming;
+          final PrayerTimeKind? highlightedPrayer;
+          if (isViewingToday) {
+            final PrayerDay tomorrow = _service.calculateDay(
+              date: DateTime(
+                todayDate.year,
+                todayDate.month,
+                todayDate.day + 1,
+              ),
+              location: location,
+              settings: settings,
+            );
+            final NextPrayer nextPrayer = _service.nextPrayer(
+              day: today,
+              tomorrow: tomorrow,
+              now: _now,
+            );
+            heroTiming = _heroTimingFor(nextPrayer);
+            highlightedPrayer = heroTiming.entry.kind;
+          } else {
+            heroTiming = _selectedDateHeroTiming(selectedDay);
+            highlightedPrayer = null;
+          }
 
           return ListView(
             physics: const BouncingScrollPhysics(),
@@ -120,16 +145,17 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
                     children: <Widget>[
                       _buildHeroCard(
                         context,
-                        today,
+                        selectedDay,
                         heroTiming,
                         settings,
                         location,
+                        isViewingToday,
                       ),
                       const SizedBox(height: 14),
                       _buildPrayerGrid(
                         context,
-                        today,
-                        heroTiming.entry.kind,
+                        selectedDay,
+                        highlightedPrayer,
                         settings,
                       ),
                       const SizedBox(height: 14),
@@ -151,6 +177,7 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
     _PrayerHeroTiming heroTiming,
     PrayerTimeSettings settings,
     PrayerLocation location,
+    bool isViewingToday,
   ) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
@@ -198,7 +225,7 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
               children: <Widget>[
                 Expanded(
                   child: Text(
-                    'Next prayer',
+                    isViewingToday ? 'Next prayer' : 'Selected date',
                     style: theme.textTheme.labelLarge?.copyWith(
                       color: colors.primary,
                       fontWeight: FontWeight.w800,
@@ -245,28 +272,28 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
               spacing: 8,
               runSpacing: 8,
               children: <Widget>[
-                _InfoPill(
-                  icon: Icons.hourglass_bottom_rounded,
-                  label: formatPrayerCountdownLabel(
-                    heroTiming.countdown,
-                    isNow: heroTiming.isNow,
+                if (isViewingToday)
+                  _InfoPill(
+                    icon: Icons.hourglass_bottom_rounded,
+                    label: formatPrayerCountdownLabel(
+                      heroTiming.countdown,
+                      isNow: heroTiming.isNow,
+                    ),
                   ),
-                ),
                 _InfoPill(
                   icon: Icons.calendar_today_rounded,
                   label: _formatDate(day.date),
+                  tooltip: 'Select date',
+                  onTap: () => _selectPrayerDate(day.date),
                 ),
+                if (!isViewingToday)
+                  _InfoPill(
+                    icon: Icons.today_rounded,
+                    label: 'Today',
+                    tooltip: 'Return to today',
+                    onTap: _returnToToday,
+                  ),
                 _InfoPill(icon: Icons.calculate_outlined, label: methodLabel),
-                _InfoPill(
-                  icon: Icons.public_rounded,
-                  label: _timezoneChipLabel(day),
-                ),
-                _InfoPill(
-                  icon: Icons.notifications_none_rounded,
-                  label: _reminderChipLabel(settings.reminderSettings),
-                  tooltip: 'Prayer reminder settings',
-                  onTap: _openPrayerSettings,
-                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -398,7 +425,7 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
   Widget _buildPrayerGrid(
     BuildContext context,
     PrayerDay day,
-    PrayerTimeKind highlightedKind,
+    PrayerTimeKind? highlightedKind,
     PrayerTimeSettings settings,
   ) {
     return LayoutBuilder(
@@ -418,7 +445,7 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
             final PrayerTimeEntry entry = day.entries[index];
             return _PrayerTimeCard(
               entry: entry,
-              isNext: entry.kind == highlightedKind,
+              isNext: highlightedKind != null && entry.kind == highlightedKind,
               use24HourFormat: settings.use24HourFormat,
             );
           },
@@ -581,6 +608,35 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
     );
   }
 
+  Future<void> _selectPrayerDate(DateTime currentDate) async {
+    final DateTime initialDate = DateTime(
+      currentDate.year,
+      currentDate.month,
+      currentDate.day,
+    );
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      helpText: 'Select prayer date',
+    );
+    if (pickedDate == null || !mounted) return;
+    setState(() {
+      _selectedDate = DateTime(
+        pickedDate.year,
+        pickedDate.month,
+        pickedDate.day,
+      );
+    });
+  }
+
+  void _returnToToday() {
+    setState(() {
+      _selectedDate = null;
+    });
+  }
+
   void _showMessage(String message) {
     ScaffoldMessenger.of(
       context,
@@ -650,6 +706,18 @@ _PrayerHeroTiming _heroTimingFor(NextPrayer nextPrayer) {
     countdown: nextPrayer.countdown,
     isNow: false,
   );
+}
+
+_PrayerHeroTiming _selectedDateHeroTiming(PrayerDay day) {
+  return _PrayerHeroTiming(
+    entry: day.entryFor(PrayerTimeKind.fajr),
+    countdown: Duration.zero,
+    isNow: false,
+  );
+}
+
+bool _isSameCalendarDate(DateTime a, DateTime b) {
+  return a.year == b.year && a.month == b.month && a.day == b.day;
 }
 
 class _LocationDetailsSheet extends StatefulWidget {
@@ -1336,25 +1404,6 @@ class _InfoPill extends StatelessWidget {
       ),
     );
   }
-}
-
-String _reminderChipLabel(PrayerReminderSettings reminders) {
-  if (!reminders.remindersEnabled || reminders.enabledPrayerCount == 0) {
-    return 'Reminders off';
-  }
-  final int enabledCount = reminders.enabledPrayerCount;
-  if (enabledCount == PrayerTimeKind.reminderOrder.length) {
-    return 'Reminders on';
-  }
-  return '$enabledCount reminders on';
-}
-
-String _timezoneChipLabel(PrayerDay day) {
-  final String? timezoneId = day.timezoneId;
-  if (day.usesLocationTimezone && timezoneId != null) {
-    return 'Location time - $timezoneId';
-  }
-  return 'Device time - ${day.date.timeZoneName}';
 }
 
 String _formatTime(DateTime time, bool use24HourFormat) {

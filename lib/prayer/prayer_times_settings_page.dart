@@ -106,6 +106,15 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
                 onTap: _selectAsrMethod,
               ),
               ListTile(
+                title: const Text('High latitude adjustment'),
+                subtitle: Text(
+                  '${_settings.highLatitudeRule.label}\n'
+                  'Used when Fajr or Isha are difficult to calculate in far northern or southern locations.',
+                ),
+                isThreeLine: true,
+                onTap: _selectHighLatitudeRule,
+              ),
+              ListTile(
                 title: const Text('Time format'),
                 subtitle: Text(
                   _settings.use24HourFormat ? '24-hour' : '12-hour',
@@ -435,6 +444,38 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
         );
     if (selected == null) return;
     await _saveSettings(_settings.copyWith(asrMethod: selected));
+  }
+
+  Future<void> _selectHighLatitudeRule() async {
+    final PrayerHighLatitudeRule? selected =
+        await _showSelectionDialog<PrayerHighLatitudeRule>(
+          title: 'High Latitude Adjustment',
+          icon: Icons.public_rounded,
+          selectedValue: _settings.highLatitudeRule,
+          options: PrayerHighLatitudeRule.values
+              .map(
+                (PrayerHighLatitudeRule rule) =>
+                    AppSelectionOption<PrayerHighLatitudeRule>(
+                      value: rule,
+                      title: rule.label,
+                      subtitle: switch (rule) {
+                        PrayerHighLatitudeRule.auto =>
+                          'Apply a rule only for high-latitude locations.',
+                        PrayerHighLatitudeRule.none =>
+                          'Do not apply a high-latitude rule.',
+                        PrayerHighLatitudeRule.middleOfTheNight =>
+                          'Cap Fajr and Isha using the middle of the night.',
+                        PrayerHighLatitudeRule.oneSeventh =>
+                          'Use one seventh of the night.',
+                        PrayerHighLatitudeRule.angleBased =>
+                          'Use the Fajr and Isha angles as the night fraction.',
+                      },
+                    ),
+              )
+              .toList(),
+        );
+    if (selected == null) return;
+    await _saveSettings(_settings.copyWith(highLatitudeRule: selected));
   }
 
   Future<void> _selectTimeFormat() async {
@@ -998,6 +1039,7 @@ extension PrayerCustomSettingsUpdate on PrayerTimeSettings {
       customIshaInterval: value,
       customMaghribAngle: customMaghribAngle,
       asrMethod: asrMethod,
+      highLatitudeRule: highLatitudeRule,
       offsets: offsets,
       use24HourFormat: use24HourFormat,
       useLocationTimezone: useLocationTimezone,
@@ -1013,6 +1055,7 @@ extension PrayerCustomSettingsUpdate on PrayerTimeSettings {
       customIshaInterval: customIshaInterval,
       customMaghribAngle: value,
       asrMethod: asrMethod,
+      highLatitudeRule: highLatitudeRule,
       offsets: offsets,
       use24HourFormat: use24HourFormat,
       useLocationTimezone: useLocationTimezone,

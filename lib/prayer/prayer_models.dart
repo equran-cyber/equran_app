@@ -54,8 +54,12 @@ enum PrayerCalculationMethod {
   qatar('qatar', 'Qatar'),
   karachi('karachi', 'Karachi'),
   northAmerica('northAmerica', 'ISNA'),
+  moonsightingCommittee('moonsightingCommittee', 'Moonsighting Committee'),
+  morocco('morocco', 'Morocco'),
   singapore('singapore', 'Singapore'),
+  tehran('tehran', 'Tehran'),
   turkiye('turkiye', 'Turkey / Diyanet'),
+  uk18('uk18', 'UK 18°'),
   custom('custom', 'Custom');
 
   const PrayerCalculationMethod(this.id, this.label);
@@ -81,10 +85,34 @@ enum PrayerCalculationMethod {
       PrayerCalculationMethod.qatar => 'Qatar',
       PrayerCalculationMethod.karachi => 'Karachi',
       PrayerCalculationMethod.northAmerica => 'ISNA',
+      PrayerCalculationMethod.moonsightingCommittee => 'Moonsighting',
+      PrayerCalculationMethod.morocco => 'Morocco',
       PrayerCalculationMethod.singapore => 'Singapore',
+      PrayerCalculationMethod.tehran => 'Tehran',
       PrayerCalculationMethod.turkiye => 'Turkey',
+      PrayerCalculationMethod.uk18 => 'UK 18°',
       PrayerCalculationMethod.custom => 'Custom',
     };
+  }
+}
+
+enum PrayerHighLatitudeRule {
+  auto('auto', 'Auto'),
+  none('none', 'None'),
+  middleOfTheNight('middleOfTheNight', 'Middle of the Night'),
+  oneSeventh('oneSeventh', 'One Seventh'),
+  angleBased('angleBased', 'Angle Based');
+
+  const PrayerHighLatitudeRule(this.id, this.label);
+
+  final String id;
+  final String label;
+
+  static PrayerHighLatitudeRule fromId(String? id) {
+    return PrayerHighLatitudeRule.values.firstWhere(
+      (PrayerHighLatitudeRule rule) => rule.id == id,
+      orElse: () => PrayerHighLatitudeRule.auto,
+    );
   }
 }
 
@@ -395,6 +423,7 @@ class PrayerTimeSettings {
     this.customIshaInterval,
     this.customMaghribAngle,
     this.asrMethod = PrayerAsrMethod.standard,
+    this.highLatitudeRule = PrayerHighLatitudeRule.auto,
     this.offsets = const PrayerOffsets(),
     this.use24HourFormat = false,
     this.useLocationTimezone = true,
@@ -414,6 +443,9 @@ class PrayerTimeSettings {
       customIshaInterval: _readNullableInt(json['customIshaInterval']),
       customMaghribAngle: _readDouble(json['customMaghribAngle']),
       asrMethod: PrayerAsrMethod.fromId(json['asrMethod'] as String?),
+      highLatitudeRule: PrayerHighLatitudeRule.fromId(
+        json['highLatitudeRule'] as String?,
+      ),
       offsets: PrayerOffsets.fromJson(json['offsets'] as Map?),
       use24HourFormat: json['use24HourFormat'] == true,
       useLocationTimezone: json['useLocationTimezone'] != false,
@@ -429,6 +461,7 @@ class PrayerTimeSettings {
   final int? customIshaInterval;
   final double? customMaghribAngle;
   final PrayerAsrMethod asrMethod;
+  final PrayerHighLatitudeRule highLatitudeRule;
   final PrayerOffsets offsets;
   final bool use24HourFormat;
   final bool useLocationTimezone;
@@ -441,6 +474,7 @@ class PrayerTimeSettings {
     int? customIshaInterval,
     double? customMaghribAngle,
     PrayerAsrMethod? asrMethod,
+    PrayerHighLatitudeRule? highLatitudeRule,
     PrayerOffsets? offsets,
     bool? use24HourFormat,
     bool? useLocationTimezone,
@@ -453,6 +487,7 @@ class PrayerTimeSettings {
       customIshaInterval: customIshaInterval ?? this.customIshaInterval,
       customMaghribAngle: customMaghribAngle ?? this.customMaghribAngle,
       asrMethod: asrMethod ?? this.asrMethod,
+      highLatitudeRule: highLatitudeRule ?? this.highLatitudeRule,
       offsets: offsets ?? this.offsets,
       use24HourFormat: use24HourFormat ?? this.use24HourFormat,
       useLocationTimezone: useLocationTimezone ?? this.useLocationTimezone,
@@ -468,6 +503,7 @@ class PrayerTimeSettings {
       'customIshaInterval': customIshaInterval,
       'customMaghribAngle': customMaghribAngle,
       'asrMethod': asrMethod.id,
+      'highLatitudeRule': highLatitudeRule.id,
       'offsets': offsets.toJson(),
       'use24HourFormat': use24HourFormat,
       'useLocationTimezone': useLocationTimezone,

@@ -19,10 +19,16 @@ class PrayerTimesService {
       location: location,
       settings: settings,
     );
+    final PrayerHighLatitudeRule highLatitudeRule =
+        effectiveHighLatitudeRuleFor(
+          location: location,
+          settings: settings,
+          effectiveMethod: effectiveMethod,
+        );
     final adhan.CalculationParameters parameters = _parametersFor(
-      effectiveMethod,
-      settings,
-      
+      method: effectiveMethod,
+      settings: settings,
+      highLatitudeRule: highLatitudeRule,
     );
     final DateTime localDate = prayerTimezone == null
         ? DateTime(date.year, date.month, date.day)
@@ -123,11 +129,35 @@ class PrayerTimesService {
       'SA' => PrayerCalculationMethod.ummAlQura,
       'EG' => PrayerCalculationMethod.egyptian,
       'PK' || 'IN' || 'BD' || 'AF' => PrayerCalculationMethod.karachi,
+      'GB' || 'UK' || 'IE' => PrayerCalculationMethod.uk18,
+      'MA' => PrayerCalculationMethod.morocco,
+      'IR' => PrayerCalculationMethod.tehran,
       'US' || 'CA' => PrayerCalculationMethod.northAmerica,
       'SG' || 'MY' || 'ID' || 'BN' => PrayerCalculationMethod.singapore,
       'TR' => PrayerCalculationMethod.turkiye,
       _ => PrayerCalculationMethod.muslimWorldLeague,
     };
+  }
+
+  PrayerHighLatitudeRule effectiveHighLatitudeRuleFor({
+    required PrayerLocation location,
+    required PrayerTimeSettings settings,
+    PrayerCalculationMethod? effectiveMethod,
+  }) {
+    if (settings.highLatitudeRule != PrayerHighLatitudeRule.auto) {
+      return settings.highLatitudeRule;
+    }
+    if (!_needsHighLatitudeAdjustment(location)) {
+      return PrayerHighLatitudeRule.none;
+    }
+
+    final PrayerCalculationMethod method =
+        effectiveMethod ??
+        effectiveMethodFor(location: location, settings: settings);
+    if (method == PrayerCalculationMethod.moonsightingCommittee) {
+      return PrayerHighLatitudeRule.oneSeventh;
+    }
+    return PrayerHighLatitudeRule.angleBased;
   }
 
   NextPrayer nextPrayer({
@@ -188,10 +218,11 @@ class PrayerTimesService {
     return nextPrayer(day: today, tomorrow: tomorrow, now: now);
   }
 
-  adhan.CalculationParameters _parametersFor(
-    PrayerCalculationMethod method,
-    PrayerTimeSettings settings,
-  ) {
+  adhan.CalculationParameters _parametersFor({
+    required PrayerCalculationMethod method,
+    required PrayerTimeSettings settings,
+    required PrayerHighLatitudeRule highLatitudeRule,
+  }) {
     final adhan.CalculationParameters parameters = switch (method) {
       PrayerCalculationMethod.auto ||
       PrayerCalculationMethod.muslimWorldLeague =>
@@ -210,10 +241,17 @@ class PrayerTimesService {
         adhan.CalculationMethodParameters.karachi(),
       PrayerCalculationMethod.northAmerica =>
         adhan.CalculationMethodParameters.northAmerica(),
+      PrayerCalculationMethod.moonsightingCommittee =>
+        adhan.CalculationMethodParameters.moonsightingCommittee(),
+      PrayerCalculationMethod.morocco =>
+        adhan.CalculationMethodParameters.morocco(),
       PrayerCalculationMethod.singapore =>
         adhan.CalculationMethodParameters.singapore(),
+      PrayerCalculationMethod.tehran =>
+        adhan.CalculationMethodParameters.tehran(),
       PrayerCalculationMethod.turkiye =>
         adhan.CalculationMethodParameters.turkiye(),
+      PrayerCalculationMethod.uk18 ||
       PrayerCalculationMethod.custom =>
         adhan.CalculationMethodParameters.other(),
     };
@@ -223,16 +261,38 @@ class PrayerTimesService {
       PrayerAsrMethod.hanafi => adhan.Madhab.hanafi,
     };
 
-    if (method == PrayerCalculationMethod.custom) {
+    if (method == PrayerCalculationMethod.uk18) {
+      parameters.fajrAngle = 18;
+      parameters.ishaAngle = 18;
+      parameters.ishaInterval = null;
+      parameters.maghribAngle = null;
+    } else if (method == PrayerCalculationMethod.custom) {
       parameters.fajrAngle = settings.customFajrAngle;
       parameters.ishaAngle = settings.customIshaAngle;
       parameters.ishaInterval = settings.customIshaInterval;
       parameters.maghribAngle = settings.customMaghribAngle;
     }
 
-    parameters.highLatitudeRule = adhan.HighLatitudeRule.seventhOfTheNight;
+    parameters.highLatitudeRule = _adhanHighLatitudeRuleFor(highLatitudeRule);
 
     return parameters;
+  }
+
+  adhan.HighLatitudeRule? _adhanHighLatitudeRuleFor(
+    PrayerHighLatitudeRule rule,
+  ) {
+    return switch (rule) {
+      PrayerHighLatitudeRule.auto || PrayerHighLatitudeRule.none => null,
+      PrayerHighLatitudeRule.middleOfTheNight =>
+        adhan.HighLatitudeRule.middleOfTheNight,
+      PrayerHighLatitudeRule.oneSeventh =>
+        adhan.HighLatitudeRule.seventhOfTheNight,
+      PrayerHighLatitudeRule.angleBased => adhan.HighLatitudeRule.twilightAngle,
+    };
+  }
+
+  bool _needsHighLatitudeAdjustment(PrayerLocation location) {
+    return location.latitude.abs() >= 48;
   }
 
   timezone.Location? _prayerTimezoneFor({
