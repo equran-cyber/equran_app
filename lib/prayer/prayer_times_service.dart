@@ -19,12 +19,11 @@ class PrayerTimesService {
       location: location,
       settings: settings,
     );
-    final PrayerHighLatitudeRule highLatitudeRule =
-        effectiveHighLatitudeRuleFor(
-          location: location,
-          settings: settings,
-          effectiveMethod: effectiveMethod,
-        );
+    final adhan.HighLatitudeRule highLatitudeRule = resolveHighLatitudeRule(
+      location: location,
+      settings: settings,
+      effectiveMethod: effectiveMethod,
+    );
     final adhan.CalculationParameters parameters = _parametersFor(
       method: effectiveMethod,
       settings: settings,
@@ -49,6 +48,20 @@ class PrayerTimesService {
       prayerTimezone,
     );
 
+    final DateTime baseMaghrib = _displayTime(
+      baseTimes.maghrib,
+      prayerTimezone,
+    );
+    final DateTime baseIsha = _displayTime(baseTimes.isha, prayerTimezone);
+    final DateTime customIsha = _customIshaTime(
+      baseIsha: baseIsha,
+      baseMaghrib: baseMaghrib,
+      localDate: localDate,
+      method: effectiveMethod,
+      prayerTimezone: prayerTimezone,
+      settings: settings,
+    );
+
     final Map<PrayerTimeKind, DateTime> times = <PrayerTimeKind, DateTime>{
       PrayerTimeKind.fajr: _withOffset(
         _displayTime(baseTimes.fajr, prayerTimezone),
@@ -67,13 +80,10 @@ class PrayerTimesService {
         settings.offsets.asr,
       ),
       PrayerTimeKind.maghrib: _withOffset(
-        _displayTime(baseTimes.maghrib, prayerTimezone),
+        baseMaghrib,
         settings.offsets.maghrib,
       ),
-      PrayerTimeKind.isha: _withOffset(
-        _displayTime(baseTimes.isha, prayerTimezone),
-        settings.offsets.isha,
-      ),
+      PrayerTimeKind.isha: _withOffset(customIsha, settings.offsets.isha),
     };
 
     return PrayerDay(
@@ -160,6 +170,19 @@ class PrayerTimesService {
     return PrayerHighLatitudeRule.angleBased;
   }
 
+  adhan.HighLatitudeRule resolveHighLatitudeRule({
+    required PrayerLocation location,
+    required PrayerTimeSettings settings,
+    PrayerCalculationMethod? effectiveMethod,
+  }) {
+    final PrayerHighLatitudeRule appRule = effectiveHighLatitudeRuleFor(
+      location: location,
+      settings: settings,
+      effectiveMethod: effectiveMethod,
+    );
+    return _adhanHighLatitudeRuleFor(appRule);
+  }
+
   NextPrayer nextPrayer({
     required PrayerDay day,
     required DateTime now,
@@ -221,7 +244,7 @@ class PrayerTimesService {
   adhan.CalculationParameters _parametersFor({
     required PrayerCalculationMethod method,
     required PrayerTimeSettings settings,
-    required PrayerHighLatitudeRule highLatitudeRule,
+    required adhan.HighLatitudeRule highLatitudeRule,
   }) {
     final adhan.CalculationParameters parameters = switch (method) {
       PrayerCalculationMethod.auto ||
@@ -269,20 +292,21 @@ class PrayerTimesService {
     } else if (method == PrayerCalculationMethod.custom) {
       parameters.fajrAngle = settings.customFajrAngle;
       parameters.ishaAngle = settings.customIshaAngle;
-      parameters.ishaInterval = settings.customIshaInterval;
+      parameters.ishaInterval = _customIshaIntervalForCalculation(settings);
       parameters.maghribAngle = settings.customMaghribAngle;
     }
 
-    parameters.highLatitudeRule = _adhanHighLatitudeRuleFor(highLatitudeRule);
+    parameters.highLatitudeRule = highLatitudeRule;
 
     return parameters;
   }
 
-  adhan.HighLatitudeRule? _adhanHighLatitudeRuleFor(
+  adhan.HighLatitudeRule _adhanHighLatitudeRuleFor(
     PrayerHighLatitudeRule rule,
   ) {
     return switch (rule) {
-      PrayerHighLatitudeRule.auto || PrayerHighLatitudeRule.none => null,
+      PrayerHighLatitudeRule.auto ||
+      PrayerHighLatitudeRule.none => adhan.HighLatitudeRule.middleOfTheNight,
       PrayerHighLatitudeRule.middleOfTheNight =>
         adhan.HighLatitudeRule.middleOfTheNight,
       PrayerHighLatitudeRule.oneSeventh =>
@@ -293,6 +317,77 @@ class PrayerTimesService {
 
   bool _needsHighLatitudeAdjustment(PrayerLocation location) {
     return location.latitude.abs() >= 48;
+  }
+
+  int? _customIshaIntervalForCalculation(PrayerTimeSettings settings) {
+    return switch (settings.customIshaMode) {
+      PrayerCustomIshaMode.interval || PrayerCustomIshaMode.latestCap =>
+        settings.customIshaInterval,
+      PrayerCustomIshaMode.angle || PrayerCustomIshaMode.fixedTime => null,
+    };
+  }
+
+  DateTime _customIshaTime({
+    required DateTime baseIsha,
+    required DateTime baseMaghrib,
+    required DateTime localDate,
+    required PrayerCalculationMethod method,
+    required timezone.Location? prayerTimezone,
+    required PrayerTimeSettings settings,
+  }) {
+    if (method != PrayerCalculationMethod.custom) return baseIsha;
+
+    final DateTime isha = switch (settings.customIshaMode) {
+      PrayerCustomIshaMode.angle => baseIsha,
+      PrayerCustomIshaMode.interval => settings.customIshaInterval == null
+          ? baseIsha
+          : baseMaghrib.add(Duration(minutes: settings.customIshaInterval!)),
+      PrayerCustomIshaMode.fixedTime => _clockTimeOnDate(
+        date: localDate,
+        hour: settings.customIshaFixedTimeHour,
+        minute: settings.customIshaFixedTimeMinute,
+        prayerTimezone: prayerTimezone,
+      ),
+      PrayerCustomIshaMode.latestCap => _cappedIshaTime(
+        baseIsha: baseIsha,
+        cap: _clockTimeOnDate(
+          date: localDate,
+          hour: settings.customIshaLatestCapHour,
+          minute: settings.customIshaLatestCapMinute,
+          prayerTimezone: prayerTimezone,
+        ),
+      ),
+    };
+
+    // Custom Isha mode is resolved first; the manual Isha offset is applied
+    // afterwards with the other prayer offsets.
+    return isha;
+  }
+
+  DateTime _cappedIshaTime({
+    required DateTime baseIsha,
+    required DateTime cap,
+  }) {
+    return baseIsha.isAfter(cap) ? cap : baseIsha;
+  }
+
+  DateTime _clockTimeOnDate({
+    required DateTime date,
+    required int hour,
+    required int minute,
+    required timezone.Location? prayerTimezone,
+  }) {
+    if (prayerTimezone == null) {
+      return DateTime(date.year, date.month, date.day, hour, minute);
+    }
+    return timezone.TZDateTime(
+      prayerTimezone,
+      date.year,
+      date.month,
+      date.day,
+      hour,
+      minute,
+    );
   }
 
   timezone.Location? _prayerTimezoneFor({

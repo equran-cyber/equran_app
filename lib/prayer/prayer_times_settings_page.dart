@@ -314,38 +314,21 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
                     _saveSettings(_settings.copyWith(customFajrAngle: value)),
               ),
             ),
-            ListTile(
-              title: const Text('Isha angle'),
-              subtitle: Text(
-                '${_settings.customIshaAngle.toStringAsFixed(1)}°',
-              ),
-              onTap: () => _editDoubleSetting(
-                title: 'Isha angle',
-                currentValue: _settings.customIshaAngle,
-                min: 0,
-                max: 30,
-                suffix: 'degrees',
-                onChanged: (double value) =>
-                    _saveSettings(_settings.copyWith(customIshaAngle: value)),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 2),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Text(
+                  'Some high-latitude mosque timetables use fixed or capped Isha times during summer.',
+                ),
               ),
             ),
             ListTile(
-              title: const Text('Isha interval'),
-              subtitle: Text(
-                _settings.customIshaInterval == null
-                    ? 'Use Isha angle'
-                    : '${_settings.customIshaInterval} minutes after Maghrib',
-              ),
-              onTap: () => _editOptionalIntSetting(
-                title: 'Isha interval',
-                currentValue: _settings.customIshaInterval,
-                min: 0,
-                max: 240,
-                emptyLabel: 'Leave blank to use Isha angle.',
-                onChanged: (int? value) =>
-                    _saveSettings(_settings.withCustomIshaInterval(value)),
-              ),
+              title: const Text('Isha mode'),
+              subtitle: Text(_settings.customIshaMode.label),
+              onTap: _selectCustomIshaMode,
             ),
+            ..._buildCustomIshaFields(),
             ListTile(
               title: const Text('Maghrib angle'),
               subtitle: Text(
@@ -366,6 +349,105 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
           ],
         ),
       ),
+    );
+  }
+
+  List<Widget> _buildCustomIshaFields() {
+    return switch (_settings.customIshaMode) {
+      PrayerCustomIshaMode.angle => <Widget>[_buildCustomIshaAngleTile()],
+      PrayerCustomIshaMode.interval => <Widget>[
+        _buildCustomIshaIntervalTile(requiredValue: true),
+      ],
+      PrayerCustomIshaMode.fixedTime => <Widget>[
+        ListTile(
+          title: const Text('Fixed Isha time'),
+          subtitle: Text(
+            _clockLabel(
+              _settings.customIshaFixedTimeHour,
+              _settings.customIshaFixedTimeMinute,
+            ),
+          ),
+          onTap: () => _editCustomIshaClockTime(
+            title: 'Fixed Isha time',
+            initialHour: _settings.customIshaFixedTimeHour,
+            initialMinute: _settings.customIshaFixedTimeMinute,
+            onChanged: (TimeOfDay value) => _saveSettings(
+              _settings.copyWith(
+                customIshaFixedTimeHour: value.hour,
+                customIshaFixedTimeMinute: value.minute,
+              ),
+            ),
+          ),
+        ),
+      ],
+      PrayerCustomIshaMode.latestCap => <Widget>[
+        _buildCustomIshaAngleTile(title: 'Base Isha angle'),
+        _buildCustomIshaIntervalTile(requiredValue: false),
+        ListTile(
+          title: const Text('Latest Isha time'),
+          subtitle: Text(
+            'Use calculated Isha, but do not allow it later than '
+            '${_clockLabel(_settings.customIshaLatestCapHour, _settings.customIshaLatestCapMinute)}.',
+          ),
+          onTap: () => _editCustomIshaClockTime(
+            title: 'Latest Isha time',
+            initialHour: _settings.customIshaLatestCapHour,
+            initialMinute: _settings.customIshaLatestCapMinute,
+            onChanged: (TimeOfDay value) => _saveSettings(
+              _settings.copyWith(
+                customIshaLatestCapHour: value.hour,
+                customIshaLatestCapMinute: value.minute,
+              ),
+            ),
+          ),
+        ),
+      ],
+    };
+  }
+
+  Widget _buildCustomIshaAngleTile({String title = 'Isha angle'}) {
+    return ListTile(
+      title: Text(title),
+      subtitle: Text('${_settings.customIshaAngle.toStringAsFixed(1)}°'),
+      onTap: () => _editDoubleSetting(
+        title: title,
+        currentValue: _settings.customIshaAngle,
+        min: 0,
+        max: 30,
+        suffix: 'degrees',
+        onChanged: (double value) =>
+            _saveSettings(_settings.copyWith(customIshaAngle: value)),
+      ),
+    );
+  }
+
+  Widget _buildCustomIshaIntervalTile({required bool requiredValue}) {
+    return ListTile(
+      title: Text(requiredValue ? 'Isha interval' : 'Base Isha interval'),
+      subtitle: Text(
+        _settings.customIshaInterval == null
+            ? 'Use Isha angle'
+            : '${_settings.customIshaInterval} minutes after Maghrib',
+      ),
+      onTap: () => requiredValue
+          ? _editIntSetting(
+              title: 'Isha interval',
+              currentValue: _settings.customIshaInterval ?? 90,
+              min: 0,
+              max: 240,
+              suffix: 'minutes',
+              onChanged: (int value) =>
+                  _saveSettings(_settings.withCustomIshaInterval(value)),
+            )
+          : _editOptionalIntSetting(
+              title: 'Base Isha interval',
+              currentValue: _settings.customIshaInterval,
+              min: 0,
+              max: 240,
+              emptyLabel: 'Leave blank to use the base Isha angle.',
+              onChanged: (int? value) =>
+                  _saveSettings(_settings.withCustomIshaInterval(value)),
+            ),
     );
   }
 
@@ -476,6 +558,41 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
         );
     if (selected == null) return;
     await _saveSettings(_settings.copyWith(highLatitudeRule: selected));
+  }
+
+  Future<void> _selectCustomIshaMode() async {
+    final PrayerCustomIshaMode? selected =
+        await _showSelectionDialog<PrayerCustomIshaMode>(
+          title: 'Isha Mode',
+          icon: Icons.dark_mode_outlined,
+          selectedValue: _settings.customIshaMode,
+          options: PrayerCustomIshaMode.values
+              .map(
+                (PrayerCustomIshaMode mode) =>
+                    AppSelectionOption<PrayerCustomIshaMode>(
+                      value: mode,
+                      title: mode.label,
+                      subtitle: switch (mode) {
+                        PrayerCustomIshaMode.angle =>
+                          'Use the custom Isha angle.',
+                        PrayerCustomIshaMode.interval =>
+                          'Set Isha a fixed number of minutes after Maghrib.',
+                        PrayerCustomIshaMode.fixedTime =>
+                          'Use the same clock time on each selected prayer date.',
+                        PrayerCustomIshaMode.latestCap =>
+                          'Use calculated Isha unless it goes later than a cap.',
+                      },
+                    ),
+              )
+              .toList(),
+        );
+    if (selected == null) return;
+    PrayerTimeSettings settings = _settings.copyWith(customIshaMode: selected);
+    if (selected == PrayerCustomIshaMode.interval &&
+        settings.customIshaInterval == null) {
+      settings = settings.copyWith(customIshaInterval: 90);
+    }
+    await _saveSettings(settings);
   }
 
   Future<void> _selectTimeFormat() async {
@@ -609,6 +726,41 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
       parser: double.tryParse,
       validator: (double value) => value >= min && value <= max,
       formatter: (double value) => value.toStringAsFixed(1),
+    );
+    if (value == null) return;
+    onChanged(value);
+  }
+
+  Future<void> _editIntSetting({
+    required String title,
+    required int currentValue,
+    required int min,
+    required int max,
+    required String suffix,
+    required ValueChanged<int> onChanged,
+  }) async {
+    final int? value = await _showNumberDialog<int>(
+      title: title,
+      currentValue: currentValue,
+      helperText: 'Enter a value between $min and $max $suffix.',
+      parser: int.tryParse,
+      validator: (int value) => value >= min && value <= max,
+      formatter: (int value) => value.toString(),
+    );
+    if (value == null) return;
+    onChanged(value);
+  }
+
+  Future<void> _editCustomIshaClockTime({
+    required String title,
+    required int initialHour,
+    required int initialMinute,
+    required ValueChanged<TimeOfDay> onChanged,
+  }) async {
+    final TimeOfDay? value = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: initialHour, minute: initialMinute),
+      helpText: title,
     );
     if (value == null) return;
     onChanged(value);
@@ -987,6 +1139,11 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
     return '$offset minutes before prayer';
   }
 
+  String _clockLabel(int hour, int minute) {
+    final TimeOfDay time = TimeOfDay(hour: hour, minute: minute);
+    return time.format(context);
+  }
+
   void _showLocationError(PrayerLocationResult result) {
     final String message = result.message ?? 'Unable to get location.';
     final PrayerLocationFailureReason? reason = result.failureReason;
@@ -1036,7 +1193,12 @@ extension PrayerCustomSettingsUpdate on PrayerTimeSettings {
       method: method,
       customFajrAngle: customFajrAngle,
       customIshaAngle: customIshaAngle,
+      customIshaMode: customIshaMode,
       customIshaInterval: value,
+      customIshaFixedTimeHour: customIshaFixedTimeHour,
+      customIshaFixedTimeMinute: customIshaFixedTimeMinute,
+      customIshaLatestCapHour: customIshaLatestCapHour,
+      customIshaLatestCapMinute: customIshaLatestCapMinute,
       customMaghribAngle: customMaghribAngle,
       asrMethod: asrMethod,
       highLatitudeRule: highLatitudeRule,
@@ -1052,7 +1214,12 @@ extension PrayerCustomSettingsUpdate on PrayerTimeSettings {
       method: method,
       customFajrAngle: customFajrAngle,
       customIshaAngle: customIshaAngle,
+      customIshaMode: customIshaMode,
       customIshaInterval: customIshaInterval,
+      customIshaFixedTimeHour: customIshaFixedTimeHour,
+      customIshaFixedTimeMinute: customIshaFixedTimeMinute,
+      customIshaLatestCapHour: customIshaLatestCapHour,
+      customIshaLatestCapMinute: customIshaLatestCapMinute,
       customMaghribAngle: value,
       asrMethod: asrMethod,
       highLatitudeRule: highLatitudeRule,

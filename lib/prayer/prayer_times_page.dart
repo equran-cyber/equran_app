@@ -9,6 +9,7 @@ import 'package:equran/prayer/prayer_notification_service.dart';
 import 'package:equran/prayer/prayer_settings_store.dart';
 import 'package:equran/prayer/prayer_times_settings_page.dart';
 import 'package:equran/prayer/prayer_times_service.dart';
+import 'package:equran/prayer/qibla_page.dart';
 import 'package:equran/utils/app_radii.dart';
 import 'package:flutter/material.dart';
 
@@ -233,6 +234,11 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
                   ),
                 ),
                 IconButton(
+                  tooltip: 'Qibla direction',
+                  onPressed: _openQiblaPage,
+                  icon: const Icon(Icons.explore_outlined),
+                ),
+                IconButton(
                   tooltip: 'Prayer settings',
                   onPressed: _openPrayerSettings,
                   icon: const Icon(Icons.tune_rounded),
@@ -340,17 +346,27 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Container(
-              width: 54,
-              height: 54,
-              decoration: BoxDecoration(
-                color: colors.primaryContainer.withValues(alpha: 0.72),
-                borderRadius: BorderRadius.circular(AppRadii.medium),
-              ),
-              child: Icon(
-                Icons.add_location_alt_outlined,
-                color: colors.onPrimaryContainer,
-              ),
+            Row(
+              children: <Widget>[
+                Container(
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    color: colors.primaryContainer.withValues(alpha: 0.72),
+                    borderRadius: BorderRadius.circular(AppRadii.medium),
+                  ),
+                  child: Icon(
+                    Icons.add_location_alt_outlined,
+                    color: colors.onPrimaryContainer,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  tooltip: 'Qibla direction',
+                  onPressed: _openQiblaPage,
+                  icon: const Icon(Icons.explore_outlined),
+                ),
+              ],
             ),
             const SizedBox(height: 18),
             Text(
@@ -604,6 +620,14 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (BuildContext context) => const PrayerTimesSettingsPage(),
+      ),
+    );
+  }
+
+  void _openQiblaPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => const QiblaPage(),
       ),
     );
   }

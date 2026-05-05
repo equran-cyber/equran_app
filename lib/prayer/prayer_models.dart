@@ -108,10 +108,37 @@ enum PrayerHighLatitudeRule {
   final String id;
   final String label;
 
-  static PrayerHighLatitudeRule fromId(String? id) {
+  static PrayerHighLatitudeRule fromId(Object? id) {
+    if (id is! String) return PrayerHighLatitudeRule.auto;
     return PrayerHighLatitudeRule.values.firstWhere(
       (PrayerHighLatitudeRule rule) => rule.id == id,
       orElse: () => PrayerHighLatitudeRule.auto,
+    );
+  }
+}
+
+enum PrayerCustomIshaMode {
+  angle('angle', 'Angle based'),
+  interval('interval', 'Fixed interval after Maghrib'),
+  fixedTime('fixedTime', 'Fixed clock time'),
+  latestCap('latestCap', 'Latest time cap');
+
+  const PrayerCustomIshaMode(this.id, this.label);
+
+  final String id;
+  final String label;
+
+  static PrayerCustomIshaMode fromId(Object? id, {int? legacyInterval}) {
+    if (id is! String) {
+      return legacyInterval == null
+          ? PrayerCustomIshaMode.angle
+          : PrayerCustomIshaMode.interval;
+    }
+    return PrayerCustomIshaMode.values.firstWhere(
+      (PrayerCustomIshaMode mode) => mode.id == id,
+      orElse: () => legacyInterval == null
+          ? PrayerCustomIshaMode.angle
+          : PrayerCustomIshaMode.interval,
     );
   }
 }
@@ -420,7 +447,12 @@ class PrayerTimeSettings {
     this.method = PrayerCalculationMethod.auto,
     this.customFajrAngle = 18,
     this.customIshaAngle = 17,
+    this.customIshaMode = PrayerCustomIshaMode.angle,
     this.customIshaInterval,
+    this.customIshaFixedTimeHour = 22,
+    this.customIshaFixedTimeMinute = 15,
+    this.customIshaLatestCapHour = 22,
+    this.customIshaLatestCapMinute = 15,
     this.customMaghribAngle,
     this.asrMethod = PrayerAsrMethod.standard,
     this.highLatitudeRule = PrayerHighLatitudeRule.auto,
@@ -436,15 +468,30 @@ class PrayerTimeSettings {
 
   factory PrayerTimeSettings.fromJson(Map<dynamic, dynamic>? json) {
     if (json == null) return PrayerTimeSettings.defaults();
+    final int? legacyIshaInterval = _readNullableInt(
+      json['customIshaIntervalMinutes'] ?? json['customIshaInterval'],
+    );
     return PrayerTimeSettings(
       method: PrayerCalculationMethod.fromId(json['method'] as String?),
       customFajrAngle: _readDouble(json['customFajrAngle']) ?? 18,
       customIshaAngle: _readDouble(json['customIshaAngle']) ?? 17,
-      customIshaInterval: _readNullableInt(json['customIshaInterval']),
+      customIshaMode: PrayerCustomIshaMode.fromId(
+        json['customIshaMode'],
+        legacyInterval: legacyIshaInterval,
+      ),
+      customIshaInterval: legacyIshaInterval,
+      customIshaFixedTimeHour:
+          _readClockHour(json['customIshaFixedTimeHour']) ?? 22,
+      customIshaFixedTimeMinute:
+          _readClockMinute(json['customIshaFixedTimeMinute']) ?? 15,
+      customIshaLatestCapHour:
+          _readClockHour(json['customIshaLatestCapHour']) ?? 22,
+      customIshaLatestCapMinute:
+          _readClockMinute(json['customIshaLatestCapMinute']) ?? 15,
       customMaghribAngle: _readDouble(json['customMaghribAngle']),
       asrMethod: PrayerAsrMethod.fromId(json['asrMethod'] as String?),
       highLatitudeRule: PrayerHighLatitudeRule.fromId(
-        json['highLatitudeRule'] as String?,
+        json['highLatitudeRule'],
       ),
       offsets: PrayerOffsets.fromJson(json['offsets'] as Map?),
       use24HourFormat: json['use24HourFormat'] == true,
@@ -458,7 +505,12 @@ class PrayerTimeSettings {
   final PrayerCalculationMethod method;
   final double customFajrAngle;
   final double customIshaAngle;
+  final PrayerCustomIshaMode customIshaMode;
   final int? customIshaInterval;
+  final int customIshaFixedTimeHour;
+  final int customIshaFixedTimeMinute;
+  final int customIshaLatestCapHour;
+  final int customIshaLatestCapMinute;
   final double? customMaghribAngle;
   final PrayerAsrMethod asrMethod;
   final PrayerHighLatitudeRule highLatitudeRule;
@@ -471,7 +523,12 @@ class PrayerTimeSettings {
     PrayerCalculationMethod? method,
     double? customFajrAngle,
     double? customIshaAngle,
+    PrayerCustomIshaMode? customIshaMode,
     int? customIshaInterval,
+    int? customIshaFixedTimeHour,
+    int? customIshaFixedTimeMinute,
+    int? customIshaLatestCapHour,
+    int? customIshaLatestCapMinute,
     double? customMaghribAngle,
     PrayerAsrMethod? asrMethod,
     PrayerHighLatitudeRule? highLatitudeRule,
@@ -484,7 +541,16 @@ class PrayerTimeSettings {
       method: method ?? this.method,
       customFajrAngle: customFajrAngle ?? this.customFajrAngle,
       customIshaAngle: customIshaAngle ?? this.customIshaAngle,
+      customIshaMode: customIshaMode ?? this.customIshaMode,
       customIshaInterval: customIshaInterval ?? this.customIshaInterval,
+      customIshaFixedTimeHour:
+          customIshaFixedTimeHour ?? this.customIshaFixedTimeHour,
+      customIshaFixedTimeMinute:
+          customIshaFixedTimeMinute ?? this.customIshaFixedTimeMinute,
+      customIshaLatestCapHour:
+          customIshaLatestCapHour ?? this.customIshaLatestCapHour,
+      customIshaLatestCapMinute:
+          customIshaLatestCapMinute ?? this.customIshaLatestCapMinute,
       customMaghribAngle: customMaghribAngle ?? this.customMaghribAngle,
       asrMethod: asrMethod ?? this.asrMethod,
       highLatitudeRule: highLatitudeRule ?? this.highLatitudeRule,
@@ -500,7 +566,13 @@ class PrayerTimeSettings {
       'method': method.id,
       'customFajrAngle': customFajrAngle,
       'customIshaAngle': customIshaAngle,
+      'customIshaMode': customIshaMode.id,
       'customIshaInterval': customIshaInterval,
+      'customIshaIntervalMinutes': customIshaInterval,
+      'customIshaFixedTimeHour': customIshaFixedTimeHour,
+      'customIshaFixedTimeMinute': customIshaFixedTimeMinute,
+      'customIshaLatestCapHour': customIshaLatestCapHour,
+      'customIshaLatestCapMinute': customIshaLatestCapMinute,
       'customMaghribAngle': customMaghribAngle,
       'asrMethod': asrMethod.id,
       'highLatitudeRule': highLatitudeRule.id,
@@ -568,6 +640,18 @@ int? _readNullableInt(dynamic value) {
   if (value is double) return value.round();
   if (value is String) return int.tryParse(value);
   return null;
+}
+
+int? _readClockHour(dynamic value) {
+  final int? hour = _readNullableInt(value);
+  if (hour == null || hour < 0 || hour > 23) return null;
+  return hour;
+}
+
+int? _readClockMinute(dynamic value) {
+  final int? minute = _readNullableInt(value);
+  if (minute == null || minute < 0 || minute > 59) return null;
+  return minute;
 }
 
 bool _readBool(dynamic value, {required bool defaultValue}) {
