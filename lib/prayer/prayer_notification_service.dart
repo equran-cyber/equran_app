@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:equran/prayer/prayer_models.dart';
 import 'package:equran/prayer/prayer_times_service.dart';
 import 'package:equran/prayer/prayer_timezone_service.dart';
@@ -73,6 +75,8 @@ class FlutterPrayerLocalNotificationPlatform
   static final FlutterPrayerLocalNotificationPlatform instance =
       FlutterPrayerLocalNotificationPlatform._();
 
+  static const Duration _operationTimeout = Duration(seconds: 8);
+
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
@@ -81,22 +85,26 @@ class FlutterPrayerLocalNotificationPlatform
   @override
   Future<void> initialize() async {
     if (_initialized || !_isSupported) return;
-    await PrayerTimezoneService.configureDeviceTimezone();
-    await _plugin.initialize(
-  settings: const InitializationSettings(
-    android: AndroidInitializationSettings('ic_prayer_notification'),
-    iOS: DarwinInitializationSettings(
-      requestAlertPermission: false,
-      requestBadgePermission: false,
-      requestSoundPermission: false,
-    ),
-    macOS: DarwinInitializationSettings(
-      requestAlertPermission: false,
-      requestBadgePermission: false,
-      requestSoundPermission: false,
-    ),
-  ),
-);
+    await PrayerTimezoneService.configureDeviceTimezone().timeout(
+      _operationTimeout,
+    );
+    await _plugin
+        .initialize(
+          const InitializationSettings(
+            android: AndroidInitializationSettings('ic_prayer_notification'),
+            iOS: DarwinInitializationSettings(
+              requestAlertPermission: false,
+              requestBadgePermission: false,
+              requestSoundPermission: false,
+            ),
+            macOS: DarwinInitializationSettings(
+              requestAlertPermission: false,
+              requestBadgePermission: false,
+              requestSoundPermission: false,
+            ),
+          ),
+        )
+        .timeout(_operationTimeout);
     _initialized = true;
   }
 
@@ -110,7 +118,10 @@ class FlutterPrayerLocalNotificationPlatform
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
           >();
-      final bool? enabled = await android?.areNotificationsEnabled();
+      if (android == null) return PrayerNotificationPermissionStatus.unsupported;
+      final bool? enabled = await android.areNotificationsEnabled().timeout(
+        _operationTimeout,
+      );
       return enabled == false
           ? PrayerNotificationPermissionStatus.denied
           : PrayerNotificationPermissionStatus.granted;
@@ -121,8 +132,10 @@ class FlutterPrayerLocalNotificationPlatform
           .resolvePlatformSpecificImplementation<
             IOSFlutterLocalNotificationsPlugin
           >();
+      if (ios == null) return PrayerNotificationPermissionStatus.unsupported;
       final NotificationsEnabledOptions? permissions = await ios
-          ?.checkPermissions();
+          .checkPermissions()
+          .timeout(_operationTimeout);
       return permissions?.isEnabled == true
           ? PrayerNotificationPermissionStatus.granted
           : PrayerNotificationPermissionStatus.denied;
@@ -133,8 +146,10 @@ class FlutterPrayerLocalNotificationPlatform
           .resolvePlatformSpecificImplementation<
             MacOSFlutterLocalNotificationsPlugin
           >();
+      if (macOS == null) return PrayerNotificationPermissionStatus.unsupported;
       final NotificationsEnabledOptions? permissions = await macOS
-          ?.checkPermissions();
+          .checkPermissions()
+          .timeout(_operationTimeout);
       return permissions?.isEnabled == true
           ? PrayerNotificationPermissionStatus.granted
           : PrayerNotificationPermissionStatus.denied;
@@ -153,7 +168,10 @@ class FlutterPrayerLocalNotificationPlatform
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
           >();
-      final bool? granted = await android?.requestNotificationsPermission();
+      if (android == null) return PrayerNotificationPermissionStatus.unsupported;
+      final bool? granted = await android
+          .requestNotificationsPermission()
+          .timeout(_operationTimeout);
       return granted == false
           ? PrayerNotificationPermissionStatus.denied
           : PrayerNotificationPermissionStatus.granted;
@@ -164,10 +182,10 @@ class FlutterPrayerLocalNotificationPlatform
           .resolvePlatformSpecificImplementation<
             IOSFlutterLocalNotificationsPlugin
           >();
-      final bool? granted = await ios?.requestPermissions(
-        alert: true,
-        sound: true,
-      );
+      if (ios == null) return PrayerNotificationPermissionStatus.unsupported;
+      final bool? granted = await ios
+          .requestPermissions(alert: true, sound: true)
+          .timeout(_operationTimeout);
       return granted == true
           ? PrayerNotificationPermissionStatus.granted
           : PrayerNotificationPermissionStatus.denied;
@@ -178,10 +196,10 @@ class FlutterPrayerLocalNotificationPlatform
           .resolvePlatformSpecificImplementation<
             MacOSFlutterLocalNotificationsPlugin
           >();
-      final bool? granted = await macOS?.requestPermissions(
-        alert: true,
-        sound: true,
-      );
+      if (macOS == null) return PrayerNotificationPermissionStatus.unsupported;
+      final bool? granted = await macOS
+          .requestPermissions(alert: true, sound: true)
+          .timeout(_operationTimeout);
       return granted == true
           ? PrayerNotificationPermissionStatus.granted
           : PrayerNotificationPermissionStatus.denied;
@@ -200,39 +218,41 @@ class FlutterPrayerLocalNotificationPlatform
   }) async {
     if (!_isSupported) return;
     await initialize();
-    await _plugin.zonedSchedule(
-      id: id,
-      title: title,
-      body: body,
-      scheduledDate: timezone.TZDateTime.from(scheduledAt, timezone.local),
-      notificationDetails: const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'prayer_reminders',
-          'Prayer reminders',
-          channelDescription: 'Local reminders for enabled prayer times.',
-          icon: 'ic_prayer_notification',
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-        iOS: DarwinNotificationDetails(
-          presentAlert: true,
-          presentSound: true,
-        ),
-        macOS: DarwinNotificationDetails(
-          presentAlert: true,
-          presentSound: true,
-        ),
-      ),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-      payload: payload,
-    );
+    await _plugin
+        .zonedSchedule(
+          id: id,
+          title: title,
+          body: body,
+          scheduledDate: timezone.TZDateTime.from(scheduledAt, timezone.local),
+          notificationDetails: const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'prayer_reminders',
+              'Prayer reminders',
+              channelDescription: 'Local reminders for enabled prayer times.',
+              icon: 'ic_prayer_notification',
+              importance: Importance.high,
+              priority: Priority.high,
+            ),
+            iOS: DarwinNotificationDetails(
+              presentAlert: true,
+              presentSound: true,
+            ),
+            macOS: DarwinNotificationDetails(
+              presentAlert: true,
+              presentSound: true,
+            ),
+          ),
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          payload: payload,
+        )
+        .timeout(_operationTimeout);
   }
 
   @override
   Future<void> cancel(int id) async {
     if (!_isSupported) return;
     await initialize();
-    await _plugin.cancel(id: id);
+    await _plugin.cancel(id: id).timeout(_operationTimeout);
   }
 
   bool get _isSupported {
@@ -259,6 +279,7 @@ class PrayerNotificationService {
 
   static const int defaultScheduleDays = 7;
   static const int _notificationBaseId = 42000;
+  static const Duration _operationTimeout = Duration(seconds: 8);
 
   final PrayerLocalNotificationPlatform _platform;
   final PrayerTimesService _prayerTimesService;
@@ -266,21 +287,23 @@ class PrayerNotificationService {
   final int scheduleDays;
 
   Future<void> initialize() {
-    return _platform.initialize();
+    return _withTimeout(_platform.initialize());
   }
 
   Future<PrayerNotificationPermissionStatus> checkPermission() {
-    return _platform.checkPermission();
+    return _withTimeout(_platform.checkPermission());
   }
 
   Future<PrayerNotificationPermissionStatus> requestPermission() {
-    return _platform.requestPermission();
+    return _withTimeout(_platform.requestPermission());
   }
 
   Future<void> cancelPrayerNotifications() async {
     for (int dayOffset = 0; dayOffset < scheduleDays; dayOffset++) {
       for (final PrayerTimeKind prayer in PrayerTimeKind.reminderOrder) {
-        await _platform.cancel(notificationIdFor(prayer, dayOffset));
+        await _withTimeout(
+          _platform.cancel(notificationIdFor(prayer, dayOffset)),
+        );
       }
     }
   }
@@ -291,7 +314,7 @@ class PrayerNotificationService {
     bool requestPermission = false,
   }) async {
     try {
-      await _platform.initialize();
+      await _withTimeout(_platform.initialize());
       await cancelPrayerNotifications();
 
       final PrayerReminderSettings reminders = settings.reminderSettings;
@@ -309,8 +332,8 @@ class PrayerNotificationService {
       }
 
       final PrayerNotificationPermissionStatus permission = requestPermission
-          ? await _platform.requestPermission()
-          : await _platform.checkPermission();
+          ? await _withTimeout(_platform.requestPermission())
+          : await _withTimeout(_platform.checkPermission());
       if (permission == PrayerNotificationPermissionStatus.unsupported) {
         return const PrayerNotificationScheduleResult(
           status: PrayerNotificationScheduleStatus.unsupported,
@@ -354,15 +377,17 @@ class PrayerNotificationService {
           if (!scheduledAt.isAfter(now)) continue;
 
           final int id = notificationIdFor(prayer, dayOffset);
-          await _platform.schedule(
-            id: id,
-            title: prayer.label,
-            body: _notificationBody(
-              prayer,
-              reminders.reminderOffsetMinutes,
+          await _withTimeout(
+            _platform.schedule(
+              id: id,
+              title: prayer.label,
+              body: _notificationBody(
+                prayer,
+                reminders.reminderOffsetMinutes,
+              ),
+              scheduledAt: scheduledAt,
+              payload: 'prayer:${prayer.id}:${scheduledAt.toIso8601String()}',
             ),
-            scheduledAt: scheduledAt,
-            payload: 'prayer:${prayer.id}:${scheduledAt.toIso8601String()}',
           );
           scheduled.add(
             PrayerScheduledNotification(
@@ -385,6 +410,12 @@ class PrayerNotificationService {
       return PrayerNotificationScheduleResult(
         status: PrayerNotificationScheduleStatus.scheduled,
         scheduledNotifications: scheduled,
+      );
+    } on TimeoutException {
+      return const PrayerNotificationScheduleResult(
+        status: PrayerNotificationScheduleStatus.failed,
+        message:
+            'Notification setup timed out. Check notification permission and try again.',
       );
     } catch (error) {
       if (kDebugMode) {
@@ -410,5 +441,9 @@ class PrayerNotificationService {
       return 'It is time for ${prayer.label} prayer.';
     }
     return '${prayer.label} prayer is in $offsetMinutes minutes.';
+  }
+
+  Future<T> _withTimeout<T>(Future<T> future) {
+    return future.timeout(_operationTimeout);
   }
 }

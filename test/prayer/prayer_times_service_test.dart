@@ -204,7 +204,7 @@ void main() {
         ),
         use24HourFormat: true,
         useLocationTimezone: false,
-        reminderSettings: const PrayerReminderSettings(remindersEnabled: true),
+        reminderSettings: PrayerReminderSettings(remindersEnabled: true),
       );
 
       final PrayerTimeSettings restored = PrayerTimeSettings.fromJson(

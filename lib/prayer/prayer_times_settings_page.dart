@@ -27,12 +27,17 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
   PrayerLocation? _location;
   bool _isLocating = false;
   bool _isUpdatingReminders = false;
+  bool _isCheckingNotificationPermission = false;
+  bool _notificationPermissionRequestAttempted = false;
+  PrayerNotificationPermissionStatus? _notificationPermission;
+  String? _notificationMessage;
 
   @override
   void initState() {
     super.initState();
     _settings = _store.getSettings();
     _location = _store.getLocation();
+    _refreshNotificationPermission();
   }
 
   @override
@@ -202,6 +207,11 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
     final ColorScheme colors = theme.colorScheme;
     final PrayerReminderSettings reminders = _settings.reminderSettings;
     final bool remindersOn = reminders.remindersEnabled;
+    final PrayerNotificationPermissionStatus? permission =
+        _notificationPermission;
+    final bool permissionOff =
+        permission == PrayerNotificationPermissionStatus.denied ||
+        permission == PrayerNotificationPermissionStatus.unsupported;
 
     return _buildSettingsGroup(
       context: context,
@@ -218,13 +228,17 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
               : const Icon(Icons.notifications_none_rounded),
           title: const Text('Prayer reminders'),
           subtitle: Text(
-            remindersOn
+            _isCheckingNotificationPermission
+                ? 'Checking notification permission...'
+                : remindersOn && !permissionOff
                 ? 'Local notifications are scheduled on this device.'
                 : 'Off until you enable them.',
           ),
           value: remindersOn,
           onChanged: _isUpdatingReminders ? null : _toggleGlobalReminders,
         ),
+        if (permissionOff || _notificationMessage != null)
+          _buildNotificationPermissionBanner(theme),
         if (remindersOn && _location == null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -267,6 +281,72 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
           duration: const Duration(milliseconds: 180),
         ),
       ],
+    );
+  }
+
+  Widget _buildNotificationPermissionBanner(ThemeData theme) {
+    final ColorScheme colors = theme.colorScheme;
+    final PrayerNotificationPermissionStatus? permission =
+        _notificationPermission;
+    final bool unsupported =
+        permission == PrayerNotificationPermissionStatus.unsupported;
+    final bool openSettings =
+        unsupported || _notificationPermissionRequestAttempted;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.errorContainer.withValues(alpha: 0.34),
+          borderRadius: BorderRadius.circular(AppRadii.medium),
+          border: Border.all(color: colors.error.withValues(alpha: 0.2)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 11, 12, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Icon(
+                    Icons.notifications_off_outlined,
+                    color: colors.error,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      _notificationMessage ??
+                          'Notification permission is off. Enable it to receive prayer reminders.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: TextButton.icon(
+                  onPressed: _isUpdatingReminders
+                      ? null
+                      : openSettings
+                      ? _openNotificationSettings
+                      : _requestNotificationPermission,
+                  icon: Icon(
+                    openSettings
+                        ? Icons.settings_outlined
+                        : Icons.notifications_active_outlined,
+                  ),
+                  label: Text(openSettings ? 'Open app settings' : 'Request permission'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -618,34 +698,69 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
 
     setState(() {
       _isUpdatingReminders = true;
+      _notificationMessage = null;
     });
-    final PrayerNotificationPermissionStatus permission =
-        await _notificationService.requestPermission();
-    if (!mounted) return;
-    setState(() {
-      _isUpdatingReminders = false;
-    });
+    try {
+      final PrayerNotificationPermissionStatus permission =
+          await _notificationService.requestPermission();
+      if (!mounted) return;
+      setState(() {
+        _notificationPermission = permission;
+        _notificationPermissionRequestAttempted = true;
+      });
 
-    if (permission != PrayerNotificationPermissionStatus.granted) {
-      await _notificationService.cancelPrayerNotifications();
-      _showMessage(
-        permission == PrayerNotificationPermissionStatus.unsupported
-            ? 'Prayer reminders are not supported on this platform.'
-            : 'Notification permission is off. Prayer reminders were not enabled.',
-      );
-      return;
+      if (permission != PrayerNotificationPermissionStatus.granted) {
+        await _notificationService.cancelPrayerNotifications();
+        if (!mounted) return;
+        setState(() {
+          _notificationMessage = permission ==
+                  PrayerNotificationPermissionStatus.unsupported
+              ? 'Prayer reminders are not supported on this platform.'
+              : 'Notification permission is off. Enable it to receive prayer reminders.';
+        });
+        _showMessage(
+          permission == PrayerNotificationPermissionStatus.unsupported
+              ? 'Prayer reminders are not supported on this platform.'
+              : 'Notification permission is off. Prayer reminders were not enabled.',
+        );
+        return;
+      }
+
+      await _saveReminderSettings(reminders.copyWith(remindersEnabled: true));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _notificationMessage =
+            'Notification setup timed out. Check permission and try again.';
+      });
+      _showMessage('Notification setup timed out. Try again.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUpdatingReminders = false;
+        });
+      }
     }
-
-    await _saveReminderSettings(reminders.copyWith(remindersEnabled: true));
   }
 
   Future<void> _togglePrayerReminder(
     PrayerTimeKind prayer,
     bool enabled,
   ) async {
-    await _saveReminderSettings(
-      _settings.reminderSettings.copyWithPrayer(prayer, enabled),
-    );
+    setState(() {
+      _isUpdatingReminders = true;
+    });
+    try {
+      await _saveReminderSettings(
+        _settings.reminderSettings.copyWithPrayer(prayer, enabled),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUpdatingReminders = false;
+        });
+      }
+    }
   }
 
   Future<void> _selectReminderOffset() async {
@@ -662,9 +777,61 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
       ],
     );
     if (selected == null) return;
-    await _saveReminderSettings(
-      _settings.reminderSettings.copyWith(reminderOffsetMinutes: selected),
-    );
+    setState(() {
+      _isUpdatingReminders = true;
+    });
+    try {
+      await _saveReminderSettings(
+        _settings.reminderSettings.copyWith(reminderOffsetMinutes: selected),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUpdatingReminders = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _requestNotificationPermission() async {
+    setState(() {
+      _isUpdatingReminders = true;
+      _notificationMessage = null;
+    });
+    try {
+      final PrayerNotificationPermissionStatus permission =
+          await _notificationService.requestPermission();
+      if (!mounted) return;
+      setState(() {
+        _notificationPermission = permission;
+        _notificationPermissionRequestAttempted = true;
+        _notificationMessage =
+            permission == PrayerNotificationPermissionStatus.granted
+            ? null
+            : 'Notification permission is off. Enable it to receive prayer reminders.';
+      });
+      if (permission == PrayerNotificationPermissionStatus.granted &&
+          _settings.reminderSettings.remindersEnabled) {
+        await _saveSettings(_settings);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _notificationMessage =
+            'Notification permission request timed out. Open app settings and try again.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUpdatingReminders = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _openNotificationSettings() async {
+    await _locationService.openAppSettings();
+    await _refreshNotificationPermission();
   }
 
   Future<void> _saveReminderSettings(
@@ -1052,9 +1219,30 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
       );
       await _store.saveSettings(savedSettings);
       if (mounted) {
+        setState(() {
+          _notificationPermission = PrayerNotificationPermissionStatus.denied;
+          _notificationMessage =
+              'Notification permission is off. Enable it to receive prayer reminders.';
+        });
         _showMessage(
           'Notification permission is off. Reminders were disabled.',
         );
+      }
+    } else if (reminderResult.status == PrayerNotificationScheduleStatus.failed) {
+      if (mounted) {
+        setState(() {
+          _notificationMessage =
+              reminderResult.message ?? 'Prayer reminders could not be scheduled.';
+        });
+        _showMessage(_notificationMessage!);
+      }
+    } else if (reminderResult.status ==
+        PrayerNotificationScheduleStatus.scheduled) {
+      if (mounted) {
+        setState(() {
+          _notificationPermission = PrayerNotificationPermissionStatus.granted;
+          _notificationMessage = null;
+        });
       }
     }
     if (!mounted) return;
@@ -1072,6 +1260,37 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
       settings: settings ?? _settings,
       location: locationCleared ? null : location ?? _location,
     );
+  }
+
+  Future<void> _refreshNotificationPermission() async {
+    setState(() {
+      _isCheckingNotificationPermission = true;
+    });
+    try {
+      final PrayerNotificationPermissionStatus permission =
+          await _notificationService.checkPermission();
+      if (!mounted) return;
+      setState(() {
+        _notificationPermission = permission;
+        _notificationMessage =
+            permission == PrayerNotificationPermissionStatus.denied &&
+                _settings.reminderSettings.remindersEnabled
+            ? 'Notification permission is off. Enable it to receive prayer reminders.'
+            : null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _notificationMessage =
+            'Could not check notification permission. Try again from app settings.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCheckingNotificationPermission = false;
+        });
+      }
+    }
   }
 
   void _showMessage(String message) {
@@ -1111,7 +1330,7 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
     if (enabledCount == PrayerTimeKind.reminderOrder.length) {
       return 'All prayer reminders on';
     }
-    return '$enabledCount reminders on';
+    return '$enabledCount reminders enabled';
   }
 
   String get _methodSubtitle {
