@@ -7,11 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as timezone;
 
-enum PrayerNotificationPermissionStatus {
-  granted,
-  denied,
-  unsupported,
-}
+enum PrayerNotificationPermissionStatus { granted, denied, unsupported }
 
 enum PrayerNotificationScheduleStatus {
   disabled,
@@ -90,7 +86,7 @@ class FlutterPrayerLocalNotificationPlatform
     );
     await _plugin
         .initialize(
-          const InitializationSettings(
+          settings: const InitializationSettings(
             android: AndroidInitializationSettings('ic_prayer_notification'),
             iOS: DarwinInitializationSettings(
               requestAlertPermission: false,
@@ -118,7 +114,9 @@ class FlutterPrayerLocalNotificationPlatform
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
           >();
-      if (android == null) return PrayerNotificationPermissionStatus.unsupported;
+      if (android == null) {
+        return PrayerNotificationPermissionStatus.unsupported;
+      }
       final bool? enabled = await android.areNotificationsEnabled().timeout(
         _operationTimeout,
       );
@@ -168,7 +166,9 @@ class FlutterPrayerLocalNotificationPlatform
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
           >();
-      if (android == null) return PrayerNotificationPermissionStatus.unsupported;
+      if (android == null) {
+        return PrayerNotificationPermissionStatus.unsupported;
+      }
       final bool? granted = await android
           .requestNotificationsPermission()
           .timeout(_operationTimeout);
@@ -272,8 +272,7 @@ class PrayerNotificationService {
     PrayerTimesService prayerTimesService = const PrayerTimesService(),
     DateTime Function()? nowProvider,
     this.scheduleDays = defaultScheduleDays,
-  }) : _platform =
-           platform ?? FlutterPrayerLocalNotificationPlatform.instance,
+  }) : _platform = platform ?? FlutterPrayerLocalNotificationPlatform.instance,
        _prayerTimesService = prayerTimesService,
        _nowProvider = nowProvider ?? DateTime.now;
 
@@ -381,10 +380,7 @@ class PrayerNotificationService {
             _platform.schedule(
               id: id,
               title: prayer.label,
-              body: _notificationBody(
-                prayer,
-                reminders.reminderOffsetMinutes,
-              ),
+              body: _notificationBody(prayer, reminders.reminderOffsetMinutes),
               scheduledAt: scheduledAt,
               payload: 'prayer:${prayer.id}:${scheduledAt.toIso8601String()}',
             ),

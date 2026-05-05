@@ -1,22 +1,19 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:equran/backend/settings_db.dart';
-import 'package:equran/prayer/manual_prayer_location_page.dart';
 import 'package:equran/prayer/prayer_location_service.dart';
 import 'package:equran/prayer/prayer_models.dart';
-import 'package:equran/prayer/prayer_settings_store.dart';
-import 'package:equran/prayer/prayer_times_settings_page.dart';
 import 'package:equran/prayer/qibla_service.dart';
 import 'package:equran/utils/app_radii.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 
-enum _QiblaLocationSource { currentDevice, manual, savedPrayerLocation }
-
 class QiblaPage extends StatefulWidget {
-  const QiblaPage({super.key});
+  const QiblaPage({super.key, this.locationService});
+
+  final PrayerLocationService? locationService;
 
   @override
   State<QiblaPage> createState() => _QiblaPageState();
@@ -27,12 +24,10 @@ class _QiblaPageState extends State<QiblaPage> {
   static const Duration _locationTimeout = Duration(seconds: 15);
   static const Duration _hapticCooldown = Duration(seconds: 4);
 
-  final PrayerSettingsStore _store = PrayerSettingsStore();
-  final PrayerLocationService _locationService = const PrayerLocationService();
+  late final PrayerLocationService _locationService;
 
   StreamSubscription<CompassEvent>? _compassSubscription;
   PrayerLocation? _currentLocation;
-  _QiblaLocationSource? _locationSource;
   double? _heading;
   String? _locationMessage;
   String? _compassMessage;
@@ -43,6 +38,7 @@ class _QiblaPageState extends State<QiblaPage> {
   @override
   void initState() {
     super.initState();
+    _locationService = widget.locationService ?? const PrayerLocationService();
     _loadCurrentLocation();
     _startCompass();
   }
@@ -56,50 +52,50 @@ class _QiblaPageState extends State<QiblaPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Qibla Direction')),
-      body: ValueListenableBuilder(
-        valueListenable: SettingsDB().listener,
-        builder: (BuildContext context, Object? value, Widget? child) {
-          final PrayerLocation? savedLocation = _store.getLocation();
-          final PrayerLocation? location = _currentLocation;
-          if (location == null) {
-            return _QiblaEmptyState(
-              isLocating: _isLocating,
-              message: _locationMessage,
-              savedLocation: savedLocation,
-              onUseCurrentLocation: _loadCurrentLocation,
-              onChooseManualLocation: _chooseManualLocation,
-              onUseSavedLocation: savedLocation == null
-                  ? null
-                  : () => _useSavedLocation(savedLocation),
-            );
-          }
+      appBar: AppBar(),
+      body: _buildBody(),
+    );
+  }
 
-          final double? bearing = _qiblaService.calculateBearing(location);
-          if (bearing == null) {
-            return _InvalidLocationState(
-              location: location,
-              onUpdateLocation: () => _openSettings(context),
-            );
-          }
+  Widget _buildBody() {
+    final PrayerLocation? location = _currentLocation;
+    if (location == null) {
+      if (!_isLocating && _locationMessage != null) {
+        return _QiblaErrorState(
+          message: _locationMessage!,
+          onRetry: _loadCurrentLocation,
+        );
+      }
+      return _QiblaEmptyState(
+        isLocating: _isLocating,
+        message: _locationMessage,
+        onRetry: _loadCurrentLocation,
+      );
+    }
 
-          return _QiblaContent(
-            bearing: bearing,
-            heading: _heading,
-            location: location,
-            locationSource: _sourceLabel(_locationSource),
-            statusMessage: _heading == null
-                ? _compassMessage ??
-                      'Compass unavailable. Rotate your device manually using the bearing.'
-                : null,
-            onUseCurrentLocation: _loadCurrentLocation,
-            onChooseManualLocation: _chooseManualLocation,
-            onUseSavedLocation: savedLocation == null
-                ? null
-                : () => _useSavedLocation(savedLocation),
+    final double? bearing = _qiblaService.calculateBearing(location);
+    if (bearing == null) {
+      return _QiblaErrorState(
+        message: 'Current location coordinates are unavailable.',
+        onRetry: _loadCurrentLocation,
+      );
+    }
+
+    final double? relative = _heading == null
+        ? null
+        : _qiblaService.relativeDirection(
+            qiblaBearing: bearing,
+            heading: _heading!,
           );
-        },
-      ),
+    return _QiblaContent(
+      bearing: bearing,
+      heading: _heading,
+      relative: relative,
+      location: location,
+      statusMessage: _heading == null
+          ? _compassMessage ?? 'Compass unavailable. Use the bearing shown.'
+          : null,
+      onRefreshLocation: _loadCurrentLocation,
     );
   }
 
@@ -118,54 +114,33 @@ class _QiblaPageState extends State<QiblaPage> {
       setState(() {
         _isLocating = false;
         if (location == null) {
-          _locationMessage =
-              result.message ??
-              'Current location is unavailable. Enter coordinates manually or use your saved prayer location.';
+          _currentLocation = null;
+          _locationMessage = _messageForLocationResult(result);
         } else {
           _currentLocation = location;
-          _locationSource = _QiblaLocationSource.currentDevice;
+          _locationMessage = null;
         }
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _isLocating = false;
+        _currentLocation = null;
         _locationMessage =
-            'Current location timed out. Enter coordinates manually or use your saved prayer location.';
+            'Current location timed out. Check location services and try again.';
       });
     }
   }
 
-  Future<void> _chooseManualLocation() async {
-    final PrayerLocation? location = await Navigator.of(context).push(
-      MaterialPageRoute<PrayerLocation>(
-        builder: (BuildContext context) => ManualPrayerLocationPage(
-          initialLocation: _currentLocation ?? _store.getLocation(),
-        ),
-      ),
-    );
-    if (location == null || !mounted) return;
-    setState(() {
-      _currentLocation = location;
-      _locationSource = _QiblaLocationSource.manual;
-      _locationMessage = null;
-    });
-  }
-
-  void _useSavedLocation(PrayerLocation savedLocation) {
-    setState(() {
-      _currentLocation = savedLocation;
-      _locationSource = _QiblaLocationSource.savedPrayerLocation;
-      _locationMessage = null;
-    });
-  }
-
   void _startCompass() {
+    if (!_isCompassPlatformSupported) {
+      _compassMessage = 'Compass unavailable. Use the bearing shown.';
+      return;
+    }
     try {
       final Stream<CompassEvent>? stream = FlutterCompass.events;
       if (stream == null) {
-        _compassMessage =
-            'Compass unavailable. Rotate your device manually using the bearing.';
+        _compassMessage = 'Compass unavailable. Use the bearing shown.';
         return;
       }
       _compassSubscription = stream.listen(
@@ -175,7 +150,7 @@ class _QiblaPageState extends State<QiblaPage> {
           setState(() {
             _heading = heading;
             _compassMessage = heading == null
-                ? 'Compass unavailable. Rotate your device manually using the bearing.'
+                ? 'Compass unavailable. Use the bearing shown.'
                 : null;
           });
           _handleQiblaHaptic(heading);
@@ -184,17 +159,14 @@ class _QiblaPageState extends State<QiblaPage> {
           if (!mounted) return;
           setState(() {
             _heading = null;
-            _compassMessage =
-                'Compass unavailable. Rotate your device manually using the bearing.';
+            _compassMessage = 'Compass unavailable. Use the bearing shown.';
           });
         },
       );
     } on MissingPluginException {
-      _compassMessage =
-          'Compass unavailable. Rotate your device manually using the bearing.';
+      _compassMessage = 'Compass unavailable. Use the bearing shown.';
     } catch (_) {
-      _compassMessage =
-          'Compass unavailable. Rotate your device manually using the bearing.';
+      _compassMessage = 'Compass unavailable. Use the bearing shown.';
     }
   }
 
@@ -213,7 +185,8 @@ class _QiblaPageState extends State<QiblaPage> {
     final bool isFacing = relative.abs() <= 5;
     final DateTime now = DateTime.now();
     final bool cooledDown =
-        _lastHapticAt == null || now.difference(_lastHapticAt!) >= _hapticCooldown;
+        _lastHapticAt == null ||
+        now.difference(_lastHapticAt!) >= _hapticCooldown;
     if (isFacing && !_wasFacingQibla && cooledDown) {
       _lastHapticAt = now;
       HapticFeedback.lightImpact().ignore();
@@ -226,20 +199,24 @@ class _QiblaPageState extends State<QiblaPage> {
     return _qiblaService.normalizeDegrees(heading);
   }
 
-  static void _openSettings(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) => const PrayerTimesSettingsPage(),
-      ),
-    );
+  bool get _isCompassPlatformSupported {
+    if (kIsWeb) return false;
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.android || TargetPlatform.iOS => true,
+      _ => false,
+    };
   }
 
-  String _sourceLabel(_QiblaLocationSource? source) {
-    return switch (source) {
-      _QiblaLocationSource.currentDevice => 'Current device location',
-      _QiblaLocationSource.manual => 'Manual coordinates',
-      _QiblaLocationSource.savedPrayerLocation => 'Saved prayer location',
-      null => 'Location',
+  String _messageForLocationResult(PrayerLocationResult result) {
+    return switch (result.failureReason) {
+      PrayerLocationFailureReason.servicesDisabled =>
+        'Turn on location services to use Qibla.',
+      PrayerLocationFailureReason.permissionDenied =>
+        'Location permission is needed to calculate Qibla from your current device location.',
+      PrayerLocationFailureReason.permissionDeniedForever =>
+        'Location permission is blocked. Enable it from app settings to use Qibla.',
+      PrayerLocationFailureReason.unavailable || null =>
+        'We could not read your current location. Check location services and try again.',
     };
   }
 }
@@ -248,48 +225,50 @@ class _QiblaContent extends StatelessWidget {
   const _QiblaContent({
     required this.bearing,
     required this.heading,
+    required this.relative,
     required this.location,
-    required this.locationSource,
-    required this.onUseCurrentLocation,
-    required this.onChooseManualLocation,
+    required this.onRefreshLocation,
     this.statusMessage,
-    this.onUseSavedLocation,
   });
 
   final double bearing;
   final double? heading;
+  final double? relative;
   final PrayerLocation location;
-  final String locationSource;
-  final VoidCallback onUseCurrentLocation;
-  final VoidCallback onChooseManualLocation;
-  final VoidCallback? onUseSavedLocation;
+  final VoidCallback onRefreshLocation;
   final String? statusMessage;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
-    final double? relative = heading == null
-        ? null
-        : _QiblaPageState._qiblaService.relativeDirection(
-            qiblaBearing: bearing,
-            heading: heading!,
-          );
+    final bool isAligned = relative != null && relative!.abs() <= 5;
     final String guidance = relative == null
-        ? 'Point your device using the bearing'
-        : _QiblaPageState._qiblaService.guidanceForRelativeDirection(relative);
+        ? 'Bearing ${bearing.round()}°'
+        : _QiblaPageState._qiblaService.guidanceForRelativeDirection(relative!);
     final MediaQueryData media = MediaQuery.of(context);
-    final double contentWidth = math.min(media.size.width - 28, 760);
+    final double contentWidth = math.min(media.size.width - 24, 760);
+    final bool compactHeight = media.size.height < 640;
+    final double minimumCompassSize = compactHeight ? 168 : 198;
+    final double maximumCompassSize = compactHeight ? 350 : 410;
+    final double widthBudget = contentWidth - 24;
     final double heightBudget =
-        media.size.height - media.padding.vertical - kToolbarHeight - 292;
+        media.size.height -
+        media.padding.vertical -
+        kToolbarHeight -
+        (compactHeight ? 206 : 232);
+    final double compassLowerBound = math.min(
+      minimumCompassSize,
+      math.min(widthBudget, heightBudget),
+    );
     final double compassSize = math
-        .min(contentWidth - 48, math.max(180, heightBudget))
-        .clamp(180, 390)
+        .min(widthBudget, heightBudget)
+        .clamp(compassLowerBound, maximumCompassSize)
         .toDouble();
 
     return ListView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
       children: <Widget>[
         Center(
           child: ConstrainedBox(
@@ -297,13 +276,6 @@ class _QiblaContent extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                _QiblaSummaryCard(
-                  bearing: bearing,
-                  location: location,
-                  locationSource: locationSource,
-                  guidance: guidance,
-                ),
-                const SizedBox(height: 14),
                 DecoratedBox(
                   decoration: BoxDecoration(
                     color: colors.surfaceContainerLow,
@@ -311,7 +283,7 @@ class _QiblaContent extends StatelessWidget {
                     border: Border.all(color: colors.outlineVariant),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
                     child: Column(
                       children: <Widget>[
                         _QiblaCompass(
@@ -319,38 +291,24 @@ class _QiblaContent extends StatelessWidget {
                           heading: heading,
                           relative: relative,
                           size: compassSize,
+                          isAligned: isAligned,
                         ),
-                        const SizedBox(height: 18),
-                        Text(
-                          guidance,
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
+                        const SizedBox(height: 10),
+                        _AlignmentIndicator(
+                          guidance: guidance,
+                          isAligned: isAligned,
                         ),
-                        if (statusMessage != null) ...<Widget>[
-                          const SizedBox(height: 8),
-                          Text(
-                            statusMessage!,
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: colors.onSurfaceVariant,
-                              height: 1.35,
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 14),
-                _QiblaInfoCard(
-                  location: location,
-                  locationSource: locationSource,
+                const SizedBox(height: 10),
+                _QiblaDetailsCard(
+                  bearing: bearing,
                   heading: heading,
-                  onUseCurrentLocation: onUseCurrentLocation,
-                  onChooseManualLocation: onChooseManualLocation,
-                  onUseSavedLocation: onUseSavedLocation,
+                  location: location,
+                  compassStatus: statusMessage,
+                  onRefreshLocation: onRefreshLocation,
                 ),
               ],
             ),
@@ -361,130 +319,31 @@ class _QiblaContent extends StatelessWidget {
   }
 }
 
-class _QiblaSummaryCard extends StatelessWidget {
-  const _QiblaSummaryCard({
-    required this.bearing,
-    required this.location,
-    required this.locationSource,
-    required this.guidance,
-  });
-
-  final double bearing;
-  final PrayerLocation location;
-  final String locationSource;
-  final String guidance;
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme colors = theme.colorScheme;
-    final bool isLight = theme.brightness == Brightness.light;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppRadii.large),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: <Color>[
-            Color.alphaBlend(
-              colors.primary.withAlpha(isLight ? 32 : 52),
-              colors.surfaceContainerLow,
-            ),
-            colors.surfaceContainerLow,
-          ],
-        ),
-        border: Border.all(color: colors.primary.withValues(alpha: 0.18)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: colors.primaryContainer.withValues(alpha: 0.72),
-                    borderRadius: BorderRadius.circular(AppRadii.medium),
-                  ),
-                  child: Icon(
-                    Icons.explore_rounded,
-                    color: colors.onPrimaryContainer,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        location.displayLabel,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        locationSource,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            Text(
-              '${bearing.round()}° from north',
-              style: theme.textTheme.displaySmall?.copyWith(
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0,
-                height: 1,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              guidance,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colors.onSurfaceVariant,
-                height: 1.35,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _QiblaCompass extends StatelessWidget {
   const _QiblaCompass({
     required this.bearing,
     required this.heading,
     required this.relative,
     required this.size,
+    required this.isAligned,
   });
 
   final double bearing;
   final double? heading;
   final double? relative;
   final double size;
+  final bool isAligned;
 
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
     final double arrowDegrees = relative ?? bearing;
+    final double centerSize = (size * 0.32).clamp(78, 112).toDouble();
+    final Color ringColor = isAligned ? Colors.green : colors.outlineVariant;
     return SizedBox.square(
       dimension: size,
       child: Padding(
-        padding: const EdgeInsets.all(6),
+        padding: const EdgeInsets.all(2),
         child: Stack(
           alignment: Alignment.center,
           children: <Widget>[
@@ -497,15 +356,34 @@ class _QiblaCompass extends StatelessWidget {
                 child: const SizedBox.expand(),
               ),
             ),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: ringColor.withValues(alpha: isAligned ? 0.9 : 0.38),
+                  width: isAligned ? 5 : 1.4,
+                ),
+                boxShadow: isAligned
+                    ? <BoxShadow>[
+                        BoxShadow(
+                          color: Colors.green.withValues(alpha: 0.22),
+                          blurRadius: 22,
+                          spreadRadius: 2,
+                        ),
+                      ]
+                    : const <BoxShadow>[],
+              ),
+            ),
             AnimatedRotation(
               turns: arrowDegrees / 360,
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
-              child: const _QiblaMarker(),
+              child: _QiblaMarker(size: size),
             ),
             Container(
-              width: 112,
-              height: 112,
+              width: centerSize,
+              height: centerSize,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: colors.surfaceContainerLow,
@@ -523,7 +401,9 @@ class _QiblaCompass extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
                   Text(
-                    heading == null ? '${bearing.round()}°' : '${heading!.round()}°',
+                    heading == null
+                        ? '${bearing.round()}°'
+                        : '${heading!.round()}°',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w900,
                     ),
@@ -545,11 +425,14 @@ class _QiblaCompass extends StatelessWidget {
 }
 
 class _QiblaMarker extends StatelessWidget {
-  const _QiblaMarker();
+  const _QiblaMarker({required this.size});
+
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
+    final double markerHeight = (size * 0.24).clamp(46, 88).toDouble();
     return Transform.translate(
       offset: const Offset(0, -10),
       child: Align(
@@ -560,7 +443,7 @@ class _QiblaMarker extends StatelessWidget {
             Icon(Icons.navigation_rounded, color: colors.primary, size: 38),
             Container(
               width: 4,
-              height: 88,
+              height: markerHeight,
               decoration: BoxDecoration(
                 color: colors.primary.withValues(alpha: 0.62),
                 borderRadius: BorderRadius.circular(999),
@@ -647,86 +530,55 @@ class _CompassDialPainter extends CustomPainter {
   }
 }
 
-class _QiblaInfoCard extends StatelessWidget {
-  const _QiblaInfoCard({
-    required this.location,
-    required this.locationSource,
-    required this.heading,
-    required this.onUseCurrentLocation,
-    required this.onChooseManualLocation,
-    this.onUseSavedLocation,
-  });
+class _AlignmentIndicator extends StatelessWidget {
+  const _AlignmentIndicator({required this.guidance, required this.isAligned});
 
-  final PrayerLocation location;
-  final String locationSource;
-  final double? heading;
-  final VoidCallback onUseCurrentLocation;
-  final VoidCallback onChooseManualLocation;
-  final VoidCallback? onUseSavedLocation;
+  final String guidance;
+  final bool isAligned;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(AppRadii.medium),
-        border: Border.all(color: colors.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final Color foreground = isAligned
+        ? Colors.green.shade700
+        : colors.onSecondaryContainer;
+    final IconData icon = isAligned
+        ? Icons.check_circle_rounded
+        : guidance.startsWith('Turn left')
+        ? Icons.turn_left_rounded
+        : guidance.startsWith('Turn right')
+        ? Icons.turn_right_rounded
+        : Icons.explore_outlined;
+    return Align(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isAligned
+              ? Colors.green.withValues(alpha: 0.14)
+              : colors.secondaryContainer.withValues(alpha: 0.48),
+          borderRadius: BorderRadius.circular(AppRadii.small),
+          border: Border.all(
+            color: isAligned
+                ? Colors.green.withValues(alpha: 0.45)
+                : colors.outlineVariant,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Text(
-              locationSource,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '${location.latitude.toStringAsFixed(5)}, '
-              '${location.longitude.toStringAsFixed(5)}',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colors.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              heading == null
-                  ? 'Compass readings depend on device sensors. If unavailable, use the bearing from true north.'
-                  : 'For best accuracy, keep the device flat and away from magnetic interference.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colors.onSurfaceVariant,
-                height: 1.35,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: <Widget>[
-                  FilledButton.icon(
-                    onPressed: onUseCurrentLocation,
-                    icon: const Icon(Icons.my_location_rounded),
-                    label: const Text('Use current'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: onChooseManualLocation,
-                    icon: const Icon(Icons.edit_location_alt_outlined),
-                    label: const Text('Manual'),
-                  ),
-                  if (onUseSavedLocation != null)
-                    TextButton.icon(
-                      onPressed: onUseSavedLocation,
-                      icon: const Icon(Icons.bookmark_outline_rounded),
-                      label: const Text('Saved prayer location'),
-                    ),
-                ],
+            Icon(icon, size: 18, color: foreground),
+            const SizedBox(width: 7),
+            Flexible(
+              child: Text(
+                isAligned ? 'Facing Qibla' : guidance,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: foreground,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
           ],
@@ -736,22 +588,134 @@ class _QiblaInfoCard extends StatelessWidget {
   }
 }
 
+class _QiblaDetailsCard extends StatelessWidget {
+  const _QiblaDetailsCard({
+    required this.bearing,
+    required this.heading,
+    required this.location,
+    required this.onRefreshLocation,
+    this.compassStatus,
+  });
+
+  final double bearing;
+  final double? heading;
+  final PrayerLocation location;
+  final VoidCallback onRefreshLocation;
+  final String? compassStatus;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(AppRadii.large),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(
+                  Icons.location_on_outlined,
+                  color: colors.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _currentLocationLabel(location),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Refresh current location',
+                  onPressed: onRefreshLocation,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 40,
+                    height: 40,
+                  ),
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.my_location_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                _DetailPill(text: 'Lat ${location.latitude.toStringAsFixed(4)}'),
+                _DetailPill(
+                  text: 'Lng ${location.longitude.toStringAsFixed(4)}',
+                ),
+                _DetailPill(text: 'Qibla ${bearing.round()}°'),
+                if (heading != null)
+                  _DetailPill(text: 'Heading ${heading!.round()}°'),
+              ],
+            ),
+            if (compassStatus != null) ...<Widget>[
+              const SizedBox(height: 10),
+              Text(
+                compassStatus!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailPill extends StatelessWidget {
+  const _DetailPill({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(AppRadii.small),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Text(
+          text,
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: colors.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _QiblaEmptyState extends StatelessWidget {
   const _QiblaEmptyState({
     required this.isLocating,
-    required this.onUseCurrentLocation,
-    required this.onChooseManualLocation,
+    required this.onRetry,
     this.message,
-    this.savedLocation,
-    this.onUseSavedLocation,
   });
 
   final bool isLocating;
   final String? message;
-  final PrayerLocation? savedLocation;
-  final VoidCallback onUseCurrentLocation;
-  final VoidCallback onChooseManualLocation;
-  final VoidCallback? onUseSavedLocation;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -789,7 +753,9 @@ class _QiblaEmptyState extends StatelessWidget {
                     ),
                     const SizedBox(height: 18),
                     Text(
-                      isLocating ? 'Finding your location' : 'Choose a location for Qibla',
+                      isLocating
+                          ? 'Finding your location'
+                          : 'Current location required',
                       style: theme.textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.w900,
                         letterSpacing: 0,
@@ -798,7 +764,7 @@ class _QiblaEmptyState extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       message ??
-                          'Qibla prefers your current device location, because direction depends on where you physically are.',
+                          'Qibla requires live current location from this device. Enable location services and permission to continue.',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: colors.onSurfaceVariant,
                         height: 1.35,
@@ -810,7 +776,7 @@ class _QiblaEmptyState extends StatelessWidget {
                       runSpacing: 10,
                       children: <Widget>[
                         FilledButton.icon(
-                          onPressed: isLocating ? null : onUseCurrentLocation,
+                          onPressed: isLocating ? null : onRetry,
                           icon: isLocating
                               ? const SizedBox.square(
                                   dimension: 18,
@@ -820,20 +786,11 @@ class _QiblaEmptyState extends StatelessWidget {
                                 )
                               : const Icon(Icons.my_location_rounded),
                           label: Text(
-                            isLocating ? 'Finding location' : 'Use current location',
+                            isLocating
+                                ? 'Finding location'
+                                : 'Try again',
                           ),
                         ),
-                        OutlinedButton.icon(
-                          onPressed: onChooseManualLocation,
-                          icon: const Icon(Icons.edit_location_alt_outlined),
-                          label: const Text('Enter coordinates'),
-                        ),
-                        if (savedLocation != null && onUseSavedLocation != null)
-                          TextButton.icon(
-                            onPressed: onUseSavedLocation,
-                            icon: const Icon(Icons.bookmark_outline_rounded),
-                            label: const Text('Use saved prayer location'),
-                          ),
                       ],
                     ),
                   ],
@@ -847,14 +804,11 @@ class _QiblaEmptyState extends StatelessWidget {
   }
 }
 
-class _InvalidLocationState extends StatelessWidget {
-  const _InvalidLocationState({
-    required this.location,
-    required this.onUpdateLocation,
-  });
+class _QiblaErrorState extends StatelessWidget {
+  const _QiblaErrorState({required this.message, required this.onRetry});
 
-  final PrayerLocation location;
-  final VoidCallback onUpdateLocation;
+  final String message;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -880,14 +834,14 @@ class _InvalidLocationState extends StatelessWidget {
                   Icon(Icons.location_off_outlined, color: colors.error),
                   const SizedBox(height: 12),
                   Text(
-                    'Location needs an update',
+                    'Current location unavailable',
                     style: theme.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '${location.displayLabel} has coordinates outside the supported latitude or longitude range.',
+                    message,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: colors.onSurfaceVariant,
                       height: 1.35,
@@ -895,9 +849,9 @@ class _InvalidLocationState extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   FilledButton.icon(
-                    onPressed: onUpdateLocation,
-                    icon: const Icon(Icons.edit_location_alt_outlined),
-                    label: const Text('Update location'),
+                    onPressed: onRetry,
+                    icon: const Icon(Icons.my_location_rounded),
+                    label: const Text('Retry'),
                   ),
                 ],
               ),
@@ -907,4 +861,19 @@ class _InvalidLocationState extends StatelessWidget {
       ),
     );
   }
+}
+
+String _currentLocationLabel(PrayerLocation location) {
+  final String label = location.label.trim();
+  if (label.isEmpty ||
+      label == location.coordinateLabel ||
+      _isGenericLocationLabel(label)) {
+    return 'Current location';
+  }
+  return label;
+}
+
+bool _isGenericLocationLabel(String label) {
+  final List<String> parts = label.toLowerCase().split(RegExp(r'\s+'));
+  return parts.isNotEmpty && parts.last == 'location' && parts.length <= 3;
 }

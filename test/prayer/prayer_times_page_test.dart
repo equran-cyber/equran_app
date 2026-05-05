@@ -1,5 +1,6 @@
 import 'package:equran/prayer/prayer_models.dart';
 import 'package:equran/prayer/prayer_location_service.dart';
+import 'package:equran/prayer/prayer_notification_service.dart';
 import 'package:equran/prayer/prayer_settings_store.dart';
 import 'package:equran/prayer/prayer_times_page.dart';
 import 'package:equran/prayer/prayer_times_service.dart';
@@ -21,6 +22,7 @@ void main() {
         PrayerTimesPage(
           enableLiveCountdown: false,
           initialNow: DateTime(2026, 5, 4, 10),
+          notificationService: _noopNotificationService(),
         ),
       ),
     );
@@ -60,6 +62,7 @@ void main() {
         PrayerTimesPage(
           enableLiveCountdown: false,
           initialNow: DateTime(2026, 5, 4, 10),
+          notificationService: _noopNotificationService(),
         ),
       ),
     );
@@ -76,6 +79,53 @@ void main() {
     expect(find.text('Maghrib'), findsWidgets);
     expect(find.text('Isha'), findsWidgets);
     expect(PrayerTimeKind.displayOrder.length, 6);
+  });
+
+  testWidgets('refreshes current device location when prayer page opens', (
+    WidgetTester tester,
+  ) async {
+    final _FakePositionProvider provider = _FakePositionProvider(
+      position: const PrayerRawPosition(latitude: 23.5880, longitude: 58.3829),
+    );
+    final _FakeReverseGeocoder reverseGeocoder = _FakeReverseGeocoder(
+      const <PrayerAddressPlacemark>[
+        PrayerAddressPlacemark(locality: 'Muscat', country: 'Oman'),
+      ],
+    );
+    await tester.runAsync(() {
+      return PrayerSettingsStore().saveLocation(
+        const PrayerLocation(
+          latitude: 35.78056,
+          longitude: -78.6389,
+          label: 'Old current location',
+          mode: PrayerLocationMode.currentDevice,
+        ),
+      );
+    });
+
+    await tester.pumpWidget(
+      materialTestApp(
+        PrayerTimesPage(
+          enableLiveCountdown: false,
+          initialNow: DateTime(2026, 5, 4, 10),
+          locationService: PrayerLocationService(
+            provider: provider,
+            reverseGeocoder: reverseGeocoder,
+          ),
+          notificationService: _noopNotificationService(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    final PrayerLocation? saved = PrayerSettingsStore().getLocation();
+    expect(provider.positionCalls, 1);
+    expect(saved?.latitude, 23.5880);
+    expect(saved?.longitude, 58.3829);
+    expect(saved?.label, 'Muscat, Oman');
+    expect(saved?.mode, PrayerLocationMode.currentDevice);
+    expect(find.text('Muscat, Oman'), findsOneWidget);
   });
 
   testWidgets('advances next prayer at the prayer-time boundary', (
@@ -110,6 +160,7 @@ void main() {
         PrayerTimesPage(
           enableLiveCountdown: false,
           initialNow: displayedDhuhrMinute,
+          notificationService: _noopNotificationService(),
         ),
       ),
     );
@@ -152,6 +203,7 @@ void main() {
                   mode: PrayerLocationMode.manual,
                 );
               },
+          notificationService: _noopNotificationService(),
         ),
       ),
     );
@@ -201,6 +253,7 @@ void main() {
                   ),
                 ]),
           ),
+          notificationService: _noopNotificationService(),
         ),
       ),
     );
@@ -254,6 +307,7 @@ void main() {
           enableLiveCountdown: false,
           initialNow: DateTime(2026, 5, 4, 10),
           locationService: locationService,
+          notificationService: _noopNotificationService(),
         ),
       ),
     );
@@ -304,6 +358,7 @@ void main() {
           locationService: PrayerLocationService(
             reverseGeocoder: reverseGeocoder,
           ),
+          notificationService: _noopNotificationService(),
         ),
       ),
     );
@@ -355,6 +410,7 @@ void main() {
           locationService: PrayerLocationService(
             reverseGeocoder: reverseGeocoder,
           ),
+          notificationService: _noopNotificationService(),
         ),
       ),
     );
@@ -383,6 +439,37 @@ Future<void> _expandAdvancedCoordinates(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 250));
 }
 
+PrayerNotificationService _noopNotificationService() {
+  return PrayerNotificationService(platform: _NoopNotificationPlatform());
+}
+
+class _NoopNotificationPlatform implements PrayerLocalNotificationPlatform {
+  @override
+  Future<void> cancel(int id) async {}
+
+  @override
+  Future<PrayerNotificationPermissionStatus> checkPermission() async {
+    return PrayerNotificationPermissionStatus.granted;
+  }
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<PrayerNotificationPermissionStatus> requestPermission() async {
+    return PrayerNotificationPermissionStatus.granted;
+  }
+
+  @override
+  Future<void> schedule({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime scheduledAt,
+    required String payload,
+  }) async {}
+}
+
 class _FakeReverseGeocoder implements PrayerReverseGeocoder {
   _FakeReverseGeocoder(this.placemarks);
 
@@ -396,5 +483,45 @@ class _FakeReverseGeocoder implements PrayerReverseGeocoder {
   ) async {
     calls += 1;
     return placemarks;
+  }
+}
+
+class _FakePositionProvider implements PrayerPositionProvider {
+  _FakePositionProvider({
+    this.position = const PrayerRawPosition(latitude: 0, longitude: 0),
+  });
+
+  final PrayerRawPosition position;
+  int positionCalls = 0;
+
+  @override
+  Future<PrayerLocationPermissionStatus> checkPermission() async {
+    return PrayerLocationPermissionStatus.whileInUse;
+  }
+
+  @override
+  Future<PrayerRawPosition> getCurrentPosition() async {
+    positionCalls += 1;
+    return position;
+  }
+
+  @override
+  Future<bool> isLocationServiceEnabled() async {
+    return true;
+  }
+
+  @override
+  Future<bool> openAppSettings() async {
+    return true;
+  }
+
+  @override
+  Future<bool> openLocationSettings() async {
+    return true;
+  }
+
+  @override
+  Future<PrayerLocationPermissionStatus> requestPermission() async {
+    return PrayerLocationPermissionStatus.whileInUse;
   }
 }

@@ -5,6 +5,7 @@ import 'package:equran/home/main_page.dart';
 import 'package:equran/home/player.dart';
 import 'package:equran/home/settings.dart';
 import 'package:equran/prayer/prayer_times_page.dart';
+import 'package:equran/prayer/qibla_page.dart';
 import 'package:equran/utils/responsive_nav.dart';
 import 'package:flutter/material.dart';
 
@@ -151,7 +152,15 @@ class _HomePageState extends State<HomePage> {
                 color: colorScheme.onSurface,
                 size: navIconSize,
               ),
-              actions: <Widget>[],
+              actions: <Widget>[
+                if (_pageDestinations[_selectedIndex].destination
+                    is PrayerTimesPage)
+                  IconButton(
+                    tooltip: 'Qibla',
+                    onPressed: _openQiblaPage,
+                    icon: const Icon(Icons.explore_outlined),
+                  ),
+              ],
             )
           : null,
       body: _pageDestinations[_selectedIndex].destination,
@@ -162,6 +171,14 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _selectedIndex = index;
     });
+  }
+
+  void _openQiblaPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => const QiblaPage(),
+      ),
+    );
   }
 
   Future<void> _toggleQuickTheme() async {

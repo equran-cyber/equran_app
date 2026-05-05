@@ -9,7 +9,6 @@ import 'package:equran/prayer/prayer_notification_service.dart';
 import 'package:equran/prayer/prayer_settings_store.dart';
 import 'package:equran/prayer/prayer_times_settings_page.dart';
 import 'package:equran/prayer/prayer_times_service.dart';
-import 'package:equran/prayer/qibla_page.dart';
 import 'package:equran/utils/app_radii.dart';
 import 'package:flutter/material.dart';
 
@@ -20,12 +19,14 @@ class PrayerTimesPage extends StatefulWidget {
     this.initialNow,
     this.mapLocationPicker,
     this.locationService,
+    this.notificationService,
   });
 
   final bool enableLiveCountdown;
   final DateTime? initialNow;
   final PrayerLocationPicker? mapLocationPicker;
   final PrayerLocationService? locationService;
+  final PrayerNotificationService? notificationService;
 
   @override
   State<PrayerTimesPage> createState() => _PrayerTimesPageState();
@@ -33,10 +34,9 @@ class PrayerTimesPage extends StatefulWidget {
 
 class _PrayerTimesPageState extends State<PrayerTimesPage> {
   final PrayerTimesService _service = const PrayerTimesService();
-  final PrayerNotificationService _notificationService =
-      PrayerNotificationService();
   final PrayerSettingsStore _store = PrayerSettingsStore();
   late final PrayerLocationService _locationService;
+  late final PrayerNotificationService _notificationService;
   Timer? _timer;
   late DateTime _now;
   DateTime? _selectedDate;
@@ -46,7 +46,10 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
   void initState() {
     super.initState();
     _locationService = widget.locationService ?? const PrayerLocationService();
+    _notificationService =
+        widget.notificationService ?? PrayerNotificationService();
     _now = widget.initialNow ?? DateTime.now();
+    unawaited(_refreshCurrentDeviceLocationOnEntry());
     if (widget.enableLiveCountdown) {
       _scheduleNextRefresh();
     }
@@ -234,11 +237,6 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Qibla direction',
-                  onPressed: _openQiblaPage,
-                  icon: const Icon(Icons.explore_outlined),
-                ),
-                IconButton(
                   tooltip: 'Prayer settings',
                   onPressed: _openPrayerSettings,
                   icon: const Icon(Icons.tune_rounded),
@@ -286,19 +284,13 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
                       isNow: heroTiming.isNow,
                     ),
                   ),
-                _InfoPill(
+                _DateInfoPill(
                   icon: Icons.calendar_today_rounded,
                   label: _formatDate(day.date),
                   tooltip: 'Select date',
                   onTap: () => _selectPrayerDate(day.date),
+                  onClear: isViewingToday ? null : _returnToToday,
                 ),
-                if (!isViewingToday)
-                  _InfoPill(
-                    icon: Icons.today_rounded,
-                    label: 'Today',
-                    tooltip: 'Return to today',
-                    onTap: _returnToToday,
-                  ),
                 _InfoPill(icon: Icons.calculate_outlined, label: methodLabel),
               ],
             ),
@@ -359,12 +351,6 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
                     Icons.add_location_alt_outlined,
                     color: colors.onPrimaryContainer,
                   ),
-                ),
-                const Spacer(),
-                IconButton(
-                  tooltip: 'Qibla direction',
-                  onPressed: _openQiblaPage,
-                  icon: const Icon(Icons.explore_outlined),
                 ),
               ],
             ),
@@ -524,6 +510,30 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
     _showLocationError(result);
   }
 
+  Future<void> _refreshCurrentDeviceLocationOnEntry() async {
+    final PrayerLocation? savedLocation = _store.getLocation();
+    if (savedLocation?.mode != PrayerLocationMode.currentDevice) return;
+
+    setState(() {
+      _isLocating = true;
+    });
+    final PrayerLocationResult result = await _locationService
+        .currentDeviceLocation();
+    if (!mounted) return;
+    setState(() {
+      _isLocating = false;
+    });
+
+    final PrayerLocation? location = result.location;
+    if (location == null) {
+      _showLocationError(result);
+      return;
+    }
+
+    await _store.saveLocation(location);
+    await _rescheduleReminders(location);
+  }
+
   Future<void> _chooseManually(PrayerLocation? initialLocation) async {
     final PrayerLocation? location = await Navigator.of(context).push(
       MaterialPageRoute<PrayerLocation>(
@@ -598,10 +608,7 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
   Future<void> _rescheduleReminders(PrayerLocation location) async {
     final PrayerTimeSettings settings = _store.getSettings();
     final PrayerNotificationScheduleResult result = await _notificationService
-        .reschedule(
-          settings: settings,
-          location: location,
-        );
+        .reschedule(settings: settings, location: location);
     if (result.status == PrayerNotificationScheduleStatus.permissionDenied &&
         settings.reminderSettings.remindersEnabled) {
       await _store.saveSettings(
@@ -620,14 +627,6 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (BuildContext context) => const PrayerTimesSettingsPage(),
-      ),
-    );
-  }
-
-  void _openQiblaPage() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) => const QiblaPage(),
       ),
     );
   }
@@ -1106,8 +1105,9 @@ class _SavedLocationPanel extends StatelessWidget {
 
 String _locationPrivacyText(PrayerLocation location) {
   final String? timezoneId = location.timezoneId;
-  final String timezoneText =
-      timezoneId == null || timezoneId.isEmpty ? '' : ' Timezone: $timezoneId.';
+  final String timezoneText = timezoneId == null || timezoneId.isEmpty
+      ? ''
+      : ' Timezone: $timezoneId.';
   return 'Used locally for prayer-time calculation. Coordinates are stored on this device.$timezoneText';
 }
 
@@ -1233,15 +1233,7 @@ class _LocationSummaryRow extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Calculated locally · Tap for details',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: colors.onSurfaceVariant,
-                      ),
-                    ),
+
                   ],
                 ),
               ),
@@ -1430,6 +1422,117 @@ class _InfoPill extends StatelessWidget {
   }
 }
 
+class _DateInfoPill extends StatelessWidget {
+  const _DateInfoPill({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.tooltip,
+    this.onClear,
+  });
+
+  final IconData icon;
+  final String label;
+  final String? tooltip;
+  final VoidCallback onTap;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+    final BorderRadius borderRadius = BorderRadius.circular(AppRadii.small);
+    final VoidCallback? onClear = this.onClear;
+
+    return Material(
+      type: MaterialType.transparency,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.surface.withValues(alpha: 0.66),
+          borderRadius: borderRadius,
+          border: Border.all(
+            color: colors.outlineVariant.withValues(alpha: 0.7),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Tooltip(
+              message: tooltip ?? label,
+              child: InkWell(
+                borderRadius: onClear == null
+                    ? borderRadius
+                    : BorderRadius.only(
+                        topLeft: Radius.circular(AppRadii.small),
+                        bottomLeft: Radius.circular(AppRadii.small),
+                      ),
+                onTap: onTap,
+                child: Padding(
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                    11,
+                    8,
+                    onClear == null ? 11 : 7,
+                    8,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(icon, size: 17, color: colors.primary),
+                      const SizedBox(width: 7),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 260),
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (onClear != null) ...<Widget>[
+              SizedBox(
+                height: 22,
+                child: VerticalDivider(
+                  width: 1,
+                  thickness: 1,
+                  color: colors.outlineVariant.withValues(alpha: 0.7),
+                ),
+              ),
+              Tooltip(
+                message: 'Return to today',
+                child: InkWell(
+                  borderRadius: BorderRadius.only(
+                    topRight: Radius.circular(AppRadii.small),
+                    bottomRight: Radius.circular(AppRadii.small),
+                  ),
+                  onTap: onClear,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 8,
+                    ),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 16,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 String _formatTime(DateTime time, bool use24HourFormat) {
   final int hour = time.hour;
   final int minute = time.minute;
@@ -1457,13 +1560,13 @@ String formatPrayerCountdownLabel(Duration duration, {bool isNow = false}) {
 
 String _formatDate(DateTime date) {
   const List<String> weekdays = <String>[
-    'Monday',
-    'Tuesday',
-    'Wednesday',
-    'Thursday',
-    'Friday',
-    'Saturday',
-    'Sunday',
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+    'Sun',
   ];
   const List<String> months = <String>[
     'January',
