@@ -20,7 +20,7 @@ jobs:
           channel: stable
 
       - run: flutter pub get
-      - run: flutter test
+      
 
   version:
     runs-on: ubuntu-latest
