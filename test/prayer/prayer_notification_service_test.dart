@@ -231,6 +231,9 @@ class _FakeNotificationPlatform implements PrayerLocalNotificationPlatform {
   Future<void> initialize() async {}
 
   @override
+  Future<void> openSettings() async {}
+
+  @override
   Future<PrayerNotificationPermissionStatus> requestPermission() async {
     return permissionStatus;
   }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:equran/prayer/manual_prayer_location_page.dart';
 import 'package:equran/prayer/prayer_location_service.dart';
 import 'package:equran/prayer/prayer_map_location_page.dart';
@@ -17,7 +19,8 @@ class PrayerTimesSettingsPage extends StatefulWidget {
       _PrayerTimesSettingsPageState();
 }
 
-class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
+class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
+    with WidgetsBindingObserver {
   final PrayerSettingsStore _store = PrayerSettingsStore();
   final PrayerLocationService _locationService = const PrayerLocationService();
   final PrayerNotificationService _notificationService =
@@ -29,15 +32,30 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
   bool _isUpdatingReminders = false;
   bool _isCheckingNotificationPermission = false;
   bool _notificationPermissionRequestAttempted = false;
+  bool _notificationPermissionHasError = false;
   PrayerNotificationPermissionStatus? _notificationPermission;
   String? _notificationMessage;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _settings = _store.getSettings();
     _location = _store.getLocation();
     _refreshNotificationPermission();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshNotificationPermission(rescheduleIfGranted: true);
+    }
   }
 
   @override
@@ -227,13 +245,7 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
                 )
               : const Icon(Icons.notifications_none_rounded),
           title: const Text('Prayer reminders'),
-          subtitle: Text(
-            _isCheckingNotificationPermission
-                ? 'Checking notification permission...'
-                : remindersOn && !permissionOff
-                ? 'Local notifications are scheduled on this device.'
-                : 'Off until you enable them.',
-          ),
+          subtitle: Text(_notificationPermissionSubtitle),
           value: remindersOn,
           onChanged: _isUpdatingReminders ? null : _toggleGlobalReminders,
         ),
@@ -290,8 +302,15 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
         _notificationPermission;
     final bool unsupported =
         permission == PrayerNotificationPermissionStatus.unsupported;
+    final bool error = _notificationPermissionHasError;
     final bool openSettings =
-        unsupported || _notificationPermissionRequestAttempted;
+        permission == PrayerNotificationPermissionStatus.denied &&
+        _notificationPermissionRequestAttempted;
+    final VoidCallback action = error
+        ? () => _refreshNotificationPermission()
+        : openSettings
+        ? _openNotificationSettings
+        : _requestNotificationPermission;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       child: DecoratedBox(
@@ -327,22 +346,27 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
                 ],
               ),
               const SizedBox(height: 10),
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: TextButton.icon(
-                  onPressed: _isUpdatingReminders
-                      ? null
-                      : openSettings
-                      ? _openNotificationSettings
-                      : _requestNotificationPermission,
-                  icon: Icon(
-                    openSettings
-                        ? Icons.settings_outlined
-                        : Icons.notifications_active_outlined,
+              if (!unsupported)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton.icon(
+                    onPressed: _isUpdatingReminders ? null : action,
+                    icon: Icon(
+                      error
+                          ? Icons.refresh_rounded
+                          : openSettings
+                          ? Icons.settings_outlined
+                          : Icons.notifications_active_outlined,
+                    ),
+                    label: Text(
+                      error
+                          ? 'Retry'
+                          : openSettings
+                          ? 'Open app settings'
+                          : 'Request permission',
+                    ),
                   ),
-                  label: Text(openSettings ? 'Open app settings' : 'Request permission'),
                 ),
-              ),
             ],
           ),
         ),
@@ -699,6 +723,7 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
     setState(() {
       _isUpdatingReminders = true;
       _notificationMessage = null;
+      _notificationPermissionHasError = false;
     });
     try {
       final PrayerNotificationPermissionStatus permission =
@@ -707,16 +732,14 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
       setState(() {
         _notificationPermission = permission;
         _notificationPermissionRequestAttempted = true;
+        _notificationPermissionHasError = false;
       });
 
       if (permission != PrayerNotificationPermissionStatus.granted) {
         await _notificationService.cancelPrayerNotifications();
         if (!mounted) return;
         setState(() {
-          _notificationMessage = permission ==
-                  PrayerNotificationPermissionStatus.unsupported
-              ? 'Prayer reminders are not supported on this platform.'
-              : 'Notification permission is off. Enable it to receive prayer reminders.';
+          _notificationMessage = _notificationMessageForPermission(permission);
         });
         _showMessage(
           permission == PrayerNotificationPermissionStatus.unsupported
@@ -727,13 +750,22 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
       }
 
       await _saveReminderSettings(reminders.copyWith(remindersEnabled: true));
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() {
+        _notificationPermissionHasError = true;
+        _notificationMessage =
+            'Notification permission request timed out. Try reopening the app or enabling notifications in system settings.';
+      });
+      _showMessage('Notification permission request timed out.');
     } catch (_) {
       if (!mounted) return;
       setState(() {
+        _notificationPermissionHasError = true;
         _notificationMessage =
-            'Notification setup timed out. Check permission and try again.';
+            'Could not request notification permission. Try again or enable notifications in system settings.';
       });
-      _showMessage('Notification setup timed out. Try again.');
+      _showMessage('Could not request notification permission.');
     } finally {
       if (mounted) {
         setState(() {
@@ -797,6 +829,7 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
     setState(() {
       _isUpdatingReminders = true;
       _notificationMessage = null;
+      _notificationPermissionHasError = false;
     });
     try {
       final PrayerNotificationPermissionStatus permission =
@@ -805,20 +838,26 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
       setState(() {
         _notificationPermission = permission;
         _notificationPermissionRequestAttempted = true;
-        _notificationMessage =
-            permission == PrayerNotificationPermissionStatus.granted
-            ? null
-            : 'Notification permission is off. Enable it to receive prayer reminders.';
+        _notificationPermissionHasError = false;
+        _notificationMessage = _notificationMessageForPermission(permission);
       });
       if (permission == PrayerNotificationPermissionStatus.granted &&
           _settings.reminderSettings.remindersEnabled) {
         await _saveSettings(_settings);
       }
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() {
+        _notificationPermissionHasError = true;
+        _notificationMessage =
+            'Notification permission request timed out. Try reopening the app or enabling notifications in system settings.';
+      });
     } catch (_) {
       if (!mounted) return;
       setState(() {
+        _notificationPermissionHasError = true;
         _notificationMessage =
-            'Notification permission request timed out. Open app settings and try again.';
+            'Could not request notification permission. Try again or enable notifications in system settings.';
       });
     } finally {
       if (mounted) {
@@ -830,8 +869,27 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
   }
 
   Future<void> _openNotificationSettings() async {
-    await _locationService.openAppSettings();
-    await _refreshNotificationPermission();
+    setState(() {
+      _notificationPermissionRequestAttempted = true;
+      _notificationPermissionHasError = false;
+    });
+    try {
+      await _notificationService.openSettings();
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() {
+        _notificationPermissionHasError = true;
+        _notificationMessage =
+            'Opening notification settings timed out. Open Android app settings manually and enable notifications.';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _notificationPermissionHasError = true;
+        _notificationMessage =
+            'Could not open notification settings. Open Android app settings manually and enable notifications.';
+      });
+    }
   }
 
   Future<void> _saveReminderSettings(
@@ -1209,9 +1267,13 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
     final PrayerNotificationScheduleResult reminderResult =
         await _rescheduleReminders(settings: settings);
     PrayerTimeSettings savedSettings = settings;
-    if (reminderResult.status ==
-            PrayerNotificationScheduleStatus.permissionDenied &&
-        settings.reminderSettings.remindersEnabled) {
+    final bool permissionBlocked =
+        settings.reminderSettings.remindersEnabled &&
+        (reminderResult.status ==
+                PrayerNotificationScheduleStatus.permissionDenied ||
+            reminderResult.status ==
+                PrayerNotificationScheduleStatus.unsupported);
+    if (permissionBlocked) {
       savedSettings = settings.copyWith(
         reminderSettings: settings.reminderSettings.copyWith(
           remindersEnabled: false,
@@ -1220,12 +1282,19 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
       await _store.saveSettings(savedSettings);
       if (mounted) {
         setState(() {
-          _notificationPermission = PrayerNotificationPermissionStatus.denied;
-          _notificationMessage =
-              'Notification permission is off. Enable it to receive prayer reminders.';
+          _notificationPermission =
+              reminderResult.status ==
+                  PrayerNotificationScheduleStatus.unsupported
+              ? PrayerNotificationPermissionStatus.unsupported
+              : PrayerNotificationPermissionStatus.denied;
+          _notificationMessage = _notificationMessageForPermission(
+            _notificationPermission!,
+          );
         });
         _showMessage(
-          'Notification permission is off. Reminders were disabled.',
+          reminderResult.status == PrayerNotificationScheduleStatus.unsupported
+              ? 'Prayer reminders are not supported on this platform.'
+              : 'Notification permission is off. Reminders were disabled.',
         );
       }
     } else if (reminderResult.status == PrayerNotificationScheduleStatus.failed) {
@@ -1262,7 +1331,9 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
     );
   }
 
-  Future<void> _refreshNotificationPermission() async {
+  Future<void> _refreshNotificationPermission({
+    bool rescheduleIfGranted = false,
+  }) async {
     setState(() {
       _isCheckingNotificationPermission = true;
     });
@@ -1270,19 +1341,39 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
       final PrayerNotificationPermissionStatus permission =
           await _notificationService.checkPermission();
       if (!mounted) return;
+      final bool showDeniedMessage =
+          permission == PrayerNotificationPermissionStatus.denied &&
+          _settings.reminderSettings.remindersEnabled;
       setState(() {
         _notificationPermission = permission;
+        _notificationPermissionHasError = false;
+        if (permission == PrayerNotificationPermissionStatus.granted) {
+          _notificationPermissionRequestAttempted = false;
+        }
         _notificationMessage =
-            permission == PrayerNotificationPermissionStatus.denied &&
-                _settings.reminderSettings.remindersEnabled
-            ? 'Notification permission is off. Enable it to receive prayer reminders.'
+            showDeniedMessage ||
+                permission == PrayerNotificationPermissionStatus.unsupported
+            ? _notificationMessageForPermission(permission)
             : null;
+      });
+      if (permission == PrayerNotificationPermissionStatus.granted &&
+          rescheduleIfGranted &&
+          _settings.reminderSettings.remindersEnabled) {
+        await _rescheduleReminders();
+      }
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() {
+        _notificationPermissionHasError = true;
+        _notificationMessage =
+            'Notification permission check timed out. Try reopening the app or enabling notifications in system settings.';
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
+        _notificationPermissionHasError = true;
         _notificationMessage =
-            'Could not check notification permission. Try again from app settings.';
+            'Could not check notification permission. Try again or enable notifications in system settings.';
       });
     } finally {
       if (mounted) {
@@ -1331,6 +1422,40 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage> {
       return 'All prayer reminders on';
     }
     return '$enabledCount reminders enabled';
+  }
+
+  String get _notificationPermissionSubtitle {
+    if (_isCheckingNotificationPermission) {
+      return 'Checking notification permission...';
+    }
+    if (_notificationPermissionHasError) {
+      return 'Permission status needs a retry.';
+    }
+    final PrayerNotificationPermissionStatus? permission =
+        _notificationPermission;
+    return switch (permission) {
+      PrayerNotificationPermissionStatus.granted =>
+        _settings.reminderSettings.remindersEnabled
+        ? 'Local notifications are scheduled on this device.'
+        : 'Notification permission granted.',
+      PrayerNotificationPermissionStatus.denied =>
+        'Notification permission is off.',
+      PrayerNotificationPermissionStatus.unsupported =>
+        'Prayer reminders are not supported on this platform.',
+      null => 'Checking notification permission...',
+    };
+  }
+
+  String? _notificationMessageForPermission(
+    PrayerNotificationPermissionStatus permission,
+  ) {
+    return switch (permission) {
+      PrayerNotificationPermissionStatus.granted => null,
+      PrayerNotificationPermissionStatus.denied =>
+        'Notification permission is off. Enable it to receive prayer reminders.',
+      PrayerNotificationPermissionStatus.unsupported =>
+        'Prayer reminders are not supported on this platform.',
+    };
   }
 
   String get _methodSubtitle {

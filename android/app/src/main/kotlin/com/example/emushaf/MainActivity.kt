@@ -4,8 +4,11 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import android.view.Display
 import android.view.WindowManager
@@ -19,9 +22,12 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : AudioServiceActivity() {
     private val channelName = "com.app.equran/read_page"
+    private val notificationPermissionChannelName = "com.app.equran/notification_permissions"
     private val downloadChannelId = "com.app.equran.downloads"
     private val downloadChannelName = "Audio Downloads"
     private val refreshRateLogTag = "EquranRefreshRate"
+    private val prayerNotificationPermissionRequestCode = 4201
+    private var pendingPrayerNotificationPermissionResult: MethodChannel.Result? = null
 
     private data class RefreshRateChoice(
         val modeId: Int,
@@ -104,6 +110,22 @@ class MainActivity : AudioServiceActivity() {
                         val id = call.argument<Int>("id") ?: 1001
                         NotificationManagerCompat.from(this).cancel(id)
                         result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, notificationPermissionChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "checkNotificationPermission" -> {
+                        result.success(notificationPermissionStatus())
+                    }
+                    "requestNotificationPermission" -> {
+                        requestPrayerNotificationPermission(result)
+                    }
+                    "openNotificationSettings" -> {
+                        result.success(openNotificationSettings())
                     }
                     else -> result.notImplemented()
                 }
@@ -250,6 +272,81 @@ class MainActivity : AudioServiceActivity() {
             arrayOf(Manifest.permission.POST_NOTIFICATIONS),
             1002
         )
+    }
+
+    private fun notificationPermissionStatus(): String {
+        val notificationsEnabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
+        if (!notificationsEnabled) return "denied"
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return "granted"
+        val granted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        return if (granted) "granted" else "denied"
+    }
+
+    private fun requestPrayerNotificationPermission(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            result.success(notificationPermissionStatus())
+            return
+        }
+
+        val permission = Manifest.permission.POST_NOTIFICATIONS
+        val alreadyGranted = ContextCompat.checkSelfPermission(
+            this,
+            permission
+        ) == PackageManager.PERMISSION_GRANTED
+        if (alreadyGranted) {
+            result.success(notificationPermissionStatus())
+            return
+        }
+
+        if (pendingPrayerNotificationPermissionResult != null) {
+            result.success(notificationPermissionStatus())
+            return
+        }
+
+        pendingPrayerNotificationPermissionResult = result
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(permission),
+            prayerNotificationPermissionRequestCode
+        )
+    }
+
+    private fun openNotificationSettings(): Boolean {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+            }
+        } else {
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+            }
+        }
+        return try {
+            startActivity(intent)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != prayerNotificationPermissionRequestCode) return
+
+        val granted = grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED &&
+            NotificationManagerCompat.from(this).areNotificationsEnabled()
+        pendingPrayerNotificationPermissionResult?.success(
+            if (granted) "granted" else "denied"
+        )
+        pendingPrayerNotificationPermissionResult = null
     }
 
     private fun showDownloadProgress(

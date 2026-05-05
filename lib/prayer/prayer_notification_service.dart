@@ -4,6 +4,7 @@ import 'package:equran/prayer/prayer_models.dart';
 import 'package:equran/prayer/prayer_times_service.dart';
 import 'package:equran/prayer/prayer_timezone_service.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as timezone;
 
@@ -53,6 +54,8 @@ abstract class PrayerLocalNotificationPlatform {
 
   Future<PrayerNotificationPermissionStatus> requestPermission();
 
+  Future<void> openSettings();
+
   Future<void> schedule({
     required int id,
     required String title,
@@ -75,15 +78,15 @@ class FlutterPrayerLocalNotificationPlatform
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
+  final _AndroidPrayerNotificationPermissionBridge _androidPermissions =
+      const _AndroidPrayerNotificationPermissionBridge();
 
   bool _initialized = false;
+  bool _timezoneConfigured = false;
 
   @override
   Future<void> initialize() async {
     if (_initialized || !_isSupported) return;
-    await PrayerTimezoneService.configureDeviceTimezone().timeout(
-      _operationTimeout,
-    );
     await _plugin
         .initialize(
           settings: const InitializationSettings(
@@ -107,9 +110,15 @@ class FlutterPrayerLocalNotificationPlatform
   @override
   Future<PrayerNotificationPermissionStatus> checkPermission() async {
     if (!_isSupported) return PrayerNotificationPermissionStatus.unsupported;
-    await initialize();
 
     if (defaultTargetPlatform == TargetPlatform.android) {
+      final PrayerNotificationPermissionStatus? nativeStatus =
+          await _androidPermissions
+              .checkPermission()
+              .timeout(_operationTimeout, onTimeout: () => null);
+      if (nativeStatus != null) return nativeStatus;
+
+      await initialize();
       final AndroidFlutterLocalNotificationsPlugin? android = _plugin
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
@@ -120,11 +129,12 @@ class FlutterPrayerLocalNotificationPlatform
       final bool? enabled = await android.areNotificationsEnabled().timeout(
         _operationTimeout,
       );
-      return enabled == false
-          ? PrayerNotificationPermissionStatus.denied
-          : PrayerNotificationPermissionStatus.granted;
+      return enabled == true
+          ? PrayerNotificationPermissionStatus.granted
+          : PrayerNotificationPermissionStatus.denied;
     }
 
+    await initialize();
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       final IOSFlutterLocalNotificationsPlugin? ios = _plugin
           .resolvePlatformSpecificImplementation<
@@ -159,9 +169,15 @@ class FlutterPrayerLocalNotificationPlatform
   @override
   Future<PrayerNotificationPermissionStatus> requestPermission() async {
     if (!_isSupported) return PrayerNotificationPermissionStatus.unsupported;
-    await initialize();
 
     if (defaultTargetPlatform == TargetPlatform.android) {
+      final PrayerNotificationPermissionStatus? nativeStatus =
+          await _androidPermissions
+              .requestPermission()
+              .timeout(_operationTimeout, onTimeout: () => null);
+      if (nativeStatus != null) return nativeStatus;
+
+      await initialize();
       final AndroidFlutterLocalNotificationsPlugin? android = _plugin
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
@@ -172,11 +188,12 @@ class FlutterPrayerLocalNotificationPlatform
       final bool? granted = await android
           .requestNotificationsPermission()
           .timeout(_operationTimeout);
-      return granted == false
-          ? PrayerNotificationPermissionStatus.denied
-          : PrayerNotificationPermissionStatus.granted;
+      return granted == true
+          ? PrayerNotificationPermissionStatus.granted
+          : PrayerNotificationPermissionStatus.denied;
     }
 
+    await initialize();
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       final IOSFlutterLocalNotificationsPlugin? ios = _plugin
           .resolvePlatformSpecificImplementation<
@@ -209,6 +226,17 @@ class FlutterPrayerLocalNotificationPlatform
   }
 
   @override
+  Future<void> openSettings() async {
+    if (!_isSupported) return;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final bool opened = await _androidPermissions
+          .openSettings()
+          .timeout(_operationTimeout, onTimeout: () => false);
+      if (opened) return;
+    }
+  }
+
+  @override
   Future<void> schedule({
     required int id,
     required String title,
@@ -218,6 +246,7 @@ class FlutterPrayerLocalNotificationPlatform
   }) async {
     if (!_isSupported) return;
     await initialize();
+    await _configureTimezone();
     await _plugin
         .zonedSchedule(
           id: id,
@@ -264,6 +293,59 @@ class FlutterPrayerLocalNotificationPlatform
       _ => false,
     };
   }
+
+  Future<void> _configureTimezone() async {
+    if (_timezoneConfigured) return;
+    await PrayerTimezoneService.configureDeviceTimezone().timeout(
+      _operationTimeout,
+    );
+    _timezoneConfigured = true;
+  }
+}
+
+class _AndroidPrayerNotificationPermissionBridge {
+  const _AndroidPrayerNotificationPermissionBridge();
+
+  static const MethodChannel _channel = MethodChannel(
+    'com.app.equran/notification_permissions',
+  );
+
+  Future<PrayerNotificationPermissionStatus?> checkPermission() {
+    return _invokePermissionStatus('checkNotificationPermission');
+  }
+
+  Future<PrayerNotificationPermissionStatus?> requestPermission() {
+    return _invokePermissionStatus('requestNotificationPermission');
+  }
+
+  Future<bool> openSettings() async {
+    try {
+      return await _channel.invokeMethod<bool>('openNotificationSettings') ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  Future<PrayerNotificationPermissionStatus?> _invokePermissionStatus(
+    String method,
+  ) async {
+    try {
+      final String? status = await _channel.invokeMethod<String>(method);
+      return switch (status) {
+        'granted' => PrayerNotificationPermissionStatus.granted,
+        'denied' => PrayerNotificationPermissionStatus.denied,
+        'unsupported' => PrayerNotificationPermissionStatus.unsupported,
+        _ => null,
+      };
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    }
+  }
 }
 
 class PrayerNotificationService {
@@ -295,6 +377,10 @@ class PrayerNotificationService {
 
   Future<PrayerNotificationPermissionStatus> requestPermission() {
     return _withTimeout(_platform.requestPermission());
+  }
+
+  Future<void> openSettings() {
+    return _withTimeout(_platform.openSettings());
   }
 
   Future<void> cancelPrayerNotifications() async {
