@@ -54,8 +54,12 @@ enum PrayerCalculationMethod {
   qatar('qatar', 'Qatar'),
   karachi('karachi', 'Karachi'),
   northAmerica('northAmerica', 'ISNA'),
+  moonsightingCommittee('moonsightingCommittee', 'Moonsighting Committee'),
+  morocco('morocco', 'Morocco'),
   singapore('singapore', 'Singapore'),
+  tehran('tehran', 'Tehran'),
   turkiye('turkiye', 'Turkey / Diyanet'),
+  uk18('uk18', 'UK 18°'),
   custom('custom', 'Custom');
 
   const PrayerCalculationMethod(this.id, this.label);
@@ -81,10 +85,53 @@ enum PrayerCalculationMethod {
       PrayerCalculationMethod.qatar => 'Qatar',
       PrayerCalculationMethod.karachi => 'Karachi',
       PrayerCalculationMethod.northAmerica => 'ISNA',
+      PrayerCalculationMethod.moonsightingCommittee => 'Moonsighting',
+      PrayerCalculationMethod.morocco => 'Morocco',
       PrayerCalculationMethod.singapore => 'Singapore',
+      PrayerCalculationMethod.tehran => 'Tehran',
       PrayerCalculationMethod.turkiye => 'Turkey',
+      PrayerCalculationMethod.uk18 => 'UK 18°',
       PrayerCalculationMethod.custom => 'Custom',
     };
+  }
+}
+
+enum PrayerHighLatitudeRule {
+  auto('auto', 'Auto'),
+  none('none', 'None'),
+  middleOfTheNight('middleOfTheNight', 'Middle of the night'),
+  oneSeventh('oneSeventh', 'One seventh'),
+  angleBased('angleBased', 'Angle based');
+
+  const PrayerHighLatitudeRule(this.id, this.label);
+
+  final String id;
+  final String label;
+
+  static PrayerHighLatitudeRule fromId(String? id) {
+    return PrayerHighLatitudeRule.values.firstWhere(
+      (PrayerHighLatitudeRule rule) => rule.id == id,
+      orElse: () => PrayerHighLatitudeRule.auto,
+    );
+  }
+}
+
+enum PrayerCustomIshaMode {
+  angle('angle', 'Angle'),
+  interval('interval', 'Interval after Maghrib'),
+  fixedTime('fixedTime', 'Fixed time'),
+  latestCap('latestCap', 'Latest time cap');
+
+  const PrayerCustomIshaMode(this.id, this.label);
+
+  final String id;
+  final String label;
+
+  static PrayerCustomIshaMode fromId(String? id) {
+    return PrayerCustomIshaMode.values.firstWhere(
+      (PrayerCustomIshaMode mode) => mode.id == id,
+      orElse: () => PrayerCustomIshaMode.angle,
+    );
   }
 }
 
@@ -360,10 +407,7 @@ class PrayerReminderSettings {
     );
   }
 
-  PrayerReminderSettings copyWithPrayer(
-    PrayerTimeKind prayer,
-    bool enabled,
-  ) {
+  PrayerReminderSettings copyWithPrayer(PrayerTimeKind prayer, bool enabled) {
     return switch (prayer) {
       PrayerTimeKind.fajr => copyWith(fajrEnabled: enabled),
       PrayerTimeKind.dhuhr => copyWith(dhuhrEnabled: enabled),
@@ -392,9 +436,15 @@ class PrayerTimeSettings {
     this.method = PrayerCalculationMethod.auto,
     this.customFajrAngle = 18,
     this.customIshaAngle = 17,
+    this.customIshaMode = PrayerCustomIshaMode.angle,
     this.customIshaInterval,
+    this.customIshaFixedTimeHour = 22,
+    this.customIshaFixedTimeMinute = 15,
+    this.customIshaLatestCapHour = 22,
+    this.customIshaLatestCapMinute = 15,
     this.customMaghribAngle,
     this.asrMethod = PrayerAsrMethod.standard,
+    this.highLatitudeRule = PrayerHighLatitudeRule.auto,
     this.offsets = const PrayerOffsets(),
     this.use24HourFormat = false,
     this.useLocationTimezone = true,
@@ -409,11 +459,33 @@ class PrayerTimeSettings {
     if (json == null) return PrayerTimeSettings.defaults();
     return PrayerTimeSettings(
       method: PrayerCalculationMethod.fromId(json['method'] as String?),
-      customFajrAngle: _readDouble(json['customFajrAngle']) ?? 18,
-      customIshaAngle: _readDouble(json['customIshaAngle']) ?? 17,
-      customIshaInterval: _readNullableInt(json['customIshaInterval']),
-      customMaghribAngle: _readDouble(json['customMaghribAngle']),
+      customFajrAngle: _readAngle(json['customFajrAngle'], defaultValue: 18),
+      customIshaAngle: _readAngle(json['customIshaAngle'], defaultValue: 17),
+      customIshaMode: PrayerCustomIshaMode.fromId(
+        json['customIshaMode'] as String?,
+      ),
+      customIshaInterval: _readOptionalMinutes(json['customIshaInterval']),
+      customIshaFixedTimeHour: _readClockHour(
+        json['customIshaFixedTimeHour'],
+        defaultValue: 22,
+      ),
+      customIshaFixedTimeMinute: _readClockMinute(
+        json['customIshaFixedTimeMinute'],
+        defaultValue: 15,
+      ),
+      customIshaLatestCapHour: _readClockHour(
+        json['customIshaLatestCapHour'],
+        defaultValue: 22,
+      ),
+      customIshaLatestCapMinute: _readClockMinute(
+        json['customIshaLatestCapMinute'],
+        defaultValue: 15,
+      ),
+      customMaghribAngle: _readOptionalAngle(json['customMaghribAngle']),
       asrMethod: PrayerAsrMethod.fromId(json['asrMethod'] as String?),
+      highLatitudeRule: PrayerHighLatitudeRule.fromId(
+        json['highLatitudeRule'] as String?,
+      ),
       offsets: PrayerOffsets.fromJson(json['offsets'] as Map?),
       use24HourFormat: json['use24HourFormat'] == true,
       useLocationTimezone: json['useLocationTimezone'] != false,
@@ -426,9 +498,15 @@ class PrayerTimeSettings {
   final PrayerCalculationMethod method;
   final double customFajrAngle;
   final double customIshaAngle;
+  final PrayerCustomIshaMode customIshaMode;
   final int? customIshaInterval;
+  final int customIshaFixedTimeHour;
+  final int customIshaFixedTimeMinute;
+  final int customIshaLatestCapHour;
+  final int customIshaLatestCapMinute;
   final double? customMaghribAngle;
   final PrayerAsrMethod asrMethod;
+  final PrayerHighLatitudeRule highLatitudeRule;
   final PrayerOffsets offsets;
   final bool use24HourFormat;
   final bool useLocationTimezone;
@@ -438,9 +516,15 @@ class PrayerTimeSettings {
     PrayerCalculationMethod? method,
     double? customFajrAngle,
     double? customIshaAngle,
+    PrayerCustomIshaMode? customIshaMode,
     int? customIshaInterval,
+    int? customIshaFixedTimeHour,
+    int? customIshaFixedTimeMinute,
+    int? customIshaLatestCapHour,
+    int? customIshaLatestCapMinute,
     double? customMaghribAngle,
     PrayerAsrMethod? asrMethod,
+    PrayerHighLatitudeRule? highLatitudeRule,
     PrayerOffsets? offsets,
     bool? use24HourFormat,
     bool? useLocationTimezone,
@@ -448,11 +532,28 @@ class PrayerTimeSettings {
   }) {
     return PrayerTimeSettings(
       method: method ?? this.method,
-      customFajrAngle: customFajrAngle ?? this.customFajrAngle,
-      customIshaAngle: customIshaAngle ?? this.customIshaAngle,
-      customIshaInterval: customIshaInterval ?? this.customIshaInterval,
+      customFajrAngle:
+          customFajrAngle?.clamp(0, 30).toDouble() ?? this.customFajrAngle,
+      customIshaAngle:
+          customIshaAngle?.clamp(0, 30).toDouble() ?? this.customIshaAngle,
+      customIshaMode: customIshaMode ?? this.customIshaMode,
+      customIshaInterval:
+          customIshaInterval?.clamp(0, 240).toInt() ?? this.customIshaInterval,
+      customIshaFixedTimeHour:
+          customIshaFixedTimeHour?.clamp(0, 23).toInt() ??
+          this.customIshaFixedTimeHour,
+      customIshaFixedTimeMinute:
+          customIshaFixedTimeMinute?.clamp(0, 59).toInt() ??
+          this.customIshaFixedTimeMinute,
+      customIshaLatestCapHour:
+          customIshaLatestCapHour?.clamp(0, 23).toInt() ??
+          this.customIshaLatestCapHour,
+      customIshaLatestCapMinute:
+          customIshaLatestCapMinute?.clamp(0, 59).toInt() ??
+          this.customIshaLatestCapMinute,
       customMaghribAngle: customMaghribAngle ?? this.customMaghribAngle,
       asrMethod: asrMethod ?? this.asrMethod,
+      highLatitudeRule: highLatitudeRule ?? this.highLatitudeRule,
       offsets: offsets ?? this.offsets,
       use24HourFormat: use24HourFormat ?? this.use24HourFormat,
       useLocationTimezone: useLocationTimezone ?? this.useLocationTimezone,
@@ -465,9 +566,15 @@ class PrayerTimeSettings {
       'method': method.id,
       'customFajrAngle': customFajrAngle,
       'customIshaAngle': customIshaAngle,
+      'customIshaMode': customIshaMode.id,
       'customIshaInterval': customIshaInterval,
+      'customIshaFixedTimeHour': customIshaFixedTimeHour,
+      'customIshaFixedTimeMinute': customIshaFixedTimeMinute,
+      'customIshaLatestCapHour': customIshaLatestCapHour,
+      'customIshaLatestCapMinute': customIshaLatestCapMinute,
       'customMaghribAngle': customMaghribAngle,
       'asrMethod': asrMethod.id,
+      'highLatitudeRule': highLatitudeRule.id,
       'offsets': offsets.toJson(),
       'use24HourFormat': use24HourFormat,
       'useLocationTimezone': useLocationTimezone,
@@ -532,6 +639,26 @@ int? _readNullableInt(dynamic value) {
   if (value is double) return value.round();
   if (value is String) return int.tryParse(value);
   return null;
+}
+
+double _readAngle(dynamic value, {required double defaultValue}) {
+  return (_readDouble(value) ?? defaultValue).clamp(0, 30).toDouble();
+}
+
+double? _readOptionalAngle(dynamic value) {
+  return _readDouble(value)?.clamp(0, 30).toDouble();
+}
+
+int? _readOptionalMinutes(dynamic value) {
+  return _readNullableInt(value)?.clamp(0, 240).toInt();
+}
+
+int _readClockHour(dynamic value, {required int defaultValue}) {
+  return _readInt(value, defaultValue: defaultValue).clamp(0, 23).toInt();
+}
+
+int _readClockMinute(dynamic value, {required int defaultValue}) {
+  return _readInt(value, defaultValue: defaultValue).clamp(0, 59).toInt();
 }
 
 bool _readBool(dynamic value, {required bool defaultValue}) {

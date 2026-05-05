@@ -427,7 +427,7 @@ class PrayerLocationService {
         (!preserveCustomLabel && (!hasCustomLabel || previousHasGenericLabel));
 
     if (!shouldResolve) {
-      final PrayerLocation previous = previousLocation!;
+      final PrayerLocation previous = previousLocation;
       final PrayerLocation savedLocation = PrayerLocation(
         latitude: location.latitude,
         longitude: location.longitude,
@@ -466,11 +466,11 @@ class PrayerLocationService {
           address?.countryCode ??
           (coordinatesChanged
               ? null
-              : location.countryCode ?? previousLocation?.countryCode),
+              : location.countryCode ?? previousLocation.countryCode),
       timezoneId: coordinatesChanged
           ? _resolveTimezoneId(location)
           : location.timezoneId ??
-                previousLocation?.timezoneId ??
+                previousLocation.timezoneId ??
                 _resolveTimezoneId(location),
       mode: location.mode,
     );

@@ -1233,7 +1233,6 @@ class _LocationSummaryRow extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-
                   ],
                 ),
               ),
@@ -1365,17 +1364,10 @@ class _PrayerTimeCard extends StatelessWidget {
 }
 
 class _InfoPill extends StatelessWidget {
-  const _InfoPill({
-    required this.icon,
-    required this.label,
-    this.tooltip,
-    this.onTap,
-  });
+  const _InfoPill({required this.icon, required this.label});
 
   final IconData icon;
   final String label;
-  final String? tooltip;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1410,15 +1402,7 @@ class _InfoPill extends StatelessWidget {
         ),
       ),
     );
-    final VoidCallback? onTap = this.onTap;
-    if (onTap == null) return pill;
-    return Tooltip(
-      message: tooltip ?? label,
-      child: Material(
-        type: MaterialType.transparency,
-        child: InkWell(borderRadius: borderRadius, onTap: onTap, child: pill),
-      ),
-    );
+    return pill;
   }
 }
 
