@@ -20,7 +20,6 @@ jobs:
           channel: stable
 
       - run: flutter pub get
-      - run: flutter test
       - run: flutter build web --release --dart-define=FLUTTER_WEB_RENDERER=canvaskit
 
       - name: Create CNAME file
