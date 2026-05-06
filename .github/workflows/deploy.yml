@@ -116,6 +116,25 @@ jobs:
       - name: Build Android Split APKs
         run: flutter build apk --release --split-per-abi
 
+      - name: Verify Prayer Notification Icon Packaged
+        shell: bash
+        run: |
+          shopt -s nullglob
+          apks=(build/app/outputs/flutter-apk/app-*-release.apk)
+
+          if [[ ${#apks[@]} -eq 0 ]]; then
+            echo "No release APKs found to inspect."
+            exit 1
+          fi
+
+          for apk in "${apks[@]}"; do
+            if ! unzip -Z1 "$apk" | grep -Eq '^res/drawable(-anydpi-v24)?/ic_prayer_notification\.xml$'; then
+              echo "Missing ic_prayer_notification drawable in $apk"
+              unzip -Z1 "$apk" | grep 'ic_prayer_notification' || true
+              exit 1
+            fi
+          done
+
       - name: Upload Android Artifact
         uses: actions/upload-artifact@v4
         with:
