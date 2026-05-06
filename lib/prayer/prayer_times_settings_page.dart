@@ -10,6 +10,7 @@ import 'package:equran/prayer/prayer_times_service.dart';
 import 'package:equran/utils/app_radii.dart';
 import 'package:equran/widgets/app_selection_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class PrayerTimesSettingsPage extends StatefulWidget {
   const PrayerTimesSettingsPage({super.key});
@@ -919,13 +920,13 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
   }
 
   Future<void> _editOffset(PrayerTimeKind prayer) async {
-    final int? value = await _showNumberDialog<int>(
+    final int? value = await _showSteppedIntDialog(
       title: '${prayer.label} offset',
       currentValue: _settings.offsets.forPrayer(prayer),
-      helperText: 'Positive or negative minutes applied after calculation.',
-      parser: int.tryParse,
-      validator: (int value) => value >= -120 && value <= 120,
-      formatter: (int value) => value.toString(),
+      min: -120,
+      max: 120,
+      helperText:
+          'Type minutes as digits only. Use - and + to adjust before or after the calculated time.',
     );
     if (value == null) return;
     await _saveSettings(
@@ -964,13 +965,13 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
     required String suffix,
     required ValueChanged<int> onChanged,
   }) async {
-    final int? value = await _showNumberDialog<int>(
+    final int? value = await _showSteppedIntDialog(
       title: title,
       currentValue: currentValue,
-      helperText: 'Enter a value between $min and $max $suffix.',
-      parser: int.tryParse,
-      validator: (int value) => value >= min && value <= max,
-      formatter: (int value) => value.toString(),
+      min: min,
+      max: max,
+      helperText:
+          'Type $suffix as digits only. Use - and + to adjust the value.',
     );
     if (value == null) return;
     onChanged(value);
@@ -1000,13 +1001,13 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
     required ValueChanged<int?> onChanged,
   }) async {
     final _OptionalNumberResult<int>? result =
-        await _showOptionalNumberDialog<int>(
+        await _showOptionalSteppedIntDialog(
           title: title,
           currentValue: currentValue,
-          helperText: emptyLabel,
-          parser: int.tryParse,
-          validator: (int value) => value >= min && value <= max,
-          formatter: (int value) => value.toString(),
+          min: min,
+          max: max,
+          helperText:
+              '$emptyLabel Blank saves 0. Type digits only and use - or + to adjust.',
         );
     if (result == null) return;
     onChanged(result.value);
@@ -1069,6 +1070,168 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
       formatter: formatter,
       allowEmpty: true,
     );
+  }
+
+  Future<int?> _showSteppedIntDialog({
+    required String title,
+    required int currentValue,
+    required int min,
+    required int max,
+    required String helperText,
+  }) {
+    return _showSteppedIntDialogInternal(
+      title: title,
+      currentValue: currentValue,
+      min: min,
+      max: max,
+      helperText: helperText,
+      allowNullValue: false,
+    ).then((value) => value?.value);
+  }
+
+  Future<_OptionalNumberResult<int>?> _showOptionalSteppedIntDialog({
+    required String title,
+    required int? currentValue,
+    required int min,
+    required int max,
+    required String helperText,
+  }) {
+    return _showSteppedIntDialogInternal(
+      title: title,
+      currentValue: currentValue,
+      min: min,
+      max: max,
+      helperText: helperText,
+      allowNullValue: true,
+    );
+  }
+
+  Future<_OptionalNumberResult<int>?> _showSteppedIntDialogInternal({
+    required String title,
+    required int? currentValue,
+    required int min,
+    required int max,
+    required String helperText,
+    required bool allowNullValue,
+  }) {
+    int signedValue = (currentValue ?? 0).clamp(min, max).toInt();
+    final TextEditingController controller = TextEditingController(
+      text: currentValue == null ? '' : signedValue.abs().toString(),
+    );
+
+    int signedValueFromText() {
+      final String raw = controller.text.trim();
+      final int magnitude = raw.isEmpty ? 0 : int.tryParse(raw) ?? -1;
+      if (magnitude < 0) return min - 1;
+      if (signedValue < 0 && min < 0) return -magnitude;
+      return magnitude;
+    }
+
+    void setControllerText(int value) {
+      controller.value = TextEditingValue(
+        text: value.abs().toString(),
+        selection: TextSelection.collapsed(
+          offset: value.abs().toString().length,
+        ),
+      );
+    }
+
+    return showDialog<_OptionalNumberResult<int>?>(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) {
+            void stepBy(int delta) {
+              final int fromText = signedValueFromText();
+              if (fromText >= min && fromText <= max) {
+                signedValue = fromText;
+              }
+              setDialogState(() {
+                signedValue = (signedValue + delta).clamp(min, max).toInt();
+                setControllerText(signedValue);
+              });
+            }
+
+            return AlertDialog(
+              title: Text(title),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      IconButton.filledTonal(
+                        tooltip: 'Decrease',
+                        onPressed: () => stepBy(-1),
+                        icon: const Icon(Icons.remove_rounded),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: controller,
+                          autofocus: true,
+                          textAlign: TextAlign.center,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: <TextInputFormatter>[
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                          decoration: InputDecoration(
+                            helperText: helperText,
+                            prefixText: signedValue < 0 ? '-' : null,
+                          ),
+                          onChanged: (_) {
+                            setDialogState(() {
+                              final int fromText = signedValueFromText();
+                              if (fromText >= min && fromText <= max) {
+                                signedValue = fromText;
+                              }
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      IconButton.filledTonal(
+                        tooltip: 'Increase',
+                        onPressed: () => stepBy(1),
+                        icon: const Icon(Icons.add_rounded),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              actions: <Widget>[
+                if (allowNullValue)
+                  TextButton(
+                    onPressed: () => Navigator.of(
+                      context,
+                    ).pop(const _OptionalNumberResult<Never>(null)),
+                    child: const Text('Clear'),
+                  ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final int value = signedValueFromText();
+                    if (value < min || value > max) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Enter a value from $min to $max.'),
+                        ),
+                      );
+                      return;
+                    }
+                    Navigator.of(context).pop(_OptionalNumberResult<int>(value));
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    ).whenComplete(controller.dispose);
   }
 
   Future<T?> _showNumberDialogInternal<T extends num>({

@@ -23,12 +23,16 @@ class _QiblaPageState extends State<QiblaPage> {
   static const QiblaService _qiblaService = QiblaService();
   static const Duration _locationTimeout = Duration(seconds: 15);
   static const Duration _hapticCooldown = Duration(seconds: 4);
+  static const double _alignmentThresholdDegrees = 5;
+  static const double _poorHeadingAccuracyDegrees = 25;
 
   late final PrayerLocationService _locationService;
 
   StreamSubscription<CompassEvent>? _compassSubscription;
   PrayerLocation? _currentLocation;
   double? _heading;
+  double? _headingAccuracy;
+  bool _headingIsReliable = false;
   String? _locationMessage;
   String? _compassMessage;
   bool _isLocating = true;
@@ -81,20 +85,19 @@ class _QiblaPageState extends State<QiblaPage> {
       );
     }
 
-    final double? relative = _heading == null
+    final double? reliableHeading = _headingIsReliable ? _heading : null;
+    final double? relative = reliableHeading == null
         ? null
         : _qiblaService.relativeDirection(
             qiblaBearing: bearing,
-            heading: _heading!,
+            heading: reliableHeading,
           );
     return _QiblaContent(
       bearing: bearing,
-      heading: _heading,
+      heading: reliableHeading,
       relative: relative,
       location: location,
-      statusMessage: _heading == null
-          ? _compassMessage ?? 'Compass unavailable. Use the bearing shown.'
-          : null,
+      statusMessage: _compassStatusMessage,
       onRefreshLocation: _loadCurrentLocation,
     );
   }
@@ -145,20 +148,24 @@ class _QiblaPageState extends State<QiblaPage> {
       }
       _compassSubscription = stream.listen(
         (CompassEvent event) {
-          final double? heading = _usableHeading(event.heading);
+          final _CompassReading reading = _usableCompassReading(event);
           if (!mounted) return;
           setState(() {
-            _heading = heading;
-            _compassMessage = heading == null
+            _heading = reading.heading;
+            _headingAccuracy = reading.accuracy;
+            _headingIsReliable = reading.isReliable;
+            _compassMessage = reading.heading == null
                 ? 'Compass unavailable. Use the bearing shown.'
                 : null;
           });
-          _handleQiblaHaptic(heading);
+          _handleQiblaHaptic(reading.heading, isReliable: reading.isReliable);
         },
         onError: (_) {
           if (!mounted) return;
           setState(() {
             _heading = null;
+            _headingAccuracy = null;
+            _headingIsReliable = false;
             _compassMessage = 'Compass unavailable. Use the bearing shown.';
           });
         },
@@ -170,9 +177,9 @@ class _QiblaPageState extends State<QiblaPage> {
     }
   }
 
-  void _handleQiblaHaptic(double? heading) {
+  void _handleQiblaHaptic(double? heading, {required bool isReliable}) {
     final PrayerLocation? location = _currentLocation;
-    if (heading == null || location == null) {
+    if (!isReliable || heading == null || location == null) {
       _wasFacingQibla = false;
       return;
     }
@@ -182,7 +189,7 @@ class _QiblaPageState extends State<QiblaPage> {
       qiblaBearing: bearing,
       heading: heading,
     );
-    final bool isFacing = relative.abs() <= 5;
+    final bool isFacing = relative.abs() <= _alignmentThresholdDegrees;
     final DateTime now = DateTime.now();
     final bool cooledDown =
         _lastHapticAt == null ||
@@ -194,9 +201,48 @@ class _QiblaPageState extends State<QiblaPage> {
     _wasFacingQibla = isFacing;
   }
 
-  static double? _usableHeading(double? heading) {
+  static _CompassReading _usableCompassReading(CompassEvent event) {
+    final double? heading = _normalizedHeading(event.heading);
+    final double? accuracy = _usableAccuracy(event.accuracy);
+    return _CompassReading(
+      heading: heading,
+      accuracy: accuracy,
+      isReliable: heading != null && _isReasonableAccuracy(accuracy),
+    );
+  }
+
+  static double? _normalizedHeading(double? heading) {
     if (heading == null || !heading.isFinite) return null;
     return _qiblaService.normalizeDegrees(heading);
+  }
+
+  static double? _usableAccuracy(double? accuracy) {
+    if (accuracy == null || !accuracy.isFinite || accuracy < 0) return null;
+    return accuracy;
+  }
+
+  static bool _isReasonableAccuracy(double? accuracy) {
+    if (accuracy == null) return false;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return accuracy >= 2;
+    }
+    return accuracy <= _poorHeadingAccuracyDegrees;
+  }
+
+  String get _compassStatusMessage {
+    final String hint =
+        'For best accuracy, hold your phone flat and move it in a figure-8 to calibrate.';
+    final String? message = _compassMessage;
+    if (message != null) return '$message $hint';
+    if (_heading == null || !_headingIsReliable) {
+      final double? accuracy = _headingAccuracy;
+      final String accuracyText =
+          accuracy == null || defaultTargetPlatform == TargetPlatform.android
+          ? 'Compass accuracy may be low.'
+          : 'Compass accuracy may be low (${accuracy.round()}°).';
+      return '$accuracyText $hint';
+    }
+    return hint;
   }
 
   bool get _isCompassPlatformSupported {
@@ -219,6 +265,18 @@ class _QiblaPageState extends State<QiblaPage> {
         'We could not read your current location. Check location services and try again.',
     };
   }
+}
+
+class _CompassReading {
+  const _CompassReading({
+    required this.heading,
+    required this.accuracy,
+    required this.isReliable,
+  });
+
+  final double? heading;
+  final double? accuracy;
+  final bool isReliable;
 }
 
 class _QiblaContent extends StatelessWidget {
@@ -347,6 +405,9 @@ class _QiblaCompass extends StatelessWidget {
         child: Stack(
           alignment: Alignment.center,
           children: <Widget>[
+            // The dial is rotated by the device heading, while the Qibla marker
+            // is independently rotated by qiblaBearing - heading. Keeping those
+            // rotations separate avoids applying the heading twice.
             AnimatedRotation(
               turns: heading == null ? 0 : -heading! / 360,
               duration: const Duration(milliseconds: 220),

@@ -1,5 +1,6 @@
 import 'package:adaptive_theme/adaptive_theme.dart';
 import 'package:equran/backend/library.dart' show SettingsDB;
+import 'package:equran/duas/duas_page.dart';
 import 'package:equran/home/downloads.dart';
 import 'package:equran/home/main_page.dart';
 import 'package:equran/home/player.dart';
@@ -48,6 +49,12 @@ class _HomePageState extends State<HomePage> {
       Icon(Icons.library_music_outlined),
       Icon(Icons.library_music),
       PlayerPage(),
+    ),
+    Destinations(
+      'Duas',
+      Icon(Icons.auto_stories_outlined),
+      Icon(Icons.auto_stories_rounded),
+      DuasPage(),
     ),
     Destinations(
       'Downloads',
@@ -155,10 +162,13 @@ class _HomePageState extends State<HomePage> {
               actions: <Widget>[
                 if (_pageDestinations[_selectedIndex].destination
                     is PrayerTimesPage)
-                  IconButton(
-                    tooltip: 'Qibla',
-                    onPressed: _openQiblaPage,
-                    icon: const Icon(Icons.explore_outlined),
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(end: 6),
+                    child: IconButton(
+                      tooltip: 'Qibla',
+                      onPressed: _openQiblaPage,
+                      icon: const Icon(Icons.explore_outlined),
+                    ),
                   ),
               ],
             )
