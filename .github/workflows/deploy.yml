@@ -22,10 +22,26 @@ jobs:
       - name: Install Flutter Dependencies
         run: flutter pub get
 
-      - name: Enforce Dart Formatting
+      - name: Check Dart Formatting
         id: format
         continue-on-error: true
-        run: dart format --set-exit-if-changed .
+        shell: bash
+        run: |
+          dart format .
+
+          if git diff --quiet; then
+            echo "Dart formatting is clean."
+            exit 0
+          fi
+
+          echo "Dart formatting changed these files:"
+          git diff --name-only
+
+          echo ""
+          echo "Dart formatting diff:"
+          git diff --
+
+          exit 1
 
       - name: Analyze Flutter Project
         id: analyze
@@ -37,7 +53,7 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ steps.format.outcome }}" == "failure" ]]; then
-            echo "Dart formatting check failed. See the formatting diff above."
+            echo "Dart formatting check failed. See the changed file list and diff in the Check Dart Formatting step."
           fi
 
           if [[ "${{ steps.analyze.outcome }}" == "failure" ]]; then
