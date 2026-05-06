@@ -5,10 +5,12 @@ import 'package:equran/duas/hisn_al_muslim_models.dart';
 import 'package:equran/duas/hisn_al_muslim_repository.dart';
 import 'package:equran/utils/app_radii.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:hive/hive.dart';
 
 class DuasPage extends StatefulWidget {
-  const DuasPage({super.key, this.repository = const HisnAlMuslimRepository()});
+  DuasPage({super.key, HisnAlMuslimRepository? repository})
+    : repository = repository ?? HisnAlMuslimRepository();
 
   final HisnAlMuslimRepository repository;
 
@@ -17,15 +19,18 @@ class DuasPage extends StatefulWidget {
 }
 
 class _DuasPageState extends State<DuasPage> {
-  late final Future<List<HisnCategory>> _categoriesFuture;
+  Future<List<DuaCategoryIndex>>? _categoryIndexFuture;
   final TextEditingController _searchController = TextEditingController();
   String _query = '';
 
   @override
   void initState() {
     super.initState();
-    _categoriesFuture = widget.repository.loadCategories();
     _searchController.addListener(_handleSearchChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadCategoryIndex();
+    });
   }
 
   @override
@@ -43,28 +48,50 @@ class _DuasPageState extends State<DuasPage> {
     });
   }
 
+  void _loadCategoryIndex() {
+    setState(() {
+      _categoryIndexFuture = _loadCategoryIndexAfterLoadingFrame();
+    });
+  }
+
+  Future<List<DuaCategoryIndex>> _loadCategoryIndexAfterLoadingFrame() async {
+    await SchedulerBinding.instance.endOfFrame;
+    return widget.repository.loadCategoryIndex();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<HisnCategory>>(
-      future: _categoriesFuture,
+    final Future<List<DuaCategoryIndex>>? categoryIndexFuture =
+        _categoryIndexFuture;
+    if (categoryIndexFuture == null) {
+      return const _DuasLoadingState();
+    }
+
+    return FutureBuilder<List<DuaCategoryIndex>>(
+      future: categoryIndexFuture,
       builder:
-          (BuildContext context, AsyncSnapshot<List<HisnCategory>> snapshot) {
+          (
+            BuildContext context,
+            AsyncSnapshot<List<DuaCategoryIndex>> snapshot,
+          ) {
             if (snapshot.connectionState != ConnectionState.done) {
               return const _DuasLoadingState();
             }
 
             if (snapshot.hasError) {
-              return const _DuasMessageState(
+              return _DuasMessageState(
                 icon: Icons.error_outline_rounded,
                 title: 'Duas unavailable',
                 message:
                     'Hisn al Muslim could not be loaded from the offline asset.',
+                actionLabel: 'Retry',
+                onActionPressed: _loadCategoryIndex,
               );
             }
 
-            final List<HisnCategory> categories =
-                snapshot.data ?? const <HisnCategory>[];
-            if (categories.isEmpty) {
+            final List<DuaCategoryIndex> categoryIndex =
+                snapshot.data ?? const <DuaCategoryIndex>[];
+            if (categoryIndex.isEmpty) {
               return const _DuasMessageState(
                 icon: Icons.menu_book_outlined,
                 title: 'No duas found',
@@ -74,9 +101,10 @@ class _DuasPageState extends State<DuasPage> {
             }
 
             return _DuasContent(
-              categories: categories,
+              categoryIndex: categoryIndex,
               query: _query,
               searchController: _searchController,
+              repository: widget.repository,
             );
           },
     );
@@ -85,23 +113,25 @@ class _DuasPageState extends State<DuasPage> {
 
 class _DuasContent extends StatelessWidget {
   const _DuasContent({
-    required this.categories,
+    required this.categoryIndex,
     required this.query,
     required this.searchController,
+    required this.repository,
   });
 
-  final List<HisnCategory> categories;
+  final List<DuaCategoryIndex> categoryIndex;
   final String query;
   final TextEditingController searchController;
+  final HisnAlMuslimRepository repository;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
-    final List<HisnCategory> visibleCategories = _visibleCategories();
-    final int duaCount = categories.fold<int>(
+    final List<DuaCategoryIndex> visibleCategories = _visibleCategories();
+    final int duaCount = categoryIndex.fold<int>(
       0,
-      (int total, HisnCategory category) => total + category.duas.length,
+      (int total, DuaCategoryIndex category) => total + category.duaCount,
     );
 
     return ListView(
@@ -114,7 +144,10 @@ class _DuasContent extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                _DuasHero(categoryCount: categories.length, duaCount: duaCount),
+                _DuasHero(
+                  categoryCount: categoryIndex.length,
+                  duaCount: duaCount,
+                ),
                 const SizedBox(height: 12),
                 ValueListenableBuilder<Box<dynamic>>(
                   valueListenable: DuaFavouritesDB().listener,
@@ -168,7 +201,7 @@ class _DuasContent extends StatelessWidget {
                         'Try searching with another Arabic word or phrase.',
                   )
                 else
-                  for (final HisnCategory category in visibleCategories)
+                  for (final DuaCategoryIndex category in visibleCategories)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _DuaCategoryCard(
@@ -184,19 +217,22 @@ class _DuasContent extends StatelessWidget {
     );
   }
 
-  List<HisnCategory> _visibleCategories() {
+  List<DuaCategoryIndex> _visibleCategories() {
     final String normalizedQuery = query.trim();
-    if (normalizedQuery.isEmpty) return categories;
-    return categories
-        .where((HisnCategory category) => category.matches(normalizedQuery))
+    if (normalizedQuery.isEmpty) return categoryIndex;
+    return categoryIndex
+        .where((DuaCategoryIndex category) => category.matches(normalizedQuery))
         .toList(growable: false);
   }
 
-  void _openCategory(BuildContext context, HisnCategory category) {
+  void _openCategory(BuildContext context, DuaCategoryIndex category) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (BuildContext context) {
-          return DuasCategoryPage(category: category);
+          return DuasCategoryPage(
+            categoryIndex: category,
+            repository: repository,
+          );
         },
       ),
     );
@@ -206,7 +242,10 @@ class _DuasContent extends StatelessWidget {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (BuildContext context) {
-          return DuasFavouritesPage(categories: categories);
+          return DuasFavouritesPage(
+            categoryIndex: categoryIndex,
+            repository: repository,
+          );
         },
       ),
     );
@@ -355,7 +394,7 @@ class _FavouritesEntryCard extends StatelessWidget {
 class _DuaCategoryCard extends StatelessWidget {
   const _DuaCategoryCard({required this.category, required this.onTap});
 
-  final HisnCategory category;
+  final DuaCategoryIndex category;
   final VoidCallback onTap;
 
   @override
@@ -405,7 +444,7 @@ class _DuaCategoryCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  '${category.duas.length} ${category.duas.length == 1 ? 'dua' : 'duas'}',
+                  '${category.duaCount} ${category.duaCount == 1 ? 'dua' : 'duas'}',
                   style: theme.textTheme.labelMedium?.copyWith(
                     color: colors.primary,
                     fontWeight: FontWeight.w800,
@@ -488,8 +527,8 @@ class _DuasLoadingState extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Center(
       child: SizedBox.square(
-        dimension: 28,
-        child: CircularProgressIndicator(strokeWidth: 2.4),
+        dimension: 40,
+        child: CircularProgressIndicator(strokeWidth: 3),
       ),
     );
   }
@@ -500,11 +539,15 @@ class _DuasMessageState extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.message,
+    this.actionLabel,
+    this.onActionPressed,
   });
 
   final IconData icon;
   final String title;
   final String message;
+  final String? actionLabel;
+  final VoidCallback? onActionPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -545,6 +588,13 @@ class _DuasMessageState extends StatelessWidget {
                       height: 1.35,
                     ),
                   ),
+                  if (actionLabel != null && onActionPressed != null) ...[
+                    const SizedBox(height: 14),
+                    FilledButton(
+                      onPressed: onActionPressed,
+                      child: Text(actionLabel!),
+                    ),
+                  ],
                 ],
               ),
             ),

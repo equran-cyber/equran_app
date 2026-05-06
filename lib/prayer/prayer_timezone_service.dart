@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
-import 'package:lat_lng_to_timezone/lat_lng_to_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
@@ -8,26 +7,12 @@ abstract class PrayerTimezoneResolver {
   String? timezoneIdForCoordinates(double latitude, double longitude);
 }
 
-class LatLngPrayerTimezoneResolver implements PrayerTimezoneResolver {
-  const LatLngPrayerTimezoneResolver();
+class DevicePrayerTimezoneResolver implements PrayerTimezoneResolver {
+  const DevicePrayerTimezoneResolver();
 
   @override
   String? timezoneIdForCoordinates(double latitude, double longitude) {
-    PrayerTimezoneService.ensureDatabaseInitialized();
-    try {
-      final String timezoneId = latLngToTimezoneString(
-        latitude,
-        longitude,
-      ).trim();
-      if (timezoneId.isEmpty || timezoneId == 'unknown') return null;
-      timezone.getLocation(timezoneId);
-      return timezoneId;
-    } catch (error) {
-      if (kDebugMode) {
-        debugPrint('Prayer timezone lookup failed: $error');
-      }
-      return null;
-    }
+    return PrayerTimezoneService.deviceTimezoneId;
   }
 }
 
@@ -35,6 +20,7 @@ class PrayerTimezoneService {
   const PrayerTimezoneService._();
 
   static bool _databaseInitialized = false;
+  static String? _deviceTimezoneId;
 
   static void ensureDatabaseInitialized() {
     if (_databaseInitialized) return;
@@ -50,6 +36,7 @@ class PrayerTimezoneService {
       final String timezoneId = localTimezone.identifier.trim();
       if (timezoneId.isEmpty) return null;
       timezone.setLocalLocation(timezone.getLocation(timezoneId));
+      _deviceTimezoneId = timezoneId;
       return timezoneId;
     } catch (error) {
       if (kDebugMode) {
@@ -73,6 +60,10 @@ class PrayerTimezoneService {
   static String? validTimezoneId(String? timezoneId) {
     final timezone.Location? location = locationForId(timezoneId);
     return location?.name;
+  }
+
+  static String? get deviceTimezoneId {
+    return validTimezoneId(_deviceTimezoneId);
   }
 
   static String? _cleanTimezoneId(String? timezoneId) {

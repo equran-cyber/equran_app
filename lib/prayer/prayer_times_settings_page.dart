@@ -926,7 +926,7 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
       min: -120,
       max: 120,
       helperText:
-          'Type minutes as digits only. Use - and + to adjust before or after the calculated time.',
+          'Type minutes as digits only. Use the sign button for before or after the calculated time.',
     );
     if (value == null) return;
     await _saveSettings(
@@ -1115,6 +1115,7 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
     required bool allowNullValue,
   }) {
     int signedValue = (currentValue ?? 0).clamp(min, max).toInt();
+    bool isNegative = signedValue < 0;
     final TextEditingController controller = TextEditingController(
       text: currentValue == null ? '' : signedValue.abs().toString(),
     );
@@ -1123,17 +1124,8 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
       final String raw = controller.text.trim();
       final int magnitude = raw.isEmpty ? 0 : int.tryParse(raw) ?? -1;
       if (magnitude < 0) return min - 1;
-      if (signedValue < 0 && min < 0) return -magnitude;
+      if (isNegative && magnitude != 0 && min < 0) return -magnitude;
       return magnitude;
-    }
-
-    void setControllerText(int value) {
-      controller.value = TextEditingValue(
-        text: value.abs().toString(),
-        selection: TextSelection.collapsed(
-          offset: value.abs().toString().length,
-        ),
-      );
     }
 
     return showDialog<_OptionalNumberResult<int>?>(
@@ -1141,14 +1133,14 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
       builder: (BuildContext context) {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setDialogState) {
-            void stepBy(int delta) {
-              final int fromText = signedValueFromText();
-              if (fromText >= min && fromText <= max) {
-                signedValue = fromText;
-              }
+            void toggleSign() {
+              if (min >= 0) return;
               setDialogState(() {
-                signedValue = (signedValue + delta).clamp(min, max).toInt();
-                setControllerText(signedValue);
+                isNegative = !isNegative;
+                final int fromText = signedValueFromText();
+                if (fromText >= min && fromText <= max) {
+                  signedValue = fromText;
+                }
               });
             }
 
@@ -1161,9 +1153,13 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
                   Row(
                     children: <Widget>[
                       IconButton.filledTonal(
-                        tooltip: 'Decrease',
-                        onPressed: () => stepBy(-1),
-                        icon: const Icon(Icons.remove_rounded),
+                        tooltip: isNegative ? 'Set positive' : 'Set negative',
+                        onPressed: min < 0 ? toggleSign : null,
+                        icon: Text(
+                          isNegative ? '-' : '+',
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w900),
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -1175,10 +1171,7 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
                           inputFormatters: <TextInputFormatter>[
                             FilteringTextInputFormatter.digitsOnly,
                           ],
-                          decoration: InputDecoration(
-                            helperText: helperText,
-                            prefixText: signedValue < 0 ? '-' : null,
-                          ),
+                          decoration: InputDecoration(helperText: helperText),
                           onChanged: (_) {
                             setDialogState(() {
                               final int fromText = signedValueFromText();
@@ -1188,12 +1181,6 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
                             });
                           },
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      IconButton.filledTonal(
-                        tooltip: 'Increase',
-                        onPressed: () => stepBy(1),
-                        icon: const Icon(Icons.add_rounded),
                       ),
                     ],
                   ),

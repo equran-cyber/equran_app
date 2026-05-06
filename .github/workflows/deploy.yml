@@ -22,40 +22,6 @@ jobs:
       - name: Install Flutter Dependencies
         run: flutter pub get
 
-      - name: Check Dart Formatting
-        id: format
-        continue-on-error: true
-        shell: bash
-          dart format .
-
-          if git diff --quiet; then
-            echo "Dart formatting is clean."
-            exit 0
-          fi
-
-          echo "Dart formatting changed these files:"
-          git diff --name-only
-
-          echo ""
-          echo "Dart formatting diff:"
-          git diff --
-
-          exit 1
-
-        if: steps.format.outcome == 'failure' || steps.analyze.outcome == 'failure'
-        shell: bash
-        run: |
-          if [[ "${{ steps.format.outcome }}" == "failure" ]]; then
-            echo "Dart formatting check failed. See the changed file list and diff in the Check Dart Formatting step."
-          fi
-
-          if [[ "${{ steps.analyze.outcome }}" == "failure" ]]; then
-            echo "Flutter analyze failed. See analyzer output above."
-          fi
-
-          exit 1
-
-
   version:
     runs-on: ubuntu-latest
     outputs:

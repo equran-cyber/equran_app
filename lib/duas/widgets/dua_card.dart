@@ -4,6 +4,7 @@ import 'package:equran/utils/app_radii.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive/hive.dart';
+import 'package:like_button/like_button.dart';
 import 'package:share_plus/share_plus.dart';
 
 enum _DuaOverflowAction { copy, share }
@@ -18,7 +19,7 @@ class DuaCard extends StatelessWidget {
     this.contentPadding = const EdgeInsets.fromLTRB(20, 16, 20, 18),
   });
 
-  final HisnDua dua;
+  final DuaEntry dua;
   final int? number;
   final String? categoryTitle;
   final VoidCallback? onTap;
@@ -39,7 +40,9 @@ class DuaCard extends StatelessWidget {
     return ValueListenableBuilder<Box<dynamic>>(
       valueListenable: DuaFavouritesDB().listener,
       builder: (BuildContext context, Box<dynamic> box, Widget? child) {
-        final bool isFavourite = DuaFavouritesDB().contains(dua.id);
+        final bool isFavourite =
+            DuaFavouritesDB().contains(dua.id) ||
+            DuaFavouritesDB().contains(dua.legacyFavouriteId);
 
         return Card(
           elevation: isLight ? 3 : 0,
@@ -164,7 +167,7 @@ class _DuaCardHeader extends StatelessWidget {
     required this.isFavourite,
   });
 
-  final HisnDua dua;
+  final DuaEntry dua;
   final int? number;
   final String? categoryTitle;
   final bool isFavourite;
@@ -209,40 +212,79 @@ class _DuaCardHeader extends StatelessWidget {
         ] else
           const Spacer(),
         const SizedBox(width: 10),
-        _DuaIconButton(
-          tooltip: isFavourite ? 'Remove favourite' : 'Favourite',
-          icon: isFavourite
-              ? Icons.favorite_rounded
-              : Icons.favorite_border_rounded,
-          color: isFavourite ? colors.primary : colors.onSurface.withAlpha(168),
-          onPressed: () => _toggleFavourite(context, isFavourite),
-        ),
+        _DuaFavouriteButton(dua: dua, isFavourite: isFavourite),
         const SizedBox(width: 6),
         _DuaMoreMenu(dua: dua),
       ],
     );
   }
+}
 
-  void _toggleFavourite(BuildContext context, bool isFavourite) {
-    if (isFavourite) {
-      DuaFavouritesDB().delete(dua.id);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Removed from dua favourites.')),
-      );
-      return;
-    }
+class _DuaFavouriteButton extends StatelessWidget {
+  const _DuaFavouriteButton({required this.dua, required this.isFavourite});
 
-    DuaFavouritesDB().put(dua.id, DateTime.now().toIso8601String());
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Added to dua favourites.')));
+  final DuaEntry dua;
+  final bool isFavourite;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+
+    return Tooltip(
+      message: isFavourite ? 'Remove favourite' : 'Favourite',
+      child: SizedBox(
+        height: 34,
+        width: 34,
+        child: Center(
+          child: LikeButton(
+            size: 22,
+            isLiked: isFavourite,
+            circleColor: CircleColor(
+              start: colors.primary.withAlpha(180),
+              end: colors.primary,
+            ),
+            bubblesColor: BubblesColor(
+              dotPrimaryColor: colors.primary,
+              dotSecondaryColor: colors.secondary,
+            ),
+            likeBuilder: (bool liked) {
+              return Icon(
+                liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                color: liked ? colors.primary : colors.onSurface.withAlpha(168),
+                size: 21,
+              );
+            },
+            onTap: (bool liked) async {
+              try {
+                if (liked) {
+                  await DuaFavouritesDB().delete(dua.id);
+                  await DuaFavouritesDB().delete(dua.legacyFavouriteId);
+                  return false;
+                }
+
+                await DuaFavouritesDB().put(dua.id, dua.toFavouriteSnapshot());
+                return true;
+              } catch (error) {
+                if (!context.mounted) return liked;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Could not update dua favourite.'),
+                  ),
+                );
+                return liked;
+              }
+            },
+          ),
+        ),
+      ),
+    );
   }
 }
 
 class _DuaMoreMenu extends StatelessWidget {
   const _DuaMoreMenu({required this.dua});
 
-  final HisnDua dua;
+  final DuaEntry dua;
 
   @override
   Widget build(BuildContext context) {
@@ -299,40 +341,6 @@ class _DuaMoreMenu extends StatelessWidget {
             ),
           ];
         },
-      ),
-    );
-  }
-}
-
-class _DuaIconButton extends StatelessWidget {
-  const _DuaIconButton({
-    required this.tooltip,
-    required this.icon,
-    required this.color,
-    required this.onPressed,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(10),
-        child: Tooltip(
-          message: tooltip,
-          child: SizedBox(
-            height: 34,
-            width: 34,
-            child: Icon(icon, size: 19, color: color),
-          ),
-        ),
       ),
     );
   }

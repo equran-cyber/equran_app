@@ -294,7 +294,7 @@ class PrayerLocationService {
     PrayerReverseGeocoder reverseGeocoder =
         const CompositePrayerReverseGeocoder(),
     PrayerTimezoneResolver timezoneResolver =
-        const LatLngPrayerTimezoneResolver(),
+        const DevicePrayerTimezoneResolver(),
   }) : _provider = provider,
        _reverseGeocoder = reverseGeocoder,
        _timezoneResolver = timezoneResolver;

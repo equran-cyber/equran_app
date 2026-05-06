@@ -11,6 +11,9 @@ import 'package:equran/utils/responsive_nav.dart';
 import 'package:flutter/material.dart';
 
 const EdgeInsets _drawerTilePadding = EdgeInsets.symmetric(horizontal: 12);
+const int _downloadsDestinationIndex = 3;
+const int _settingsDestinationIndex = 5;
+const List<int> _drawerDestinationIndices = <int>[0, 1, 2, 4];
 
 class Destinations {
   const Destinations(
@@ -35,9 +38,10 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
+  int _previousPageIndex = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  final List<Destinations> _pageDestinations = const <Destinations>[
+  final List<Destinations> _pageDestinations = <Destinations>[
     Destinations(
       'Home',
       Icon(Icons.home_outlined),
@@ -58,8 +62,8 @@ class _HomePageState extends State<HomePage> {
     ),
     Destinations(
       'Downloads',
-      Icon(Icons.download_done_outlined),
-      Icon(Icons.download_done_rounded),
+      Icon(Icons.download_outlined),
+      Icon(Icons.download_rounded),
       DownloadsPage(),
     ),
     Destinations(
@@ -82,77 +86,106 @@ class _HomePageState extends State<HomePage> {
     final double navIconSize = ResponsiveNav.iconSize(context);
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
+    final bool showSecondaryBackButton = _isSecondaryPage(_selectedIndex);
 
     return Scaffold(
       key: _scaffoldKey,
-      drawer: NavigationDrawerTheme(
-        data: NavigationDrawerTheme.of(context).copyWith(
-          labelTextStyle: WidgetStatePropertyAll(
-            ResponsiveNav.drawerLabelStyle(context),
-          ),
-          tileHeight: ResponsiveNav.drawerTileHeight(context),
-          indicatorColor: colorScheme.secondaryContainer.withValues(
-            alpha: 0.45,
-          ),
-          indicatorShape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-        ),
-        child: NavigationDrawer(
-          onDestinationSelected: (index) {
-            _scaffoldKey.currentState!.closeDrawer();
-            _onItemTapped(index);
-          },
-          selectedIndex: _selectedIndex,
-          tilePadding: _drawerTilePadding,
-          children: <Widget>[
-            SizedBox(height: tabletLayout ? 76 : 64),
-            ..._pageDestinations.map((Destinations destination) {
-              return NavigationDrawerDestination(
-                label: Text(destination.label),
-                icon: IconTheme(
-                  data: IconThemeData(
-                    color: colorScheme.onSurfaceVariant,
-                    size: navIconSize,
+      drawer: showSecondaryBackButton
+          ? null
+          : NavigationDrawerTheme(
+              data: NavigationDrawerTheme.of(context).copyWith(
+                labelTextStyle: WidgetStatePropertyAll(
+                  ResponsiveNav.drawerLabelStyle(context),
+                ),
+                tileHeight: ResponsiveNav.drawerTileHeight(context),
+                indicatorColor: colorScheme.secondaryContainer.withValues(
+                  alpha: 0.45,
+                ),
+                indicatorShape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: NavigationDrawer(
+                onDestinationSelected: (index) {
+                  _onDrawerDestinationSelected(index);
+                },
+                selectedIndex: _selectedDrawerIndex,
+                tilePadding: _drawerTilePadding,
+                children: <Widget>[
+                  SizedBox(height: tabletLayout ? 76 : 64),
+                  ..._drawerDestinationIndices.map((int destinationIndex) {
+                    final Destinations destination =
+                        _pageDestinations[destinationIndex];
+                    return NavigationDrawerDestination(
+                      label: Text(destination.label),
+                      icon: IconTheme(
+                        data: IconThemeData(
+                          color: colorScheme.onSurfaceVariant,
+                          size: navIconSize,
+                        ),
+                        child: destination.icon,
+                      ),
+                      selectedIcon: IconTheme(
+                        data: IconThemeData(
+                          color: colorScheme.onSecondaryContainer,
+                          size: navIconSize,
+                        ),
+                        child: destination.selectedIcon,
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 8),
+                  const Divider(indent: 18, endIndent: 18),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 6, 18, 10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: <Widget>[
+                        IconButton(
+                          tooltip: 'Settings',
+                          iconSize: navIconSize,
+                          color: _selectedIndex == _settingsDestinationIndex
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                          onPressed: _openSettingsFromDrawer,
+                          icon: const Icon(Icons.settings_outlined),
+                        ),
+                        IconButton(
+                          tooltip: 'Downloads',
+                          iconSize: navIconSize,
+                          color: _selectedIndex == _downloadsDestinationIndex
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                          onPressed: _openDownloadsFromDrawer,
+                          icon: const Icon(Icons.download_outlined),
+                        ),
+                        IconButton(
+                          tooltip: 'Toggle theme',
+                          iconSize: navIconSize,
+                          color: colorScheme.onSurfaceVariant,
+                          onPressed: _toggleQuickTheme,
+                          icon: Icon(
+                            theme.brightness == Brightness.dark
+                                ? Icons.light_mode_rounded
+                                : Icons.dark_mode_rounded,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  child: destination.icon,
-                ),
-                selectedIcon: IconTheme(
-                  data: IconThemeData(
-                    color: colorScheme.onSecondaryContainer,
-                    size: navIconSize,
-                  ),
-                  child: destination.selectedIcon,
-                ),
-              );
-            }),
-            const SizedBox(height: 8),
-            const Divider(indent: 18, endIndent: 18),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-              child: ListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10),
-                leading: Icon(
-                  theme.brightness == Brightness.dark
-                      ? Icons.light_mode_rounded
-                      : Icons.dark_mode_rounded,
-                  size: navIconSize,
-                ),
-                title: const Text('Theme'),
-                trailing: Switch.adaptive(
-                  value: theme.brightness == Brightness.dark,
-                  onChanged: (_) => _toggleQuickTheme(),
-                ),
-                onTap: _toggleQuickTheme,
+                ],
               ),
             ),
-          ],
-        ),
-      ),
       appBar: _selectedIndex >= 2
           ? AppBar(
               toolbarHeight: ResponsiveNav.toolbarHeight(context),
+              leading: showSecondaryBackButton
+                  ? IconButton(
+                      tooltip: 'Back',
+                      onPressed: _returnToPreviousPage,
+                      icon: const Icon(Icons.arrow_back_rounded),
+                    )
+                  : null,
               title: Text(_pageDestinations[_selectedIndex].label),
               centerTitle: true,
               iconTheme: IconThemeData(
@@ -177,9 +210,46 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  int? get _selectedDrawerIndex {
+    final int drawerIndex = _drawerDestinationIndices.indexOf(_selectedIndex);
+    return drawerIndex < 0 ? null : drawerIndex;
+  }
+
+  void _onDrawerDestinationSelected(int index) {
+    final int destinationIndex = _drawerDestinationIndices[index];
+    _onItemTapped(destinationIndex);
+    _scaffoldKey.currentState?.closeDrawer();
+  }
+
+  void _openSettingsFromDrawer() {
+    _scaffoldKey.currentState?.closeDrawer();
+    _onItemTapped(_settingsDestinationIndex);
+  }
+
+  void _openDownloadsFromDrawer() {
+    _scaffoldKey.currentState?.closeDrawer();
+    _onItemTapped(_downloadsDestinationIndex);
+  }
+
   void _onItemTapped(int index) {
     setState(() {
+      if (_isSecondaryPage(index) && !_isSecondaryPage(_selectedIndex)) {
+        _previousPageIndex = _selectedIndex;
+      }
       _selectedIndex = index;
+    });
+  }
+
+  bool _isSecondaryPage(int index) {
+    return index == _downloadsDestinationIndex ||
+        index == _settingsDestinationIndex;
+  }
+
+  void _returnToPreviousPage() {
+    setState(() {
+      _selectedIndex = _isSecondaryPage(_previousPageIndex)
+          ? 0
+          : _previousPageIndex;
     });
   }
 
