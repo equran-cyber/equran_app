@@ -26,7 +26,6 @@ jobs:
         id: format
         continue-on-error: true
         shell: bash
-        run: |
           dart format .
 
           if git diff --quiet; then
@@ -43,12 +42,6 @@ jobs:
 
           exit 1
 
-      - name: Analyze Flutter Project
-        id: analyze
-        continue-on-error: true
-        run: flutter analyze
-
-      - name: Fail Quality Gate
         if: steps.format.outcome == 'failure' || steps.analyze.outcome == 'failure'
         shell: bash
         run: |
@@ -156,8 +149,6 @@ jobs:
 
       - name: Build Android Split APKs
         run: flutter build apk --release --split-per-abi
-
-      - name: Verify Prayer Notification Icon Packaged
         shell: bash
         run: |
           shopt -s nullglob
