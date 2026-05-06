@@ -22,14 +22,29 @@ jobs:
       - name: Install Flutter Dependencies
         run: flutter pub get
 
-      - name: Show Dart Formatting Diff
-        run: dart format --output=show .
-
       - name: Enforce Dart Formatting
+        id: format
+        continue-on-error: true
         run: dart format --set-exit-if-changed .
 
       - name: Analyze Flutter Project
+        id: analyze
+        continue-on-error: true
         run: flutter analyze
+
+      - name: Fail Quality Gate
+        if: steps.format.outcome == 'failure' || steps.analyze.outcome == 'failure'
+        shell: bash
+        run: |
+          if [[ "${{ steps.format.outcome }}" == "failure" ]]; then
+            echo "Dart formatting check failed. See the formatting diff above."
+          fi
+
+          if [[ "${{ steps.analyze.outcome }}" == "failure" ]]; then
+            echo "Flutter analyze failed. See analyzer output above."
+          fi
+
+          exit 1
 
 
   version:
