@@ -25,6 +25,7 @@ class _QiblaPageState extends State<QiblaPage> {
   static const Duration _hapticCooldown = Duration(seconds: 4);
   static const double _alignmentThresholdDegrees = 5;
   static const double _poorHeadingAccuracyDegrees = 25;
+  static const double _headingJitterThresholdDegrees = 0.5;
 
   late final PrayerLocationService _locationService;
 
@@ -147,15 +148,16 @@ class _QiblaPageState extends State<QiblaPage> {
         (CompassEvent event) {
           final _CompassReading reading = _usableCompassReading(event);
           if (!mounted) return;
+          final double? nextHeading = _stableHeading(reading.heading);
           setState(() {
-            _heading = reading.heading;
+            _heading = nextHeading;
             _headingAccuracy = reading.accuracy;
             _headingIsReliable = reading.isReliable;
-            _compassMessage = reading.heading == null
+            _compassMessage = nextHeading == null
                 ? 'Compass unavailable. Use the bearing shown.'
                 : null;
           });
-          _handleQiblaHaptic(reading.heading, isReliable: reading.isReliable);
+          _handleQiblaHaptic(nextHeading, isReliable: reading.isReliable);
         },
         onError: (_) {
           if (!mounted) return;
@@ -193,7 +195,7 @@ class _QiblaPageState extends State<QiblaPage> {
         now.difference(_lastHapticAt!) >= _hapticCooldown;
     if (isFacing && !_wasFacingQibla && cooledDown) {
       _lastHapticAt = now;
-      HapticFeedback.lightImpact().ignore();
+      HapticFeedback.mediumImpact().ignore();
     }
     _wasFacingQibla = isFacing;
   }
@@ -211,6 +213,17 @@ class _QiblaPageState extends State<QiblaPage> {
   static double? _normalizedHeading(double? heading) {
     if (heading == null || !heading.isFinite) return null;
     return _qiblaService.normalizeDegrees(heading);
+  }
+
+  double? _stableHeading(double? nextHeading) {
+    final double? currentHeading = _heading;
+    if (nextHeading == null || currentHeading == null) return nextHeading;
+    final double delta = _qiblaService.shortestAngleDeltaDegrees(
+      currentHeading,
+      nextHeading,
+    );
+    if (delta.abs() < _headingJitterThresholdDegrees) return currentHeading;
+    return nextHeading;
   }
 
   static double? _usableAccuracy(double? accuracy) {
@@ -299,7 +312,7 @@ class _QiblaContent extends StatelessWidget {
     final ColorScheme colors = theme.colorScheme;
     final bool isAligned = relative != null && relative!.abs() <= 5;
     final String guidance = relative == null
-        ? 'Bearing ${bearing.round()}°'
+        ? 'Bearing ${_formatCompassDegrees(bearing)}°'
         : _QiblaPageState._qiblaService.guidanceForRelativeDirection(relative!);
     final MediaQueryData media = MediaQuery.of(context);
     final double contentWidth = math.min(media.size.width - 24, 760);
@@ -405,8 +418,8 @@ class _QiblaCompass extends StatelessWidget {
             // The dial is rotated by the device heading, while the Qibla marker
             // is independently rotated by qiblaBearing - heading. Keeping those
             // rotations separate avoids applying the heading twice.
-            AnimatedRotation(
-              turns: heading == null ? 0 : -heading! / 360,
+            _ShortestPathRotation(
+              degrees: heading == null ? 0 : -heading!,
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
               child: CustomPaint(
@@ -433,8 +446,8 @@ class _QiblaCompass extends StatelessWidget {
                     : const <BoxShadow>[],
               ),
             ),
-            AnimatedRotation(
-              turns: arrowDegrees / 360,
+            _ShortestPathRotation(
+              degrees: arrowDegrees,
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
               child: _QiblaMarker(size: size),
@@ -460,8 +473,8 @@ class _QiblaCompass extends StatelessWidget {
                 children: <Widget>[
                   Text(
                     heading == null
-                        ? '${bearing.round()}°'
-                        : '${heading!.round()}°',
+                        ? '${_formatCompassDegrees(bearing)}°'
+                        : '${_formatCompassDegrees(heading!)}°',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w900,
                     ),
@@ -478,6 +491,53 @@ class _QiblaCompass extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ShortestPathRotation extends StatefulWidget {
+  const _ShortestPathRotation({
+    required this.degrees,
+    required this.duration,
+    required this.curve,
+    required this.child,
+  });
+
+  final double degrees;
+  final Duration duration;
+  final Curve curve;
+  final Widget child;
+
+  @override
+  State<_ShortestPathRotation> createState() => _ShortestPathRotationState();
+}
+
+class _ShortestPathRotationState extends State<_ShortestPathRotation> {
+  static const double _jitterThresholdDegrees = 0.5;
+  late double _unwrappedDegrees;
+
+  @override
+  void initState() {
+    super.initState();
+    _unwrappedDegrees = widget.degrees;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ShortestPathRotation oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final double delta = _QiblaPageState._qiblaService
+        .shortestAngleDeltaDegrees(_unwrappedDegrees, widget.degrees);
+    if (delta.abs() < _jitterThresholdDegrees) return;
+    _unwrappedDegrees += delta;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedRotation(
+      turns: _unwrappedDegrees / 360,
+      duration: widget.duration,
+      curve: widget.curve,
+      child: widget.child,
     );
   }
 }
@@ -717,9 +777,11 @@ class _QiblaDetailsCard extends StatelessWidget {
                 _DetailPill(
                   text: 'Lng ${location.longitude.toStringAsFixed(4)}',
                 ),
-                _DetailPill(text: 'Qibla ${bearing.round()}°'),
+                _DetailPill(text: 'Qibla ${_formatCompassDegrees(bearing)}°'),
                 if (heading != null)
-                  _DetailPill(text: 'Heading ${heading!.round()}°'),
+                  _DetailPill(
+                    text: 'Heading ${_formatCompassDegrees(heading!)}°',
+                  ),
               ],
             ),
             if (compassStatus != null) ...<Widget>[
@@ -929,6 +991,13 @@ String _currentLocationLabel(PrayerLocation location) {
     return 'Current location';
   }
   return label;
+}
+
+String _formatCompassDegrees(double degrees) {
+  final int rounded = _QiblaPageState._qiblaService
+      .normalizeDegrees360(degrees)
+      .round();
+  return '${rounded == 360 ? 0 : rounded}';
 }
 
 bool _isGenericLocationLabel(String label) {

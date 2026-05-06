@@ -17,8 +17,7 @@ class QiblaService {
     required double qiblaBearing,
     required double heading,
   }) {
-    final double relative = normalizeDegrees(qiblaBearing - heading);
-    return relative > 180 ? relative - 360 : relative;
+    return normalizeDegrees180(qiblaBearing - heading);
   }
 
   String guidanceForRelativeDirection(double relativeDirection) {
@@ -29,8 +28,21 @@ class QiblaService {
   }
 
   double normalizeDegrees(double degrees) {
+    return normalizeDegrees360(degrees);
+  }
+
+  double normalizeDegrees360(double degrees) {
     final double normalized = degrees % 360;
     return normalized < 0 ? normalized + 360 : normalized;
+  }
+
+  double normalizeDegrees180(double degrees) {
+    final double normalized = normalizeDegrees360(degrees + 180) - 180;
+    return normalized == -180 ? 180 : normalized;
+  }
+
+  double shortestAngleDeltaDegrees(double from, double to) {
+    return normalizeDegrees180(to - from);
   }
 
   bool _hasValidCoordinates(PrayerLocation location) {
