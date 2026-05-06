@@ -22,7 +22,10 @@ jobs:
       - name: Install Flutter Dependencies
         run: flutter pub get
 
-      - name: Check Dart Formatting
+      - name: Show Dart Formatting Diff
+        run: dart format --output=show .
+
+      - name: Enforce Dart Formatting
         run: dart format --set-exit-if-changed .
 
       - name: Analyze Flutter Project
