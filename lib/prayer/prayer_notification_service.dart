@@ -113,9 +113,10 @@ class FlutterPrayerLocalNotificationPlatform
 
     if (defaultTargetPlatform == TargetPlatform.android) {
       final PrayerNotificationPermissionStatus? nativeStatus =
-          await _androidPermissions
-              .checkPermission()
-              .timeout(_operationTimeout, onTimeout: () => null);
+          await _androidPermissions.checkPermission().timeout(
+            _operationTimeout,
+            onTimeout: () => null,
+          );
       if (nativeStatus != null) return nativeStatus;
 
       await initialize();
@@ -172,9 +173,10 @@ class FlutterPrayerLocalNotificationPlatform
 
     if (defaultTargetPlatform == TargetPlatform.android) {
       final PrayerNotificationPermissionStatus? nativeStatus =
-          await _androidPermissions
-              .requestPermission()
-              .timeout(_operationTimeout, onTimeout: () => null);
+          await _androidPermissions.requestPermission().timeout(
+            _operationTimeout,
+            onTimeout: () => null,
+          );
       if (nativeStatus != null) return nativeStatus;
 
       await initialize();
@@ -229,9 +231,10 @@ class FlutterPrayerLocalNotificationPlatform
   Future<void> openSettings() async {
     if (!_isSupported) return;
     if (defaultTargetPlatform == TargetPlatform.android) {
-      final bool opened = await _androidPermissions
-          .openSettings()
-          .timeout(_operationTimeout, onTimeout: () => false);
+      final bool opened = await _androidPermissions.openSettings().timeout(
+        _operationTimeout,
+        onTimeout: () => false,
+      );
       if (opened) return;
     }
   }

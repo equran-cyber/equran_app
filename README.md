@@ -1,132 +1,126 @@
 # eQuran
 
-> A clean, modern Quran companion for focused reading, listening, and daily reflection.
-
-<p align="left">
+<p align="center">
+  <a href="https://github.com/ya27hw/equran_app/blob/main/pubspec.yaml">
+    <img alt="App version" src="https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fya27hw%2Fequran_app%2Fmain%2Fpubspec.yaml&query=%24.version&label=app%20version&style=for-the-badge">
+  </a>
   <a href="https://github.com/ya27hw/equran_app/releases">
-    <img alt="Latest GitHub release" src="https://img.shields.io/github/v/release/ya27hw/equran_app?sort=semver&style=for-the-badge">
+    <img alt="Latest release" src="https://img.shields.io/github/v/release/ya27hw/equran_app?sort=semver&style=for-the-badge">
+  </a>
+  <a href="https://github.com/ya27hw/equran_app/commits/main">
+    <img alt="Last commit" src="https://img.shields.io/github/last-commit/ya27hw/equran_app?style=for-the-badge">
   </a>
   <a href="https://github.com/ya27hw/equran_app/stargazers">
     <img alt="GitHub stars" src="https://img.shields.io/github/stars/ya27hw/equran_app?style=for-the-badge">
   </a>
-  <a href="https://github.com/ya27hw/equran_app/actions/workflows/deploy.yml">
-    <img alt="Build and release workflow" src="https://img.shields.io/github/actions/workflow/status/ya27hw/equran_app/deploy.yml?branch=main&label=release%20build&style=for-the-badge">
+  <a href="https://github.com/ya27hw/equran_app/network/members">
+    <img alt="GitHub forks" src="https://img.shields.io/github/forks/ya27hw/equran_app?style=for-the-badge">
   </a>
-  <img alt="Flutter" src="https://img.shields.io/badge/Flutter-%E2%89%A53.41.7-02569B?logo=flutter&logoColor=white&style=for-the-badge">
-  <img alt="Release targets" src="https://img.shields.io/badge/release%20targets-Android%20%7C%20Linux%20%7C%20Windows-0f766e?style=for-the-badge">
+  <a href="https://github.com/ya27hw/equran_app/actions/workflows/deploy.yml">
+    <img alt="Release build" src="https://img.shields.io/github/actions/workflow/status/ya27hw/equran_app/deploy.yml?branch=main&label=release%20build&style=for-the-badge">
+  </a>
+  <a href="LICENSE">
+    <img alt="License" src="https://img.shields.io/github/license/ya27hw/equran_app?style=for-the-badge">
+  </a>
 </p>
 
-<p align="left">
+<p align="center">
+  <img alt="Flutter" src="https://img.shields.io/badge/Flutter-%E2%89%A53.41.7-02569B?logo=flutter&logoColor=white&style=flat-square">
+  <img alt="Dart" src="https://img.shields.io/badge/Dart-%E2%89%A53.11.5-0175C2?logo=dart&logoColor=white&style=flat-square">
+  <img alt="Release targets" src="https://img.shields.io/badge/targets-Android%20%7C%20Linux%20%7C%20Windows-0f766e?style=flat-square">
+</p>
+
+<p align="center">
   <a href="https://f-droid.org/en/packages/com.app.equran/">
     <img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get it on F-Droid" height="72">
   </a>
 </p>
 
-eQuran brings together Quran reading, ayah and surah audio playback, offline audio downloads, tafsir, transliteration, favourites, and reading progress in a Material 3 Flutter app. The interface is intentionally quiet: useful controls stay close at hand without pulling attention away from the text.
+eQuran is a focused Quran companion built with Flutter. It brings reading, listening, favourites, tafsir, transliteration, prayer times, Qibla direction, and offline audio downloads into one calm Material 3 experience.
 
-## Preview
+The goal is simple: keep the interface quiet, keep the text central, and make the daily act of reading or listening feel easy to return to.
 
-Screenshots are not currently included in this repository. Add images under `metadata/en-US/images/` or a `screenshots/` directory, then replace the placeholders below.
+## Screenshots
 
-| Reading | Audio | Favourites |
-| --- | --- | --- |
-| _Screenshot placeholder_ | _Screenshot placeholder_ | _Screenshot placeholder_ |
+<p align="center">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" alt="eQuran home screen" width="180">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" alt="Quran reading screen" width="180">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3.png" alt="Surah list screen" width="180">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/4.png" alt="Audio player screen" width="180">
+</p>
 
-## Features
+<p align="center">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/5.png" alt="Downloads screen" width="180">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/6.png" alt="Favourites screen" width="180">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/7.png" alt="Prayer times screen" width="180">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/8.png" alt="Settings screen" width="180">
+</p>
 
-- Read the Quran by **Surah** or **Juz**.
-- Switch between a focused card view and a full-page reading view.
-- Resume from the last-read ayah.
-- Play complete surahs or individual ayahs.
-- Download surah or ayah audio for offline listening.
+## What It Does
+
+- Read the Quran by Surah or Juz.
+- Resume from your last-read ayah.
+- Listen to full surahs or individual ayahs.
+- Download Quran audio for offline playback.
 - Choose from multiple reciters.
-- Use background playback and system media controls.
 - Save favourite ayahs with optional notes.
-- View English translation, transliteration, and tafsir content where available.
+- View translation, transliteration, and tafsir where available.
+- Use prayer times, reminders, location settings, and Qibla tools.
 - Share ayahs as generated images.
-- Use responsive layouts across phone, tablet, desktop, and foldable-sized screens.
+- Use responsive layouts across mobile, tablet, and desktop-sized screens.
 
-## App Details
+## Supported Devices
 
-| Item | Value |
+| Platform | Status | Notes |
+| --- | --- | --- |
+| Android phones and tablets | Supported | Primary mobile target. Release APKs are built in CI. |
+| Linux desktop | Supported | Release bundle is built in CI. |
+| Windows desktop | Supported | Release bundle is built in CI. |
+| iOS | Project files included | Can be run from Flutter with Apple tooling; not part of the current release workflow. |
+| macOS | Project files included | Can be run from Flutter with Apple tooling; not part of the current release workflow. |
+| Web | Project files included | Useful for development checks; not part of the current release workflow. |
+
+## Requirements
+
+Install the Flutter stable SDK and the platform tooling for the device you want to run:
+
+| Target | Tooling |
 | --- | --- |
-| Package name | `equran` |
-| Android application ID | `com.app.equran` |
-| Current version | `2.7.3+44` |
-| Flutter SDK | `>=3.38.4` |
-| Dart SDK | `>=3.10.3 <4.0.0` |
-| Release workflow targets | Android split APKs, Linux bundle, Windows bundle |
-| License | Not specified in this repository |
+| Android | Android Studio, Android SDK, and an emulator or physical device |
+| Linux | `clang`, `cmake`, `ninja-build`, `pkg-config`, `libgtk-3-dev`, and GStreamer development packages |
+| Windows | Visual Studio with Desktop development with C++ |
+| iOS/macOS | Xcode on macOS |
+| Web | Chrome or another Flutter-supported browser |
 
-## Tech Stack
+This project currently expects:
 
-- **Flutter** with Material 3.
-- **Hive** for lightweight local persistence.
-- **just_audio**, **just_audio_background**, and **audioplayers** for playback flows.
-- **quran** package for Quran text and metadata.
-- **flutter_map** for the prayer location picker with open map tiles.
-- Local assets for Hafs font, transliteration, daily content, and tafsir data.
+```text
+Flutter >=3.41.7
+Dart >=3.11.5 <4.0.0
+```
 
-### Map Tiles
+## Run The App
 
-The prayer location picker uses `flutter_map` with an OpenStreetMap-compatible
-tile URL and a configured User-Agent. Public tile servers have usage policies;
-production builds with significant traffic should use an appropriate tile
-provider or self-hosted tiles and comply with the chosen provider's terms.
-
-### Prayer Times
-
-Prayer times are calculated locally with `adhan_dart`. Saved prayer locations
-store a readable label, country code when available, and an offline-resolved
-IANA timezone ID from `lat_lng_to_timezone` such as `Europe/London` or
-`Asia/Muscat`. If the location timezone cannot be resolved, the app falls back
-to the device timezone and keeps running.
-
-Prayer reminders use `flutter_local_notifications` with OS scheduled
-notifications. Android 13+ requires `POST_NOTIFICATIONS`, which is requested
-when reminders are enabled. The app schedules inexact local notifications, so
-it does not request `SCHEDULE_EXACT_ALARM` or `USE_EXACT_ALARM`. Android builds
-also enable core library desugaring for scheduled notification support.
-
-To test reminders on a real device, save a Prayer Times location, open Prayer
-Times settings, enable Prayer Reminders, enable one or more prayers, and choose
-an offset. Deny notification permission once to verify the UI disables reminders
-instead of pretending they are scheduled. Change the saved location, calculation
-method, offsets, or timezone setting and confirm reminders are rescheduled.
-Confirm Sunrise remains display-only and no Dhuha reminder appears. Reopen the
-app the next day to refresh the rolling scheduled reminder window.
-
-## Getting Started
-
-### Requirements
-
-- Flutter SDK on the stable channel.
-- Git.
-- Platform tooling for your target:
-  - Android: Android Studio and Android SDK.
-  - Linux: `clang`, `cmake`, `ninja-build`, `pkg-config`, `libgtk-3-dev`, plus GStreamer development packages for audio builds.
-  - Windows: Visual Studio with the Desktop development with C++ workload.
-
-### Clone
+Clone the repository:
 
 ```bash
 git clone https://github.com/ya27hw/equran_app.git
 cd equran_app
 ```
 
-### Install Dependencies
+Install dependencies:
 
 ```bash
 flutter pub get
 ```
 
-### Run Locally
+Run on the connected device or selected desktop target:
 
 ```bash
 flutter run
 ```
 
-You can also target a specific platform:
+You can also choose a specific target:
 
 ```bash
 flutter run -d android
@@ -135,96 +129,73 @@ flutter run -d windows
 flutter run -d chrome
 ```
 
-## Build
+## Build Releases
 
-### Android Split APKs
+Android split APKs:
 
 ```bash
 flutter build apk --release --split-per-abi
 ```
 
-Artifacts are written to:
-
-```text
-build/app/outputs/flutter-apk/
-```
-
-### Linux
+Linux:
 
 ```bash
 flutter config --enable-linux-desktop
 flutter build linux --release
 ```
 
-Artifacts are written to:
-
-```text
-build/linux/x64/release/bundle/
-```
-
-### Windows
+Windows:
 
 ```bash
 flutter config --enable-windows-desktop
 flutter build windows --release
 ```
 
-Artifacts are written to:
+Build outputs are written under `build/`.
+
+## Project Shape
 
 ```text
-build/windows/x64/runner/Release/
+lib/
+  backend/      Data, downloads, audio, persistence, settings, and services
+  home/         Main screens, reading views, player, library, and settings
+  prayer/       Prayer times, reminders, location, timezone, and Qibla tools
+  utils/        Theme, layout, formatting, and shared helpers
+  widgets/      Reusable interface components
+
+assets/
+  fonts/        Hafs Quran font
+  content/      Daily hadith and dua content
+  tafsir/       Tafsir JSON assets
+  transliteration/
+
+metadata/       Store listing metadata and app icon
 ```
 
 ## Release Flow
 
-The release workflow lives at [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
+The GitHub Actions release workflow lives in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
 
-On pushes to `main` or manual workflow dispatch, the workflow:
+On pushes to `main` or manual workflow dispatch, it reads the version from `pubspec.yaml`, builds Android split APKs plus Linux and Windows bundles, then publishes a GitHub Release when the version tag is new.
 
-1. Reads the version from `pubspec.yaml`.
-2. Builds Android split APKs, a Linux release bundle, and a Windows release bundle.
-3. Creates a tag from the semantic version, for example `v2.7.3`.
-4. Publishes a GitHub Release with generated release notes and build artifacts.
+## Notes For Maintainers
 
-Existing tags are detected before release jobs run, so previously published versions are skipped.
+Prayer times are calculated locally with `adhan_dart`. Prayer reminders use `flutter_local_notifications` and Android scheduled notifications. Android 13 and newer require notification permission, which the app requests when reminders are enabled.
 
-## Project Structure
-
-```text
-lib/
-  backend/      Data, downloads, playback helpers, settings, and services
-  home/         Main app screens and reading/player experiences
-  utils/        Theme, responsive, and display helpers
-  widgets/      Shared UI components
-assets/
-  fonts/        Hafs Quran font
-  tafsir/       Tafsir JSON assets
-  transliteration/
-metadata/       Store listing metadata and app icon
-```
+The prayer location picker uses `flutter_map` with OpenStreetMap-compatible tiles. If the app grows beyond light usage, use a tile provider that fits the project’s traffic and terms.
 
 ## Contributing
 
-Contributions are welcome when they stay aligned with the app’s focused reading and listening experience.
+Contributions are welcome when they keep the app focused, respectful, and easy to use.
 
 Before opening a pull request:
 
-1. Keep changes scoped and reviewable.
-2. Run formatting:
-
-   ```bash
-   dart format .
-   ```
-
-3. Run analysis:
-
-   ```bash
-   flutter analyze
-   ```
-
-4. Test the affected platform or feature path.
-5. Update documentation when behavior, setup, or release steps change.
+1. Keep the change scoped.
+2. Run `dart format .`.
+3. Run `flutter analyze`.
+4. Test the feature path you touched.
+5. Update documentation when setup, behavior, or release steps change.
 
 ## License
 
-No license file is currently included in this repository. Add a `LICENSE` file before distributing or reusing the source under explicit open-source terms.
+eQuran is released under the [MIT License](LICENSE).

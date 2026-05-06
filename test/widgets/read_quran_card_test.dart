@@ -22,7 +22,7 @@ void main() {
     }
   });
 
-Future<void> tapMenuAction(WidgetTester tester, String label) async {
+  Future<void> tapMenuAction(WidgetTester tester, String label) async {
     final Finder labelFinder = find.text(label);
     expect(labelFinder, findsOneWidget);
 

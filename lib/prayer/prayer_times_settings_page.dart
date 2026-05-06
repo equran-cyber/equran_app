@@ -10,6 +10,7 @@ import 'package:equran/prayer/prayer_times_service.dart';
 import 'package:equran/utils/app_radii.dart';
 import 'package:equran/widgets/app_selection_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class PrayerTimesSettingsPage extends StatefulWidget {
   const PrayerTimesSettingsPage({super.key});
@@ -672,21 +673,21 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
           selectedValue: _settings.customIshaMode,
           options: PrayerCustomIshaMode.values
               .map(
-                (PrayerCustomIshaMode mode) =>
-                    AppSelectionOption<PrayerCustomIshaMode>(
-                      value: mode,
-                      title: mode.label,
-                      subtitle: switch (mode) {
-                        PrayerCustomIshaMode.angle =>
-                          'Use the custom Isha angle.',
-                        PrayerCustomIshaMode.interval =>
-                          'Set Isha a fixed number of minutes after Maghrib.',
-                        PrayerCustomIshaMode.fixedTime =>
-                          'Use the same clock time on each selected prayer date.',
-                        PrayerCustomIshaMode.latestCap =>
-                          'Use calculated Isha unless it goes later than a cap.',
-                      },
-                    ),
+                (
+                  PrayerCustomIshaMode mode,
+                ) => AppSelectionOption<PrayerCustomIshaMode>(
+                  value: mode,
+                  title: mode.label,
+                  subtitle: switch (mode) {
+                    PrayerCustomIshaMode.angle => 'Use the custom Isha angle.',
+                    PrayerCustomIshaMode.interval =>
+                      'Set Isha a fixed number of minutes after Maghrib.',
+                    PrayerCustomIshaMode.fixedTime =>
+                      'Use the same clock time on each selected prayer date.',
+                    PrayerCustomIshaMode.latestCap =>
+                      'Use calculated Isha unless it goes later than a cap.',
+                  },
+                ),
               )
               .toList(),
         );
@@ -919,13 +920,13 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
   }
 
   Future<void> _editOffset(PrayerTimeKind prayer) async {
-    final int? value = await _showNumberDialog<int>(
+    final int? value = await _showSteppedIntDialog(
       title: '${prayer.label} offset',
       currentValue: _settings.offsets.forPrayer(prayer),
-      helperText: 'Positive or negative minutes applied after calculation.',
-      parser: int.tryParse,
-      validator: (int value) => value >= -120 && value <= 120,
-      formatter: (int value) => value.toString(),
+      min: -120,
+      max: 120,
+      helperText:
+          'Type minutes as digits only. Use the sign button for before or after the calculated time.',
     );
     if (value == null) return;
     await _saveSettings(
@@ -964,13 +965,13 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
     required String suffix,
     required ValueChanged<int> onChanged,
   }) async {
-    final int? value = await _showNumberDialog<int>(
+    final int? value = await _showSteppedIntDialog(
       title: title,
       currentValue: currentValue,
-      helperText: 'Enter a value between $min and $max $suffix.',
-      parser: int.tryParse,
-      validator: (int value) => value >= min && value <= max,
-      formatter: (int value) => value.toString(),
+      min: min,
+      max: max,
+      helperText:
+          'Type $suffix as digits only. Use - and + to adjust the value.',
     );
     if (value == null) return;
     onChanged(value);
@@ -999,15 +1000,15 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
     required String emptyLabel,
     required ValueChanged<int?> onChanged,
   }) async {
-    final _OptionalNumberResult<int>? result =
-        await _showOptionalNumberDialog<int>(
-          title: title,
-          currentValue: currentValue,
-          helperText: emptyLabel,
-          parser: int.tryParse,
-          validator: (int value) => value >= min && value <= max,
-          formatter: (int value) => value.toString(),
-        );
+    final _OptionalNumberResult<int>?
+    result = await _showOptionalSteppedIntDialog(
+      title: title,
+      currentValue: currentValue,
+      min: min,
+      max: max,
+      helperText:
+          '$emptyLabel Blank saves 0. Type digits only and use - or + to adjust.',
+    );
     if (result == null) return;
     onChanged(result.value);
   }
@@ -1069,6 +1070,157 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
       formatter: formatter,
       allowEmpty: true,
     );
+  }
+
+  Future<int?> _showSteppedIntDialog({
+    required String title,
+    required int currentValue,
+    required int min,
+    required int max,
+    required String helperText,
+  }) {
+    return _showSteppedIntDialogInternal(
+      title: title,
+      currentValue: currentValue,
+      min: min,
+      max: max,
+      helperText: helperText,
+      allowNullValue: false,
+    ).then((value) => value?.value);
+  }
+
+  Future<_OptionalNumberResult<int>?> _showOptionalSteppedIntDialog({
+    required String title,
+    required int? currentValue,
+    required int min,
+    required int max,
+    required String helperText,
+  }) {
+    return _showSteppedIntDialogInternal(
+      title: title,
+      currentValue: currentValue,
+      min: min,
+      max: max,
+      helperText: helperText,
+      allowNullValue: true,
+    );
+  }
+
+  Future<_OptionalNumberResult<int>?> _showSteppedIntDialogInternal({
+    required String title,
+    required int? currentValue,
+    required int min,
+    required int max,
+    required String helperText,
+    required bool allowNullValue,
+  }) {
+    int signedValue = (currentValue ?? 0).clamp(min, max).toInt();
+    bool isNegative = signedValue < 0;
+    final TextEditingController controller = TextEditingController(
+      text: currentValue == null ? '' : signedValue.abs().toString(),
+    );
+
+    int signedValueFromText() {
+      final String raw = controller.text.trim();
+      final int magnitude = raw.isEmpty ? 0 : int.tryParse(raw) ?? -1;
+      if (magnitude < 0) return min - 1;
+      if (isNegative && magnitude != 0 && min < 0) return -magnitude;
+      return magnitude;
+    }
+
+    return showDialog<_OptionalNumberResult<int>?>(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) {
+            void toggleSign() {
+              if (min >= 0) return;
+              setDialogState(() {
+                isNegative = !isNegative;
+                final int fromText = signedValueFromText();
+                if (fromText >= min && fromText <= max) {
+                  signedValue = fromText;
+                }
+              });
+            }
+
+            return AlertDialog(
+              title: Text(title),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      IconButton.filledTonal(
+                        tooltip: isNegative ? 'Set positive' : 'Set negative',
+                        onPressed: min < 0 ? toggleSign : null,
+                        icon: Text(
+                          isNegative ? '-' : '+',
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: controller,
+                          autofocus: true,
+                          textAlign: TextAlign.center,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: <TextInputFormatter>[
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                          decoration: InputDecoration(helperText: helperText),
+                          onChanged: (_) {
+                            setDialogState(() {
+                              final int fromText = signedValueFromText();
+                              if (fromText >= min && fromText <= max) {
+                                signedValue = fromText;
+                              }
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              actions: <Widget>[
+                if (allowNullValue)
+                  TextButton(
+                    onPressed: () => Navigator.of(
+                      context,
+                    ).pop(const _OptionalNumberResult<Never>(null)),
+                    child: const Text('Clear'),
+                  ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final int value = signedValueFromText();
+                    if (value < min || value > max) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Enter a value from $min to $max.'),
+                        ),
+                      );
+                      return;
+                    }
+                    Navigator.of(
+                      context,
+                    ).pop(_OptionalNumberResult<int>(value));
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    ).whenComplete(controller.dispose);
   }
 
   Future<T?> _showNumberDialogInternal<T extends num>({
@@ -1297,11 +1449,13 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
               : 'Notification permission is off. Reminders were disabled.',
         );
       }
-    } else if (reminderResult.status == PrayerNotificationScheduleStatus.failed) {
+    } else if (reminderResult.status ==
+        PrayerNotificationScheduleStatus.failed) {
       if (mounted) {
         setState(() {
           _notificationMessage =
-              reminderResult.message ?? 'Prayer reminders could not be scheduled.';
+              reminderResult.message ??
+              'Prayer reminders could not be scheduled.';
         });
         _showMessage(_notificationMessage!);
       }
@@ -1436,8 +1590,8 @@ class _PrayerTimesSettingsPageState extends State<PrayerTimesSettingsPage>
     return switch (permission) {
       PrayerNotificationPermissionStatus.granted =>
         _settings.reminderSettings.remindersEnabled
-        ? 'Local notifications are scheduled on this device.'
-        : 'Notification permission granted.',
+            ? 'Local notifications are scheduled on this device.'
+            : 'Notification permission granted.',
       PrayerNotificationPermissionStatus.denied =>
         'Notification permission is off.',
       PrayerNotificationPermissionStatus.unsupported =>

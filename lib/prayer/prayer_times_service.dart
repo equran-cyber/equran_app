@@ -31,12 +31,7 @@ class PrayerTimesService {
     );
     final DateTime localDate = prayerTimezone == null
         ? DateTime(date.year, date.month, date.day)
-        : timezone.TZDateTime(
-            prayerTimezone,
-            date.year,
-            date.month,
-            date.day,
-          );
+        : timezone.TZDateTime(prayerTimezone, date.year, date.month, date.day);
     final adhan.PrayerTimes baseTimes = adhan.PrayerTimes(
       coordinates: adhan.Coordinates(location.latitude, location.longitude),
       date: localDate,
@@ -274,8 +269,7 @@ class PrayerTimesService {
         adhan.CalculationMethodParameters.tehran(),
       PrayerCalculationMethod.turkiye =>
         adhan.CalculationMethodParameters.turkiye(),
-      PrayerCalculationMethod.uk18 ||
-      PrayerCalculationMethod.custom =>
+      PrayerCalculationMethod.uk18 || PrayerCalculationMethod.custom =>
         adhan.CalculationMethodParameters.other(),
     };
 
@@ -321,8 +315,8 @@ class PrayerTimesService {
 
   int? _customIshaIntervalForCalculation(PrayerTimeSettings settings) {
     return switch (settings.customIshaMode) {
-      PrayerCustomIshaMode.interval || PrayerCustomIshaMode.latestCap =>
-        settings.customIshaInterval,
+      PrayerCustomIshaMode.interval ||
+      PrayerCustomIshaMode.latestCap => settings.customIshaInterval,
       PrayerCustomIshaMode.angle || PrayerCustomIshaMode.fixedTime => null,
     };
   }
@@ -339,9 +333,10 @@ class PrayerTimesService {
 
     final DateTime isha = switch (settings.customIshaMode) {
       PrayerCustomIshaMode.angle => baseIsha,
-      PrayerCustomIshaMode.interval => settings.customIshaInterval == null
-          ? baseIsha
-          : baseMaghrib.add(Duration(minutes: settings.customIshaInterval!)),
+      PrayerCustomIshaMode.interval =>
+        settings.customIshaInterval == null
+            ? baseIsha
+            : baseMaghrib.add(Duration(minutes: settings.customIshaInterval!)),
       PrayerCustomIshaMode.fixedTime => _clockTimeOnDate(
         date: localDate,
         hour: settings.customIshaFixedTimeHour,

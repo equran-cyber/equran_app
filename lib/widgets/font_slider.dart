@@ -4,6 +4,11 @@ import 'package:equran/utils/number_formatting.dart';
 import 'package:flutter/material.dart';
 import 'package:quran/quran.dart' as quran;
 
+const double _minArabicFontSize = 25;
+const double _maxArabicFontSize = 45;
+const double _minTranslationFontSize = 10;
+const double _maxTranslationFontSize = 25;
+
 class FontSlider extends StatefulWidget {
   const FontSlider({super.key, required this.showTranslationControls});
 
@@ -15,11 +20,35 @@ class FontSlider extends StatefulWidget {
 
 class _FontSliderState extends State<FontSlider> {
   @override
+  void initState() {
+    super.initState();
+    _normalizeSavedFontSize(
+      key: 'fontSize',
+      defaultValue: 31,
+      min: _minArabicFontSize,
+      max: _maxArabicFontSize,
+    );
+    _normalizeSavedFontSize(
+      key: 'fontSizeTranslation',
+      defaultValue: 12,
+      min: _minTranslationFontSize,
+      max: _maxTranslationFontSize,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    double fontSize = SettingsDB().get('fontSize', defaultValue: 31.0);
-    double fontSizeTranslation = SettingsDB().get(
-      'fontSizeTranslation',
-      defaultValue: 12.0,
+    double fontSize = _savedFontSize(
+      key: 'fontSize',
+      defaultValue: 31,
+      min: _minArabicFontSize,
+      max: _maxArabicFontSize,
+    );
+    double fontSizeTranslation = _savedFontSize(
+      key: 'fontSizeTranslation',
+      defaultValue: 12,
+      min: _minTranslationFontSize,
+      max: _maxTranslationFontSize,
     );
 
     return Column(
@@ -28,8 +57,8 @@ class _FontSliderState extends State<FontSlider> {
           context: context,
           title: 'Arabic text size',
           value: fontSize,
-          min: 25,
-          max: 65,
+          min: _minArabicFontSize,
+          max: _maxArabicFontSize,
           onChanged: (value) {
             setState(() {
               fontSize = value;
@@ -42,8 +71,8 @@ class _FontSliderState extends State<FontSlider> {
             context: context,
             title: 'Translation text size',
             value: fontSizeTranslation,
-            min: 10,
-            max: 30,
+            min: _minTranslationFontSize,
+            max: _maxTranslationFontSize,
             onChanged: (value) {
               setState(() {
                 fontSizeTranslation = value;
@@ -58,6 +87,31 @@ class _FontSliderState extends State<FontSlider> {
         ),
       ],
     );
+  }
+
+  double _savedFontSize({
+    required String key,
+    required double defaultValue,
+    required double min,
+    required double max,
+  }) {
+    final Object? value = SettingsDB().get(key, defaultValue: defaultValue);
+    final double fontSize = value is num ? value.toDouble() : defaultValue;
+    return fontSize.clamp(min, max).toDouble();
+  }
+
+  void _normalizeSavedFontSize({
+    required String key,
+    required double defaultValue,
+    required double min,
+    required double max,
+  }) {
+    final Object? value = SettingsDB().get(key, defaultValue: defaultValue);
+    final double fontSize = value is num ? value.toDouble() : defaultValue;
+    final double clampedFontSize = fontSize.clamp(min, max).toDouble();
+    if (fontSize != clampedFontSize || value is! double) {
+      SettingsDB().put(key, clampedFontSize);
+    }
   }
 
   Widget _buildSliderRow({

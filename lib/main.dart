@@ -16,6 +16,7 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'backend/library.dart'
     show
         BookmarkDB,
+        DuaFavouritesDB,
         FavouritesDB,
         ReadingEntryAdapter,
         SettingsDB,
@@ -46,6 +47,7 @@ Future<void> main() async {
   await SettingsDB().initBox();
   await SurahDB().initBox();
   await FavouritesDB().initBox();
+  await DuaFavouritesDB().initBox();
 
   await PrayerTimezoneService.configureDeviceTimezone();
   final PrayerSettingsStore prayerSettingsStore = PrayerSettingsStore();

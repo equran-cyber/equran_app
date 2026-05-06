@@ -2,6 +2,7 @@ export 'android_audio_display_mode.dart';
 export 'bookmark_db.dart';
 export 'audio_downloads.dart';
 export 'download_notifications.dart';
+export 'dua_favourites_db.dart';
 export 'favourites_db.dart';
 export 'reading_model.dart';
 export 'settings_db.dart';

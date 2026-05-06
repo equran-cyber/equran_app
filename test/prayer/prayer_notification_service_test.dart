@@ -52,32 +52,34 @@ void main() {
       expect(platform.cancelledIds, isNotEmpty);
     });
 
-    test('schedules only reminder prayers and never Dhuha or Sunrise', () async {
-      final _FakeNotificationPlatform platform = _FakeNotificationPlatform();
-      final PrayerNotificationService service = PrayerNotificationService(
-        platform: platform,
-        scheduleDays: 1,
-        nowProvider: () => DateTime.utc(2026, 5, 3, 23, 1),
-      );
+    test(
+      'schedules only reminder prayers and never Dhuha or Sunrise',
+      () async {
+        final _FakeNotificationPlatform platform = _FakeNotificationPlatform();
+        final PrayerNotificationService service = PrayerNotificationService(
+          platform: platform,
+          scheduleDays: 1,
+          nowProvider: () => DateTime.utc(2026, 5, 3, 23, 1),
+        );
 
-      final PrayerNotificationScheduleResult result = await service.reschedule(
-        settings: enabledSettings,
-        location: location,
-      );
+        final PrayerNotificationScheduleResult result = await service
+            .reschedule(settings: enabledSettings, location: location);
 
-      expect(result.status, PrayerNotificationScheduleStatus.scheduled);
-      expect(
-        result.scheduledNotifications
-            .map((PrayerScheduledNotification item) => item.prayer)
-            .toSet(),
-        PrayerTimeKind.reminderOrder.toSet(),
-      );
-      expect(
-        result.scheduledNotifications
-            .map((PrayerScheduledNotification item) => item.prayer),
-        isNot(contains(PrayerTimeKind.sunrise)),
-      );
-    });
+        expect(result.status, PrayerNotificationScheduleStatus.scheduled);
+        expect(
+          result.scheduledNotifications
+              .map((PrayerScheduledNotification item) => item.prayer)
+              .toSet(),
+          PrayerTimeKind.reminderOrder.toSet(),
+        );
+        expect(
+          result.scheduledNotifications.map(
+            (PrayerScheduledNotification item) => item.prayer,
+          ),
+          isNot(contains(PrayerTimeKind.sunrise)),
+        );
+      },
+    );
 
     test('per-prayer toggles are respected', () async {
       final _FakeNotificationPlatform platform = _FakeNotificationPlatform();
@@ -98,13 +100,15 @@ void main() {
       );
 
       expect(
-        result.scheduledNotifications
-            .map((PrayerScheduledNotification item) => item.prayer),
+        result.scheduledNotifications.map(
+          (PrayerScheduledNotification item) => item.prayer,
+        ),
         isNot(contains(PrayerTimeKind.fajr)),
       );
       expect(
-        result.scheduledNotifications
-            .map((PrayerScheduledNotification item) => item.prayer),
+        result.scheduledNotifications.map(
+          (PrayerScheduledNotification item) => item.prayer,
+        ),
         isNot(contains(PrayerTimeKind.isha)),
       );
     });
@@ -165,9 +169,10 @@ void main() {
 
       expect(
         platform.scheduled.values.single.scheduledAt,
-        day.entryFor(PrayerTimeKind.dhuhr).time.subtract(
-          const Duration(minutes: 10),
-        ),
+        day
+            .entryFor(PrayerTimeKind.dhuhr)
+            .time
+            .subtract(const Duration(minutes: 10)),
       );
     });
 
@@ -186,23 +191,27 @@ void main() {
       expect(platform.scheduleCalls, platform.scheduled.length * 2);
     });
 
-    test('permission denied does not pretend notifications were scheduled', () async {
-      final _FakeNotificationPlatform platform = _FakeNotificationPlatform(
-        permissionStatus: PrayerNotificationPermissionStatus.denied,
-      );
-      final PrayerNotificationService service = PrayerNotificationService(
-        platform: platform,
-        nowProvider: () => DateTime(2026, 5, 4, 0),
-      );
+    test(
+      'permission denied does not pretend notifications were scheduled',
+      () async {
+        final _FakeNotificationPlatform platform = _FakeNotificationPlatform(
+          permissionStatus: PrayerNotificationPermissionStatus.denied,
+        );
+        final PrayerNotificationService service = PrayerNotificationService(
+          platform: platform,
+          nowProvider: () => DateTime(2026, 5, 4, 0),
+        );
 
-      final PrayerNotificationScheduleResult result = await service.reschedule(
-        settings: enabledSettings,
-        location: location,
-      );
+        final PrayerNotificationScheduleResult result = await service
+            .reschedule(settings: enabledSettings, location: location);
 
-      expect(result.status, PrayerNotificationScheduleStatus.permissionDenied);
-      expect(platform.scheduled, isEmpty);
-    });
+        expect(
+          result.status,
+          PrayerNotificationScheduleStatus.permissionDenied,
+        );
+        expect(platform.scheduled, isEmpty);
+      },
+    );
   });
 }
 

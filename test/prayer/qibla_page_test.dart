@@ -12,37 +12,38 @@ void main() {
     await initSettingsTestHarness();
   });
 
-  testWidgets('falls back to saved manual coordinates when GPS is unavailable', (
-    WidgetTester tester,
-  ) async {
-    await tester.runAsync(() {
-      return PrayerSettingsStore().saveLocation(
-        const PrayerLocation(
-          latitude: 23.5880,
-          longitude: 58.3829,
-          label: 'Manual Muscat',
-          mode: PrayerLocationMode.manual,
-        ),
-      );
-    });
+  testWidgets(
+    'falls back to saved manual coordinates when GPS is unavailable',
+    (WidgetTester tester) async {
+      await tester.runAsync(() {
+        return PrayerSettingsStore().saveLocation(
+          const PrayerLocation(
+            latitude: 23.5880,
+            longitude: 58.3829,
+            label: 'Manual Muscat',
+            mode: PrayerLocationMode.manual,
+          ),
+        );
+      });
 
-    await tester.pumpWidget(
-      materialTestApp(
-        const QiblaPage(
-          locationService: PrayerLocationService(
-            provider: _DisabledPositionProvider(),
+      await tester.pumpWidget(
+        materialTestApp(
+          const QiblaPage(
+            locationService: PrayerLocationService(
+              provider: _DisabledPositionProvider(),
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 250));
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
 
-    expect(find.text('Manual Muscat'), findsOneWidget);
-    expect(find.text('Saved prayer location'), findsWidgets);
-    expect(find.text('Enter coordinates'), findsNothing);
-    expect(find.byIcon(Icons.navigation_rounded), findsOneWidget);
-  });
+      expect(find.text('Manual Muscat'), findsOneWidget);
+      expect(find.text('Saved prayer location'), findsWidgets);
+      expect(find.text('Enter coordinates'), findsNothing);
+      expect(find.byIcon(Icons.navigation_rounded), findsOneWidget);
+    },
+  );
 }
 
 class _DisabledPositionProvider implements PrayerPositionProvider {

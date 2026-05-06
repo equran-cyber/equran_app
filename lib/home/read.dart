@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:ui' show ImageByteFormat, TextBox, lerpDouble;
 import 'package:like_button/like_button.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:equran/backend/bookmark_db.dart';
 import 'package:equran/backend/library.dart'
     show
@@ -47,6 +47,8 @@ import 'package:flutter/rendering.dart'
         ViewConfiguration;
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:just_audio/just_audio.dart' as ja;
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:numberpicker/numberpicker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:quran/quran.dart' as quran;
@@ -97,7 +99,9 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
     milliseconds: 280,
   );
 
-  final AudioPlayer _versePlayer = AudioPlayer();
+  final ja.AudioPlayer _versePlayer = ja.AudioPlayer();
+  final ap.AudioPlayer _fallbackVersePlayer = ap.AudioPlayer();
+  late final bool _useAudioplayersFallback;
   late int _currentVerse;
   late int _currentChapter;
   late ScrollController _scrollController;
@@ -111,6 +115,7 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
   bool _playerMinimizedSettled = false;
   bool _isVersePlaying = false;
   bool _isVerseLoading = false;
+  bool _isReadPageForeground = true;
   bool _isDownloadingSurahAyahs = false;
   final Set<String> _downloadingAyahKeys = <String>{};
   bool _hasDownloadedSurahAyahs = false;
@@ -119,6 +124,7 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
   bool _repeatIntervalEnabled = false;
   final Set<String> _preloadingAyahKeys = <String>{};
   int _playbackRequestId = 0;
+  bool _isHandlingVerseCompletion = false;
   int? _playingVerse;
   int _repeatStartVerse = 1;
   int _repeatEndVerse = 1;
@@ -131,9 +137,12 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
     Duration.zero,
   );
   StreamSubscription<Duration>? _playerPositionSubscription;
-  StreamSubscription<Duration>? _playerDurationSubscription;
-  StreamSubscription<PlayerState>? _playerStateSubscription;
-  StreamSubscription<void>? _playerCompleteSubscription;
+  StreamSubscription<Duration?>? _playerDurationSubscription;
+  StreamSubscription<ja.PlayerState>? _playerStateSubscription;
+  StreamSubscription<Duration>? _fallbackPositionSubscription;
+  StreamSubscription<Duration>? _fallbackDurationSubscription;
+  StreamSubscription<ap.PlayerState>? _fallbackStateSubscription;
+  StreamSubscription<void>? _fallbackCompleteSubscription;
   Timer? _pageScrollProgressTimer;
   Timer? _inlineVerseHighlightTimer;
   Timer? _lowRefreshIdleTimer;
@@ -173,6 +182,8 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _viewMode = SettingsDB().get("viewMode", defaultValue: true);
+    _useAudioplayersFallback =
+        !kIsWeb && (Platform.isLinux || Platform.isWindows);
 
     _scrollController = ScrollController();
     _currentChapter = widget.chapter;
@@ -214,10 +225,14 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
     _playerPositionSubscription?.cancel();
     _playerDurationSubscription?.cancel();
     _playerStateSubscription?.cancel();
-    _playerCompleteSubscription?.cancel();
+    _fallbackPositionSubscription?.cancel();
+    _fallbackDurationSubscription?.cancel();
+    _fallbackStateSubscription?.cancel();
+    _fallbackCompleteSubscription?.cancel();
     _pageScrollProgressTimer?.cancel();
     _inlineVerseHighlightTimer?.cancel();
     _versePlayer.dispose();
+    _fallbackVersePlayer.dispose();
     _playerPositionValue.dispose();
     _playerDurationValue.dispose();
     _scrollController.dispose();
@@ -227,29 +242,27 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached ||
-        state == AppLifecycleState.hidden) {
-      unawaited(_pauseReadingAudioForLifecycle());
+    if (state == AppLifecycleState.resumed) {
+      _isReadPageForeground = true;
+      unawaited(_syncReadingAudioStateFromPlayer());
+      _syncReadingPlayerRefreshMode(
+        'read page resumed',
+        scheduleLowRefresh: true,
+      );
+      return;
     }
-  }
 
-  Future<void> _pauseReadingAudioForLifecycle() async {
-    if (!mounted || !_isVersePlaying) return;
-
-    setState(() {
-      _isVersePlaying = false;
-      _isVerseLoading = false;
-    });
+    _isReadPageForeground = false;
+    _pageScrollProgressTimer?.cancel();
+    _inlineVerseHighlightTimer?.cancel();
+    _playerSettleTimer?.cancel();
+    _activePointerCount = 0;
+    _isPlayerGestureActive = false;
+    _isPlayerSettleAnimating = false;
+    _isDraggingPlayerBar = false;
     _syncBottomPlayerProgressPolicy();
-
-    try {
-      await _versePlayer.pause();
-    } finally {
-      await AndroidAudioDisplayMode.setAudioPlaybackActive(false);
-      await _setKeepScreenOn(false);
-    }
+    unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
+    unawaited(AndroidAudioDisplayMode.setVisualProgressActive(false));
   }
 
   void _notifyAudioUserActivity() {
@@ -317,6 +330,7 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
   bool get _shouldRequestLowRefresh {
     final ModalRoute<dynamic>? route = ModalRoute.of(context);
     return mounted &&
+        _isReadPageForeground &&
         _playerMounted &&
         _playerVisible &&
         _playerMinimized &&
@@ -492,6 +506,7 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
     // This is the single gate for audio-position driven UI. Minimized/static
     // mode still receives audio ticks, but they only update _playerPosition.
     return mounted &&
+        _isReadPageForeground &&
         _playerMounted &&
         _playerVisible &&
         !_playerMinimized &&
@@ -943,41 +958,78 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
   }
 
   void _bindVersePlayer() {
-    _playerPositionSubscription = _versePlayer.onPositionChanged.listen((
+    if (_useAudioplayersFallback) {
+      _fallbackPositionSubscription = _fallbackVersePlayer.onPositionChanged
+          .listen((position) {
+            if (!mounted) return;
+            _setPlayerPosition(position);
+          });
+
+      _fallbackDurationSubscription = _fallbackVersePlayer.onDurationChanged
+          .listen((duration) {
+            if (!mounted) return;
+            _setPlayerDuration(duration);
+          });
+
+      _fallbackStateSubscription = _fallbackVersePlayer.onPlayerStateChanged
+          .listen((state) {
+            if (!mounted) return;
+            setState(() {
+              _isVersePlaying = state == ap.PlayerState.playing;
+              if (state == ap.PlayerState.playing ||
+                  state == ap.PlayerState.paused) {
+                _isVerseLoading = false;
+              }
+            });
+            unawaited(_updateKeepScreenOn());
+            unawaited(
+              AndroidAudioDisplayMode.setAudioPlaybackActive(_isVersePlaying),
+            );
+            _syncBottomPlayerProgressPolicy();
+          });
+
+      _fallbackCompleteSubscription = _fallbackVersePlayer.onPlayerComplete
+          .listen((_) async {
+            await _handleVerseCompleteFromPlayer();
+          });
+      return;
+    }
+
+    _playerPositionSubscription = _versePlayer.positionStream.listen((
       position,
     ) {
       if (!mounted) return;
       _setPlayerPosition(position);
     });
 
-    _playerDurationSubscription = _versePlayer.onDurationChanged.listen((
+    _playerDurationSubscription = _versePlayer.durationStream.listen((
       duration,
     ) {
       if (!mounted) return;
-      _setPlayerDuration(duration);
+      _setPlayerDuration(duration ?? Duration.zero);
     });
 
-    _playerStateSubscription = _versePlayer.onPlayerStateChanged.listen((
+    _playerStateSubscription = _versePlayer.playerStateStream.listen((
       state,
-    ) {
+    ) async {
       if (!mounted) return;
       setState(() {
-        _isVersePlaying = state == PlayerState.playing;
-        if (state == PlayerState.playing || state == PlayerState.paused) {
+        _isVersePlaying = state.playing;
+        if ((state.playing &&
+                state.processingState == ja.ProcessingState.ready) ||
+            state.processingState == ja.ProcessingState.completed ||
+            (!state.playing &&
+                state.processingState == ja.ProcessingState.ready)) {
           _isVerseLoading = false;
         }
       });
       unawaited(_updateKeepScreenOn());
-      unawaited(
-        AndroidAudioDisplayMode.setAudioPlaybackActive(_isVersePlaying),
-      );
+      unawaited(AndroidAudioDisplayMode.setAudioPlaybackActive(state.playing));
       _syncBottomPlayerProgressPolicy();
-    });
 
-    _playerCompleteSubscription = _versePlayer.onPlayerComplete.listen((
-      _,
-    ) async {
-      await _handleVerseComplete();
+      if (state.processingState == ja.ProcessingState.completed) {
+        await _handleVerseCompleteFromPlayer();
+      }
     });
   }
 
@@ -1215,12 +1267,14 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
         nextPlayerMinimized && nextPlayerCollapseProgress >= 1;
     final bool shouldDelayLowRefreshForAutoAdvance =
         preserveRefreshState && nextPlayerMinimizedSettled;
-    if (shouldDelayLowRefreshForAutoAdvance) {
+    final bool shouldAnimateVisualsForAutoAdvance =
+        _isReadPageForeground && shouldDelayLowRefreshForAutoAdvance;
+    if (shouldAnimateVisualsForAutoAdvance) {
       _beginLowRefreshAnimationBlock();
     }
 
     bool lowFpsSuppressed = false;
-    if (!shouldDelayLowRefreshForAutoAdvance) {
+    if (_isReadPageForeground && !shouldDelayLowRefreshForAutoAdvance) {
       AndroidAudioDisplayMode.notifyUserActivity();
       _syncReadingPlayerRefreshMode(
         'play verse starts active UI',
@@ -1254,10 +1308,9 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
       forceLowRefresh: shouldDelayLowRefreshForAutoAdvance,
     );
     _updateDB();
-    final Future<void> visualTransition = _scrollToVerseIfNeeded(
-      verse,
-      smooth: smoothScroll,
-    );
+    final Future<void> visualTransition = _isReadPageForeground
+        ? _scrollToVerseIfNeeded(verse, smooth: smoothScroll)
+        : Future<void>.value();
 
     try {
       await _playVerseWithRetry(surah, verse, requestId);
@@ -1267,7 +1320,7 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
     } on _CancelledAudioPlaybackException {
       return;
     } on _OfflineAudioPlaybackException {
-      if (mounted) {
+      if (mounted && _isReadPageForeground) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -1277,7 +1330,7 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
         );
       }
     } catch (_) {
-      if (mounted) {
+      if (mounted && _isReadPageForeground) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Unable to play ayah audio.')),
         );
@@ -1292,9 +1345,9 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
         unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
       }
       await visualTransition;
-      if (shouldDelayLowRefreshForAutoAdvance) {
+      if (shouldAnimateVisualsForAutoAdvance) {
         _endLowRefreshAnimationBlock();
-      } else if (preserveRefreshState) {
+      } else if (_isReadPageForeground && preserveRefreshState) {
         _syncReadingPlayerRefreshMode(
           'preserved playback refresh restored',
           forceLowRefresh: true,
@@ -1339,32 +1392,119 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
   }
 
   Future<void> _playVerseSource(int surah, int verse, int requestId) async {
-    await _versePlayer.stop();
+    await _stopCurrentVerseAudio();
     _throwIfPlaybackRequestCancelled(requestId);
     final double rate = _playbackRate();
-    await _versePlayer.setPlaybackRate(rate);
+    await _setCurrentVersePlaybackRate(rate);
     final AudioDownloadService downloads = AudioDownloadService();
     final File? offlineFile = kIsWeb
         ? null
         : await downloads.playbackAyahFile(surah, verse);
     _throwIfPlaybackRequestCancelled(requestId);
     if (!kIsWeb && offlineFile != null && offlineFile.existsSync()) {
-      await _versePlayer.play(DeviceFileSource(offlineFile.path));
+      await _playCurrentVerseSource(
+        sourceUri: Uri.file(offlineFile.path),
+        surah: surah,
+        verse: verse,
+        fromOffline: true,
+      );
     } else {
       final String url = await QuranAudioService().getAyahUrl(surah, verse);
       _throwIfPlaybackRequestCancelled(requestId);
-      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+      if (_useAudioplayersFallback &&
+          !kIsWeb &&
+          defaultTargetPlatform == TargetPlatform.linux) {
         final Uint8List bytes = await _downloadVerseAudioBytes(url);
         _throwIfPlaybackRequestCancelled(requestId);
-        await _versePlayer.play(BytesSource(bytes));
+        await _fallbackVersePlayer.play(ap.BytesSource(bytes));
       } else {
-        await _versePlayer.play(UrlSource(url));
+        await _playCurrentVerseSource(
+          sourceUri: Uri.parse(url),
+          surah: surah,
+          verse: verse,
+          fromOffline: false,
+        );
       }
       if (!kIsWeb) {
         unawaited(downloads.cacheAyah(surah, verse));
       }
     }
-    await _versePlayer.setPlaybackRate(rate);
+    await _setCurrentVersePlaybackRate(rate);
+  }
+
+  Future<void> _playCurrentVerseSource({
+    required Uri sourceUri,
+    required int surah,
+    required int verse,
+    required bool fromOffline,
+  }) async {
+    if (_useAudioplayersFallback) {
+      if (sourceUri.isScheme('file')) {
+        await _fallbackVersePlayer.play(
+          ap.DeviceFileSource(sourceUri.toFilePath()),
+        );
+      } else {
+        await _fallbackVersePlayer.play(ap.UrlSource(sourceUri.toString()));
+      }
+      return;
+    }
+
+    await _versePlayer.setAudioSource(
+      ja.AudioSource.uri(
+        sourceUri,
+        tag: MediaItem(
+          id:
+              'ayah-$surah-$verse-'
+              '${fromOffline ? "offline" : "stream"}-'
+              '${QuranAudioService().selectedReciter.code}',
+          album: 'eQuran',
+          title: '${quran.getSurahName(surah)} $verse',
+          artist: QuranAudioService().selectedReciter.englishName,
+          displayDescription: 'Ayah $surah:$verse',
+        ),
+      ),
+    );
+    unawaited(_versePlayer.play());
+  }
+
+  Future<void> _setCurrentVersePlaybackRate(double rate) async {
+    if (_useAudioplayersFallback) {
+      await _fallbackVersePlayer.setPlaybackRate(rate);
+      return;
+    }
+    await _versePlayer.setSpeed(rate);
+  }
+
+  Future<void> _pauseCurrentVerseAudio() async {
+    if (_useAudioplayersFallback) {
+      await _fallbackVersePlayer.pause();
+      return;
+    }
+    await _versePlayer.pause();
+  }
+
+  Future<void> _resumeCurrentVerseAudio() async {
+    if (_useAudioplayersFallback) {
+      await _fallbackVersePlayer.resume();
+      return;
+    }
+    unawaited(_versePlayer.play());
+  }
+
+  Future<void> _stopCurrentVerseAudio() async {
+    if (_useAudioplayersFallback) {
+      await _fallbackVersePlayer.stop();
+      return;
+    }
+    await _versePlayer.stop();
+  }
+
+  Future<void> _seekCurrentVerseAudio(Duration position) async {
+    if (_useAudioplayersFallback) {
+      await _fallbackVersePlayer.seek(position);
+      return;
+    }
+    await _versePlayer.seek(position);
   }
 
   Future<Uint8List> _downloadVerseAudioBytes(String url) async {
@@ -1426,6 +1566,55 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
     return 1.0;
   }
 
+  Future<void> _handleVerseCompleteFromPlayer() async {
+    if (_isHandlingVerseCompletion) return;
+    _isHandlingVerseCompletion = true;
+    try {
+      await _handleVerseComplete();
+    } finally {
+      _isHandlingVerseCompletion = false;
+    }
+  }
+
+  Future<void> _syncReadingAudioStateFromPlayer() async {
+    final Duration position = await _currentVerseAudioPosition();
+    final Duration duration = await _currentVerseAudioDuration();
+    final bool isPlaying = _isCurrentVerseAudioPlaying;
+    if (!mounted) return;
+
+    setState(() {
+      _setPlayerPosition(position);
+      _setPlayerDuration(duration);
+      _isVersePlaying = isPlaying;
+      if (isPlaying) {
+        _isVerseLoading = false;
+      }
+    });
+    _syncBottomPlayerProgressPolicy(syncPosition: true);
+    unawaited(AndroidAudioDisplayMode.setAudioPlaybackActive(isPlaying));
+  }
+
+  Future<Duration> _currentVerseAudioPosition() async {
+    if (_useAudioplayersFallback) {
+      return await _fallbackVersePlayer.getCurrentPosition() ?? Duration.zero;
+    }
+    return _versePlayer.position;
+  }
+
+  Future<Duration> _currentVerseAudioDuration() async {
+    if (_useAudioplayersFallback) {
+      return await _fallbackVersePlayer.getDuration() ?? Duration.zero;
+    }
+    return _versePlayer.duration ?? Duration.zero;
+  }
+
+  bool get _isCurrentVerseAudioPlaying {
+    if (_useAudioplayersFallback) {
+      return _isVersePlaying;
+    }
+    return _versePlayer.playing;
+  }
+
   Future<void> _handleVerseComplete() async {
     final int completedVerse = _playingVerse ?? _currentVerse;
     if (_repeatIntervalEnabled) {
@@ -1461,12 +1650,12 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
   Future<void> _toggleBottomPlayer() async {
     if (_isVerseLoading) return;
     if (_isVersePlaying) {
-      await _versePlayer.pause();
+      await _pauseCurrentVerseAudio();
       return;
     }
 
     if (_playingVerse != null && _playerPosition > Duration.zero) {
-      await _versePlayer.resume();
+      await _resumeCurrentVerseAudio();
       return;
     }
 
@@ -1751,7 +1940,7 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
       _setPlayerDuration(Duration.zero);
     });
     _syncBottomPlayerProgressPolicy();
-    await _versePlayer.stop();
+    await _stopCurrentVerseAudio();
     await _setKeepScreenOn(false);
     await AndroidAudioDisplayMode.setAudioPlaybackActive(false);
     await AndroidAudioDisplayMode.clearStaticMinimizedAudioRefreshRate(
@@ -1926,7 +2115,7 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
     final int milliseconds = (_playerDuration.inMilliseconds * value).round();
     final Duration position = Duration(milliseconds: milliseconds);
     _setPlayerPosition(position, render: true);
-    await _versePlayer.seek(position);
+    await _seekCurrentVerseAudio(position);
   }
 
   void _handleBottomPlayerSeekStart(double value) {
@@ -2814,7 +3003,7 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
       _continuousPlayback = false;
       _repeatIntervalEnabled = false;
     });
-    await _versePlayer.pause();
+    await _pauseCurrentVerseAudio();
     await AndroidAudioDisplayMode.setAudioPlaybackActive(false);
     await _setKeepScreenOn(false);
   }
