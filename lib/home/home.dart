@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:adaptive_theme/adaptive_theme.dart';
-import 'package:equran/backend/library.dart' show SettingsDB;
+import 'package:equran/backend/library.dart'
+    show AndroidAudioDisplayMode, SettingsDB;
 import 'package:equran/duas/duas_page.dart';
 import 'package:equran/home/downloads.dart';
 import 'package:equran/home/main_page.dart';
@@ -14,6 +17,10 @@ const EdgeInsets _drawerTilePadding = EdgeInsets.symmetric(horizontal: 12);
 const int _downloadsDestinationIndex = 3;
 const int _settingsDestinationIndex = 5;
 const List<int> _drawerDestinationIndices = <int>[0, 1, 2, 4];
+const String _homePointerRefreshBlocker = 'home.userPointerActive';
+const String _drawerRefreshBlocker = 'home.drawerOpenOrAnimating';
+const String _routeTransitionRefreshBlocker = 'home.routeTransitionActive';
+const String _secondaryRouteRefreshBlocker = 'home.settingsOrDownloadsActive';
 
 class Destinations {
   const Destinations(
@@ -88,11 +95,18 @@ class _HomePageState extends State<HomePage> {
     final ColorScheme colorScheme = theme.colorScheme;
     final bool showSecondaryBackButton = _isSecondaryPage(_selectedIndex);
 
-    return Scaffold(
-      key: _scaffoldKey,
-      drawer: showSecondaryBackButton
-          ? null
-          : NavigationDrawerTheme(
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) => _handleGlobalPointerDown(),
+      onPointerUp: (_) => _handleGlobalPointerReleased(),
+      onPointerCancel: (_) => _handleGlobalPointerReleased(),
+      onPointerSignal: (_) => AndroidAudioDisplayMode.notifyUserActivity(),
+      child: Scaffold(
+        key: _scaffoldKey,
+        onDrawerChanged: _handleDrawerChanged,
+        drawer: showSecondaryBackButton
+            ? null
+            : NavigationDrawerTheme(
               data: NavigationDrawerTheme.of(context).copyWith(
                 labelTextStyle: WidgetStatePropertyAll(
                   ResponsiveNav.drawerLabelStyle(context),
@@ -176,8 +190,8 @@ class _HomePageState extends State<HomePage> {
                 ],
               ),
             ),
-      appBar: _selectedIndex >= 2
-          ? AppBar(
+        appBar: _selectedIndex >= 2
+            ? AppBar(
               toolbarHeight: ResponsiveNav.toolbarHeight(context),
               leading: showSecondaryBackButton
                   ? IconButton(
@@ -205,14 +219,58 @@ class _HomePageState extends State<HomePage> {
                   ),
               ],
             )
-          : null,
-      body: _pageDestinations[_selectedIndex].destination,
+            : null,
+        body: _pageDestinations[_selectedIndex].destination,
+      ),
     );
   }
 
   int? get _selectedDrawerIndex {
     final int drawerIndex = _drawerDestinationIndices.indexOf(_selectedIndex);
     return drawerIndex < 0 ? null : drawerIndex;
+  }
+
+  void _handleGlobalPointerDown() {
+    AndroidAudioDisplayMode.notifyUserActivity();
+    unawaited(
+      AndroidAudioDisplayMode.addLowRefreshBlocker(
+        _homePointerRefreshBlocker,
+        reason: 'home pointer down',
+      ),
+    );
+  }
+
+  void _handleGlobalPointerReleased() {
+    AndroidAudioDisplayMode.notifyUserActivity();
+    unawaited(
+      Future<void>.delayed(const Duration(milliseconds: 450), () {
+        return AndroidAudioDisplayMode.removeLowRefreshBlocker(
+          _homePointerRefreshBlocker,
+          reason: 'home pointer settled',
+        );
+      }),
+    );
+  }
+
+  void _handleDrawerChanged(bool isOpened) {
+    if (isOpened) {
+      unawaited(
+        AndroidAudioDisplayMode.addLowRefreshBlocker(
+          _drawerRefreshBlocker,
+          reason: 'drawer opened',
+        ),
+      );
+      return;
+    }
+
+    unawaited(
+      Future<void>.delayed(const Duration(milliseconds: 350), () {
+        return AndroidAudioDisplayMode.removeLowRefreshBlocker(
+          _drawerRefreshBlocker,
+          reason: 'drawer closed',
+        );
+      }),
+    );
   }
 
   void _onDrawerDestinationSelected(int index) {
@@ -233,23 +291,65 @@ class _HomePageState extends State<HomePage> {
 
   void _pushDrawerPage(int index) {
     final Destinations destination = _pageDestinations[index];
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) {
-          return Scaffold(
-            appBar: AppBar(
-              toolbarHeight: ResponsiveNav.toolbarHeight(context),
-              title: Text(destination.label),
-              centerTitle: true,
-              iconTheme: IconThemeData(
-                size: ResponsiveNav.iconSize(context),
-              ),
-            ),
-            body: destination.destination,
-          );
-        },
+    unawaited(
+      AndroidAudioDisplayMode.addLowRefreshBlocker(
+        _routeTransitionRefreshBlocker,
+        reason: 'opening ${destination.label}',
       ),
     );
+    unawaited(
+      AndroidAudioDisplayMode.addLowRefreshBlocker(
+        _secondaryRouteRefreshBlocker,
+        reason: '${destination.label} route active',
+      ),
+    );
+    unawaited(
+      Future<void>.delayed(const Duration(milliseconds: 450), () {
+        return AndroidAudioDisplayMode.removeLowRefreshBlocker(
+          _routeTransitionRefreshBlocker,
+          reason: '${destination.label} push transition settled',
+        );
+      }),
+    );
+
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute<void>(
+            builder: (BuildContext context) {
+              return Scaffold(
+                appBar: AppBar(
+                  toolbarHeight: ResponsiveNav.toolbarHeight(context),
+                  title: Text(destination.label),
+                  centerTitle: true,
+                  iconTheme: IconThemeData(
+                    size: ResponsiveNav.iconSize(context),
+                  ),
+                ),
+                body: destination.destination,
+              );
+            },
+          ),
+        )
+        .whenComplete(() {
+          unawaited(
+            AndroidAudioDisplayMode.addLowRefreshBlocker(
+              _routeTransitionRefreshBlocker,
+              reason: '${destination.label} pop transition',
+            ),
+          );
+          unawaited(
+            Future<void>.delayed(const Duration(milliseconds: 450), () async {
+              await AndroidAudioDisplayMode.removeLowRefreshBlocker(
+                _secondaryRouteRefreshBlocker,
+                reason: '${destination.label} route closed',
+              );
+              await AndroidAudioDisplayMode.removeLowRefreshBlocker(
+                _routeTransitionRefreshBlocker,
+                reason: '${destination.label} pop transition settled',
+              );
+            }),
+          );
+        });
   }
 
   void _onItemTapped(int index) {

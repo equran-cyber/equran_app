@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:equran/backend/library.dart';
 import 'package:equran/utils/app_radii.dart';
 import 'package:equran/utils/debouncer.dart';
@@ -88,7 +90,7 @@ class _MainPageState extends State<MainPage>
       children: <Widget>[
         Builder(
           builder: (context) => IconButton(
-            onPressed: () => Scaffold.of(context).openDrawer(),
+            onPressed: () => _openDrawer(context),
             style: ResponsiveNav.iconButtonStyle(context),
             icon: Icon(
               Icons.menu_rounded,
@@ -172,6 +174,17 @@ class _MainPageState extends State<MainPage>
         ),
       ],
     );
+  }
+
+  void _openDrawer(BuildContext context) {
+    AndroidAudioDisplayMode.notifyUserActivity();
+    unawaited(
+      AndroidAudioDisplayMode.addLowRefreshBlocker(
+        'home.drawerOpenOrAnimating',
+        reason: 'main drawer opening',
+      ),
+    );
+    Scaffold.of(context).openDrawer();
   }
 
   BoxDecoration _topBarDecoration(ThemeData theme) {

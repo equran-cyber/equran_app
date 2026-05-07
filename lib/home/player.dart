@@ -154,7 +154,6 @@ class PlayerPage extends StatefulWidget {
 }
 
 class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
-  static const double _playerPageAudioFrameRate = 24.0;
   static const MethodChannel _playerPageChannel = MethodChannel(
     'com.app.equran/read_page',
   );
@@ -215,11 +214,6 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    unawaited(
-      AndroidAudioDisplayMode.setLimitedProgressFrameRate(
-        _playerPageAudioFrameRate,
-      ),
-    );
 
     _useAudioplayersFallback =
         !kIsWeb && (Platform.isLinux || Platform.isWindows);
@@ -364,7 +358,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   }
 
   bool get _shouldAnimateProgressVisuals {
-    return _shouldRenderProgressVisuals && _isPlaying;
+    // The full player is an active route with drawer, sheets, and route
+    // transitions. Keep Android's global refresh rate uncapped here; only the
+    // settled minimized reading player may request low refresh.
+    return false;
   }
 
   void _syncProgressVisualPolicy({bool syncPosition = false}) {
@@ -1467,7 +1464,6 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     unawaited(AndroidAudioDisplayMode.setAudioPlaybackActive(false));
     unawaited(AndroidAudioDisplayMode.setVisualProgressActive(false));
     unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
-    unawaited(AndroidAudioDisplayMode.setLimitedProgressFrameRate(0));
     _progressThumbTimer?.cancel();
     _positionSubscription?.cancel();
     _durationSubscription?.cancel();
@@ -1484,6 +1480,17 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   void _notifyAudioUserActivity() {
     AndroidAudioDisplayMode.notifyUserActivity();
+  }
+
+  void _openDrawer(BuildContext context) {
+    AndroidAudioDisplayMode.notifyUserActivity();
+    unawaited(
+      AndroidAudioDisplayMode.addLowRefreshBlocker(
+        'home.drawerOpenOrAnimating',
+        reason: 'player drawer opening',
+      ),
+    );
+    Scaffold.of(context).openDrawer();
   }
 
   Widget _buildAudioInteractionBoundary({required Widget child}) {
@@ -1575,6 +1582,12 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   }) {
     final int ayahCount = quran.getVerseCount(_selectedSurah);
     final bool offlineReady = _playingFromOffline || _isDownloaded;
+    final Color artBackground = Color.alphaBlend(
+      colorScheme.primary.withValues(
+        alpha: theme.brightness == Brightness.dark ? 0.18 : 0.12,
+      ),
+      colorScheme.surfaceContainerHighest,
+    );
 
     return Center(
       child: SingleChildScrollView(
@@ -1609,15 +1622,28 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
                   width: isDesktop ? 84 : 72,
                   height: isDesktop ? 84 : 72,
                   decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: <Color>[
+                        artBackground,
+                        Color.alphaBlend(
+                          colorScheme.tertiary.withValues(alpha: 0.10),
+                          artBackground,
+                        ),
+                      ],
+                    ),
                     borderRadius: BorderRadius.circular(AppRadii.large),
+                    border: Border.all(
+                      color: colorScheme.outlineVariant.withValues(alpha: 0.36),
+                    ),
                   ),
                   child: Icon(
                     _isPlaying
                         ? Icons.graphic_eq_rounded
                         : Icons.play_arrow_rounded,
                     size: isDesktop ? 42 : 36,
-                    color: colorScheme.onPrimaryContainer,
+                    color: colorScheme.primary,
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -1919,7 +1945,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             children: <Widget>[
               Builder(
                 builder: (context) => IconButton(
-                  onPressed: () => Scaffold.of(context).openDrawer(),
+                  onPressed: () => _openDrawer(context),
                   style: ResponsiveNav.iconButtonStyle(context),
                   icon: Icon(
                     Icons.menu_rounded,

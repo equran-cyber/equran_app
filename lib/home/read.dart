@@ -200,6 +200,10 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
   static const String _intervalRepeatSettingsKey = 'intervalRepeatCount';
   static const String _repeatAyahSettingsKey = 'repeatAyahCount';
   static const String _playbackIntervalSettingsKey = 'playbackInterval';
+  // TODO: Re-enable after the minimized-player refresh policy is redesigned so
+  // it cannot leak into drawer/sidebar, Settings, Downloads, or route
+  // transitions. For now Android should choose the display refresh normally.
+  static const bool _enableMinimizedPlayerLowRefresh = false;
   static const Duration _lowRefreshIdleDelay = Duration(milliseconds: 900);
   static const Duration _playerSettleAnimationDelay = Duration(
     milliseconds: 280,
@@ -467,6 +471,18 @@ class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
 
     if (_lowRefreshRequested && !force) return;
     _lowRefreshRequested = true;
+    if (!_enableMinimizedPlayerLowRefresh) {
+      debugPrint(
+        'ReadPage: skipped static minimized low refresh; temporary flag disabled',
+      );
+      unawaited(
+        AndroidAudioDisplayMode.clearStaticMinimizedAudioRefreshRate(
+          force: true,
+        ),
+      );
+      return;
+    }
+
     debugPrint('ReadPage: requesting low refresh for static minimized player');
     unawaited(
       AndroidAudioDisplayMode.requestStaticMinimizedAudioRefreshRate(

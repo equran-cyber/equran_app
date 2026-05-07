@@ -374,9 +374,10 @@ class ReadVersePlayerBar extends StatelessWidget {
     final ColorScheme colorScheme = theme.colorScheme;
     final double progress = _durationProgress(position, duration);
     return Stack(
+      clipBehavior: Clip.none,
       children: <Widget>[
         Padding(
-          padding: const EdgeInsets.only(top: 25),
+          padding: const EdgeInsets.only(top: 18),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -415,7 +416,7 @@ class ReadVersePlayerBar extends StatelessWidget {
           ),
         ),
         Positioned(
-          top: 0,
+          top: -8,
           left: 0,
           right: 0,
           child: Row(
