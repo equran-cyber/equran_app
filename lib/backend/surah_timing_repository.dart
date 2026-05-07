@@ -1,6 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart'
     show FlutterError, debugPrint, kDebugMode;
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show AssetManifest, rootBundle;
 import 'package:quran/quran.dart' as quran;
 
 class AyahTiming {
@@ -54,12 +56,11 @@ class SurahTiming {
 class SurahTimingRepository {
   SurahTimingRepository();
 
-  static const Set<String> supportedReciterCodes = <String>{'2', '3', '4'};
-
   final Map<String, SurahTiming?> _cache = <String, SurahTiming?>{};
 
-  static bool hasTimingSupportForReciter(String code) {
-    return supportedReciterCodes.contains(code);
+  static Future<bool> hasTimingSupportForReciter(String code) async {
+    final TimingAssetIndex index = await TimingAssetIndex.load();
+    return index.hasTimingSupportForReciter(code);
   }
 
   Future<SurahTiming?> loadSurahTiming({
@@ -71,15 +72,22 @@ class SurahTimingRepository {
     final String cacheKey = '$normalizedCode-$normalizedSurah';
     if (_cache.containsKey(cacheKey)) return _cache[cacheKey];
 
-    if (!hasTimingSupportForReciter(normalizedCode)) {
+    final TimingAssetIndex index = await TimingAssetIndex.load();
+    if (!index.hasTimingSupportForReciter(normalizedCode)) {
       _cache[cacheKey] = null;
       return null;
     }
 
-    final String? rawTiming = await _loadTimingAsset(
+    final String? assetPath = index.timingPathForSurah(
       reciterCode: normalizedCode,
       surahNumber: normalizedSurah,
     );
+    if (assetPath == null) {
+      _cache[cacheKey] = null;
+      return null;
+    }
+
+    final String? rawTiming = await _loadTimingAsset(assetPath);
     if (rawTiming == null) {
       _cache[cacheKey] = null;
       return null;
@@ -94,25 +102,14 @@ class SurahTimingRepository {
     return timing;
   }
 
-  Future<String?> _loadTimingAsset({
-    required String reciterCode,
-    required int surahNumber,
-  }) async {
-    final String paddedSurah = surahNumber.toString().padLeft(3, '0');
-    final List<String> candidatePaths = <String>[
-      'assets/timings/$reciterCode/$paddedSurah.txt',
-      'assets/timings/$reciterCode/$surahNumber.txt',
-    ];
-
-    for (final String path in candidatePaths) {
-      try {
-        return await rootBundle.loadString(path);
-      } on FlutterError catch (_) {
-        // Missing timing files are expected for unsupported or incomplete sets.
-      } catch (error) {
-        if (kDebugMode) {
-          debugPrint('Unable to load timing asset "$path": $error');
-        }
+  Future<String?> _loadTimingAsset(String path) async {
+    try {
+      return await rootBundle.loadString(path);
+    } on FlutterError catch (_) {
+      // Missing timing files are expected for unsupported or incomplete sets.
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('Unable to load timing asset "$path": $error');
       }
     }
     return null;
@@ -126,16 +123,28 @@ class SurahTimingRepository {
     final int ayahCount = quran.getVerseCount(surahNumber);
     final List<Duration> markers = <Duration>[];
     int malformedRows = 0;
+    final String trimmedTiming = rawTiming.trimLeft();
 
-    for (final String rawLine in rawTiming.split(RegExp(r'\r?\n'))) {
-      final String line = rawLine.trim();
-      if (line.isEmpty) continue;
-      final int? milliseconds = int.tryParse(line);
-      if (milliseconds == null || milliseconds < 0) {
+    if (trimmedTiming.startsWith('[') || trimmedTiming.startsWith('{')) {
+      try {
+        malformedRows = _appendJsonTimingMarkers(
+          jsonDecode(rawTiming),
+          markers,
+        );
+      } catch (_) {
         malformedRows++;
-        continue;
       }
-      markers.add(Duration(milliseconds: milliseconds));
+    } else {
+      for (final String rawLine in rawTiming.split(RegExp(r'\r?\n'))) {
+        final String line = rawLine.trim();
+        if (line.isEmpty) continue;
+        final int? milliseconds = int.tryParse(line);
+        if (milliseconds == null || milliseconds < 0) {
+          malformedRows++;
+          continue;
+        }
+        markers.add(Duration(milliseconds: milliseconds));
+      }
     }
 
     if (markers.length < ayahCount) {
@@ -178,4 +187,173 @@ class SurahTimingRepository {
       ayahs: List<AyahTiming>.unmodifiable(ayahs),
     );
   }
+
+  static int _appendJsonTimingMarkers(Object? value, List<Duration> markers) {
+    int malformedRows = 0;
+    if (value is List<Object?>) {
+      for (final Object? entry in value) {
+        final int? milliseconds = _millisecondsFromJsonEntry(entry);
+        if (milliseconds == null || milliseconds < 0) {
+          malformedRows++;
+          continue;
+        }
+        markers.add(Duration(milliseconds: milliseconds));
+      }
+      return malformedRows;
+    }
+
+    if (value is Map<String, Object?>) {
+      for (final String key in <String>[
+        'markers',
+        'timings',
+        'ayahs',
+        'verses',
+      ]) {
+        final Object? nestedValue = value[key];
+        if (nestedValue is List<Object?>) {
+          return _appendJsonTimingMarkers(nestedValue, markers);
+        }
+      }
+    }
+
+    return 1;
+  }
+
+  static int? _millisecondsFromJsonEntry(Object? value) {
+    if (value is int) return value;
+    if (value is double) return value.round();
+    if (value is String) return int.tryParse(value);
+    if (value is Map<String, Object?>) {
+      for (final String key in <String>[
+        'start',
+        'startMs',
+        'start_ms',
+        'timestamp',
+        'time',
+        'milliseconds',
+        'ms',
+      ]) {
+        final int? milliseconds = _millisecondsFromJsonEntry(value[key]);
+        if (milliseconds != null) return milliseconds;
+      }
+    }
+    return null;
+  }
+}
+
+class TimingAssetIndex {
+  const TimingAssetIndex._({
+    required this.availableTimingReciterCodes,
+    required this.availableTimingFiles,
+  });
+
+  static const String timingAssetRoot = 'assets/timings/';
+  static final RegExp _timingAssetPattern = RegExp(
+    r'^assets/timings/([^/]+)/([^/]+)$',
+  );
+  static Future<TimingAssetIndex>? _cachedIndex;
+
+  final Set<String> availableTimingReciterCodes;
+  final Set<String> availableTimingFiles;
+
+  static Future<TimingAssetIndex> load() {
+    return _cachedIndex ??= _loadFromManifest();
+  }
+
+  static Future<TimingAssetIndex> _loadFromManifest() async {
+    try {
+      final AssetManifest manifest = await AssetManifest.loadFromAssetBundle(
+        rootBundle,
+      );
+      return TimingAssetIndex.fromAssetPaths(manifest.listAssets());
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('Unable to load timing asset manifest: $error');
+      }
+      return const TimingAssetIndex._(
+        availableTimingReciterCodes: <String>{},
+        availableTimingFiles: <String>{},
+      );
+    }
+  }
+
+  static TimingAssetIndex fromAssetPaths(Iterable<String> assetPaths) {
+    final Set<String> reciterCodes = <String>{};
+    final Set<String> timingFiles = <String>{};
+
+    for (final String assetPath in assetPaths) {
+      final RegExpMatch? match = _timingAssetPattern.firstMatch(assetPath);
+      if (match == null) continue;
+
+      final String reciterCode = match.group(1)!.trim();
+      final String fileName = match.group(2)!;
+      if (reciterCode.isEmpty || !_isTimingFileName(fileName)) continue;
+
+      reciterCodes.add(reciterCode);
+      timingFiles.add(assetPath);
+    }
+
+    return TimingAssetIndex._(
+      availableTimingReciterCodes: Set<String>.unmodifiable(reciterCodes),
+      availableTimingFiles: Set<String>.unmodifiable(timingFiles),
+    );
+  }
+
+  bool hasTimingSupportForReciter(String code) {
+    return availableTimingReciterCodes.contains(_normalizeReciterCode(code));
+  }
+
+  bool hasTimingForSurah({
+    required String reciterCode,
+    required int surahNumber,
+  }) {
+    return timingPathForSurah(
+          reciterCode: reciterCode,
+          surahNumber: surahNumber,
+        ) !=
+        null;
+  }
+
+  String? timingPathForSurah({
+    required String reciterCode,
+    required int surahNumber,
+  }) {
+    final String normalizedCode = _normalizeReciterCode(reciterCode);
+    if (normalizedCode.isEmpty) return null;
+
+    for (final String path in _candidateSurahTimingPaths(
+      reciterCode: normalizedCode,
+      surahNumber: surahNumber,
+    )) {
+      if (availableTimingFiles.contains(path)) return path;
+    }
+    return null;
+  }
+
+  static List<String> _candidateSurahTimingPaths({
+    required String reciterCode,
+    required int surahNumber,
+  }) {
+    final int normalizedSurah = surahNumber.clamp(1, 114).toInt();
+    final String paddedSurah = normalizedSurah.toString().padLeft(3, '0');
+    return <String>[
+      '$timingAssetRoot$reciterCode/$paddedSurah.txt',
+      '$timingAssetRoot$reciterCode/$normalizedSurah.txt',
+      '$timingAssetRoot$reciterCode/$paddedSurah.json',
+      '$timingAssetRoot$reciterCode/$normalizedSurah.json',
+    ];
+  }
+
+  static bool _isTimingFileName(String fileName) {
+    final String lowerFileName = fileName.toLowerCase();
+    if (!lowerFileName.endsWith('.txt') && !lowerFileName.endsWith('.json')) {
+      return false;
+    }
+    final int extensionIndex = lowerFileName.lastIndexOf('.');
+    final String stem = lowerFileName.substring(0, extensionIndex);
+    final int? surahNumber = int.tryParse(stem);
+    return surahNumber != null && surahNumber >= 1 && surahNumber <= 114;
+  }
+
+  static String _normalizeReciterCode(String code) => code.trim();
 }

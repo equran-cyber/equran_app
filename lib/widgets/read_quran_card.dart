@@ -388,7 +388,6 @@ class ReadQuranCard extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
     final bool isLight = theme.brightness == Brightness.light;
-
     final Color resolvedCardColor =
         theme.cardTheme.color ??
         (isLight
