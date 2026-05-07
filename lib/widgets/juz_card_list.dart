@@ -38,7 +38,7 @@ class _JuzCardListState extends State<JuzCardList>
     final double textScale = MediaQuery.textScalerOf(
       context,
     ).scale(1.0).clamp(1.0, 1.2).toDouble();
-    final double headerExtent = 58 * textScale;
+    final double headerExtent = 74 * textScale;
     final double tileExtent = 132 * textScale;
 
     return Scrollbar(
@@ -65,6 +65,7 @@ class _JuzCardListState extends State<JuzCardList>
                 padding: const EdgeInsets.fromLTRB(6, 10, 6, 10),
                 child: _JuzSectionHeader(
                   juzNumber: group.juzNumber,
+                  arabicName: group.arabicName,
                   surahCount: group.entries.length,
                 ),
               ),
@@ -95,9 +96,14 @@ class _JuzCardListState extends State<JuzCardList>
 }
 
 class _JuzSectionHeader extends StatelessWidget {
-  const _JuzSectionHeader({required this.juzNumber, required this.surahCount});
+  const _JuzSectionHeader({
+    required this.juzNumber,
+    required this.arabicName,
+    required this.surahCount,
+  });
 
   final int juzNumber;
+  final String arabicName;
   final int surahCount;
 
   @override
@@ -105,49 +111,58 @@ class _JuzSectionHeader extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
 
-    return Row(
-      children: <Widget>[
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: <Color>[
-                colorScheme.primaryContainer.withValues(alpha: 0.9),
-                colorScheme.tertiaryContainer.withValues(alpha: 0.72),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(AppRadii.small),
-            border: Border.all(
-              color: colorScheme.primary.withValues(alpha: 0.12),
-            ),
-          ),
-          child: Text(
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            colorScheme.primaryContainer.withValues(alpha: 0.9),
+            colorScheme.tertiaryContainer.withValues(alpha: 0.72),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(AppRadii.small),
+        border: Border.all(color: colorScheme.primary.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Text(
             "Juz' $juzNumber",
-            style: theme.textTheme.titleMedium?.copyWith(
+            style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w800,
               color: colorScheme.onPrimaryContainer,
               letterSpacing: 0.2,
             ),
           ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Container(
-            height: 1,
-            color: colorScheme.outlineVariant.withValues(alpha: 0.45),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: Text(
+                arabicName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.right,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontFamily: 'Hafs',
+                  height: 1.28,
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.onPrimaryContainer,
+                ),
+              ),
+            ),
           ),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          '$surahCount surahs',
-          style: theme.textTheme.labelLarge?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
+          const SizedBox(width: 12),
+          Text(
+            '$surahCount surahs',
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: colorScheme.onPrimaryContainer.withValues(alpha: 0.72),
+              fontWeight: FontWeight.w600,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

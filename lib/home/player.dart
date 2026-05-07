@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
-import 'dart:ui' show DisplayFeature, DisplayFeatureType, ImageFilter;
+import 'dart:ui' show DisplayFeature, DisplayFeatureType;
 
 import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:equran/backend/library.dart'
@@ -24,6 +24,7 @@ import 'package:equran/widgets/app_selection_dialog.dart';
 import 'package:equran/widgets/read_quran_card.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart' as ja;
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:quran/quran.dart' as quran;
@@ -152,8 +153,11 @@ class PlayerPage extends StatefulWidget {
   State<PlayerPage> createState() => _PlayerPageState();
 }
 
-class _PlayerPageState extends State<PlayerPage> {
+class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   static const double _playerPageAudioFrameRate = 24.0;
+  static const MethodChannel _playerPageChannel = MethodChannel(
+    'com.app.equran/read_page',
+  );
 
   final ja.AudioPlayer _justAudio = ja.AudioPlayer();
   final ap.AudioPlayer _fallbackAudio = ap.AudioPlayer();
@@ -185,6 +189,7 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _playingFromOffline = false;
   bool _shuffleEnabled = false;
   bool _loopEnabled = false;
+  bool _showAyahText = false;
   bool _isCompletingTrack = false;
   bool _showProgressThumb = false;
   bool _isScrubbing = false;
@@ -209,6 +214,7 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(
       AndroidAudioDisplayMode.setLimitedProgressFrameRate(
         _playerPageAudioFrameRate,
@@ -226,6 +232,21 @@ class _PlayerPageState extends State<PlayerPage> {
     _bindAudioListeners();
     _refreshDownloadState();
     unawaited(_loadTimingForSelection(surah: _selectedSurah));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_updateKeepScreenOn());
+      _syncProgressVisualPolicy(syncPosition: true);
+      return;
+    }
+
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      unawaited(_setKeepScreenOn(false));
+    }
   }
 
   void _bindAudioListeners() {
@@ -401,6 +422,30 @@ class _PlayerPageState extends State<PlayerPage> {
       _syncProgressVisualPolicy(syncPosition: true);
       unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
     }
+  }
+
+  Future<void> _setKeepScreenOn(bool enabled) async {
+    if (kIsWeb) return;
+
+    try {
+      await _playerPageChannel.invokeMethod<void>(
+        'setKeepScreenOn',
+        <String, bool>{'enabled': enabled},
+      );
+    } catch (_) {
+      // Unsupported platforms simply keep their normal sleep behavior.
+    }
+  }
+
+  Future<void> _updateKeepScreenOn() async {
+    await _setKeepScreenOn(mounted && _showAyahText);
+  }
+
+  void _toggleAyahText() {
+    setState(() {
+      _showAyahText = !_showAyahText;
+    });
+    unawaited(_updateKeepScreenOn());
   }
 
   String _surahName(int surah) => _surahTransliterations[surah - 1];
@@ -660,7 +705,9 @@ class _PlayerPageState extends State<PlayerPage> {
       _isPlaying = false;
       _isPaused = false;
       _activeAyah = null;
+      _showAyahText = false;
     });
+    await _setKeepScreenOn(false);
     await AndroidAudioDisplayMode.setAudioPlaybackActive(false);
     _syncProgressVisualPolicy();
   }
@@ -885,70 +932,63 @@ class _PlayerPageState extends State<PlayerPage> {
     );
   }
 
-  Widget _buildSurahSelectionPane({
-    required ThemeData theme,
-    required ColorScheme colorScheme,
-  }) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AppRadii.large),
-      child: Stack(
-        fit: StackFit.expand,
-        children: <Widget>[
-          BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-            child: const SizedBox.expand(),
-          ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: Colors.white.withAlpha(8),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: <Color>[
-                  colorScheme.surface.withValues(alpha: 0.14),
-                  colorScheme.surfaceContainerHigh.withValues(alpha: 0.10),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(AppRadii.large),
-              border: Border.all(
-                color: colorScheme.outlineVariant.withValues(alpha: 0.36),
-              ),
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-                child: Text(
-                  'Choose Surah',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              Divider(
-                height: 1,
-                color: colorScheme.outlineVariant.withValues(alpha: 0.28),
-              ),
-              Expanded(
-                child: _buildSurahSelectionList(
-                  theme: theme,
-                  colorScheme: colorScheme,
-                  closeOnSelect: false,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _openSurahPickerSheet() async {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
+    final Size screenSize = MediaQuery.sizeOf(context);
+    final bool useSideSheet = screenSize.width >= 700;
     final int? selectedSurah = await _withProgressVisualsPaused(() {
+      if (useSideSheet) {
+        return showDialog<int>(
+          context: context,
+          barrierDismissible: true,
+          builder: (dialogContext) {
+            final double sheetWidth = min(430.0, screenSize.width * 0.46);
+            return Dialog(
+              alignment: Alignment.centerRight,
+              insetPadding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              child: SizedBox(
+                width: sheetWidth,
+                height: min(720.0, screenSize.height - 48),
+                child: Material(
+                  color: colorScheme.surfaceContainer,
+                  borderRadius: BorderRadius.circular(AppRadii.large),
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    children: <Widget>[
+                      ListTile(
+                        leading: const Icon(Icons.queue_music_rounded),
+                        title: Text(
+                          'Choose Surah',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        trailing: IconButton(
+                          tooltip: 'Close',
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: _buildSurahSelectionList(
+                          theme: theme,
+                          colorScheme: colorScheme,
+                          closeOnSelect: true,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      }
+
       return showModalBottomSheet<int>(
         context: context,
         isScrollControlled: true,
@@ -1016,7 +1056,9 @@ class _PlayerPageState extends State<PlayerPage> {
         useSafeArea: true,
         showDragHandle: true,
         backgroundColor: colorScheme.surfaceContainer,
-        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.sizeOf(context).width,
+        ),
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(
             top: Radius.circular(AppRadii.large),
@@ -1420,6 +1462,8 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_setKeepScreenOn(false));
     unawaited(AndroidAudioDisplayMode.setAudioPlaybackActive(false));
     unawaited(AndroidAudioDisplayMode.setVisualProgressActive(false));
     unawaited(AndroidAudioDisplayMode.setLowFpsSuppressed(false));
@@ -1520,6 +1564,164 @@ class _PlayerPageState extends State<PlayerPage> {
             fontSizeTranslation: _doubleSetting("fontSizeTranslation", 12.0),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildNowPlayingHero({
+    required ThemeData theme,
+    required ColorScheme colorScheme,
+    required bool isDesktop,
+  }) {
+    final int ayahCount = quran.getVerseCount(_selectedSurah);
+    final bool offlineReady = _playingFromOffline || _isDownloaded;
+
+    return Center(
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: isDesktop ? 760 : 560),
+          child: Container(
+            width: double.infinity,
+            margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
+            padding: EdgeInsets.symmetric(
+              horizontal: isDesktop ? 34 : 24,
+              vertical: isDesktop ? 36 : 30,
+            ),
+            decoration: BoxDecoration(
+              color: colorScheme.surface.withValues(alpha: 0.88),
+              borderRadius: BorderRadius.circular(AppRadii.large),
+              border: Border.all(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.36),
+              ),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: colorScheme.shadow.withValues(alpha: 0.16),
+                  blurRadius: 30,
+                  offset: const Offset(0, 14),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Container(
+                  width: isDesktop ? 84 : 72,
+                  height: isDesktop ? 84 : 72,
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(AppRadii.large),
+                  ),
+                  child: Icon(
+                    _isPlaying
+                        ? Icons.graphic_eq_rounded
+                        : Icons.play_arrow_rounded,
+                    size: isDesktop ? 42 : 36,
+                    color: colorScheme.onPrimaryContainer,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Directionality(
+                  textDirection: TextDirection.rtl,
+                  child: Text(
+                    quran.getSurahNameArabic(_selectedSurah),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style:
+                        (isDesktop
+                                ? theme.textTheme.displaySmall
+                                : theme.textTheme.headlineMedium)
+                            ?.copyWith(
+                              color: colorScheme.onSurface,
+                              fontWeight: FontWeight.w800,
+                            ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _surahName(_selectedSurah),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style:
+                      (isDesktop
+                              ? theme.textTheme.headlineSmall
+                              : theme.textTheme.titleLarge)
+                          ?.copyWith(
+                            color: colorScheme.onSurface,
+                            fontWeight: FontWeight.w800,
+                          ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _selectedReciterName(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: <Widget>[
+                    _buildNowPlayingChip(
+                      theme: theme,
+                      colorScheme: colorScheme,
+                      icon: Icons.format_list_numbered_rtl_rounded,
+                      label: '$ayahCount ayahs',
+                    ),
+                    _buildNowPlayingChip(
+                      theme: theme,
+                      colorScheme: colorScheme,
+                      icon: offlineReady
+                          ? Icons.offline_pin_rounded
+                          : Icons.cloud_rounded,
+                      label: offlineReady ? 'Offline ready' : 'Streaming',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNowPlayingChip({
+    required ThemeData theme,
+    required ColorScheme colorScheme,
+    required IconData icon,
+    required String label,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(AppRadii.small),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.28),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 17, color: colorScheme.primary),
+          const SizedBox(width: 7),
+          Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1665,6 +1867,12 @@ class _PlayerPageState extends State<PlayerPage> {
         final double playerControlIconSize = isDesktop
             ? (34 * desktopHeightScale).clamp(28.0, 34.0).toDouble()
             : 34.0;
+        final double secondaryControlIconSize = isDesktop
+            ? (26 * desktopHeightScale).clamp(22.0, 26.0).toDouble()
+            : 25.0;
+        final double secondaryControlSize = isDesktop
+            ? (46 * desktopHeightScale).clamp(40.0, 46.0).toDouble()
+            : 44.0;
         final double playButtonPadding = isDesktop
             ? (20 * desktopHeightScale).clamp(15.0, 20.0).toDouble()
             : 20.0;
@@ -1677,9 +1885,9 @@ class _PlayerPageState extends State<PlayerPage> {
             ? (height * 0.035).clamp(18.0, 32.0).toDouble()
             : 0.0;
         final double maxContentWidth = isDesktop
-            ? width
+            ? min(width, 1120.0)
             : isFoldableLayout
-            ? min(width, 1000)
+            ? min(width, 900.0)
             : 560;
         final double desktopCenterWidth = isCompactWidescreenLayout
             ? (width * 0.54).clamp(380.0, 500.0).toDouble()
@@ -1804,33 +2012,84 @@ class _PlayerPageState extends State<PlayerPage> {
           );
         }
 
-        Widget buildTransportControls({double gap = 12}) {
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              IconButton(
-                tooltip: 'Previous',
-                onPressed: _playPrevious,
-                icon: const Icon(Icons.skip_previous_rounded),
-                iconSize: playerControlIconSize,
-              ),
-              SizedBox(width: gap),
-              buildPlayPauseButton(),
-              SizedBox(width: gap),
-              IconButton(
-                tooltip: 'Next',
-                onPressed: _playNext,
-                icon: const Icon(Icons.skip_next_rounded),
-                iconSize: playerControlIconSize,
-              ),
-            ],
+        Widget buildSecondaryControl({
+          required IconData icon,
+          required String tooltip,
+          required VoidCallback onPressed,
+          bool selected = false,
+        }) {
+          return IconButton(
+            tooltip: tooltip,
+            onPressed: onPressed,
+            icon: Icon(icon),
+            iconSize: secondaryControlIconSize,
+            style: IconButton.styleFrom(
+              fixedSize: Size.square(secondaryControlSize),
+              minimumSize: Size.square(secondaryControlSize),
+              maximumSize: Size.square(secondaryControlSize),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              backgroundColor: selected
+                  ? colorScheme.primaryContainer
+                  : colorScheme.surfaceContainerHighest.withValues(alpha: 0.0),
+              foregroundColor: selected
+                  ? colorScheme.onPrimaryContainer
+                  : colorScheme.onSurfaceVariant,
+            ),
           );
         }
 
-        final Widget activeAyahCard = _buildActiveAyahCard(
-          theme: theme,
-          colorScheme: colorScheme,
-        );
+        Widget buildTransportControls({double gap = 12}) {
+          return FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                buildSecondaryControl(
+                  tooltip: _showAyahText
+                      ? 'Hide ayah text'
+                      : 'Show ayah text',
+                  onPressed: _toggleAyahText,
+                  icon: Icons.menu_book_rounded,
+                  selected: _showAyahText,
+                ),
+                SizedBox(width: gap),
+                IconButton(
+                  tooltip: 'Previous',
+                  onPressed: _playPrevious,
+                  icon: const Icon(Icons.skip_previous_rounded),
+                  iconSize: playerControlIconSize,
+                ),
+                SizedBox(width: gap),
+                buildPlayPauseButton(),
+                SizedBox(width: gap),
+                IconButton(
+                  tooltip: 'Next',
+                  onPressed: _playNext,
+                  icon: const Icon(Icons.skip_next_rounded),
+                  iconSize: playerControlIconSize,
+                ),
+                SizedBox(width: gap),
+                buildSecondaryControl(
+                  tooltip: 'Choose Surah',
+                  onPressed: _openSurahPickerSheet,
+                  icon: Icons.queue_music_rounded,
+                ),
+              ],
+            ),
+          );
+        }
+
+        final Widget nowPlayingHero = _showAyahText
+            ? _buildActiveAyahCard(
+                theme: theme,
+                colorScheme: colorScheme,
+              )
+            : _buildNowPlayingHero(
+                theme: theme,
+                colorScheme: colorScheme,
+                isDesktop: isDesktop,
+              );
 
         final Widget playbackPanel = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1907,7 +2166,7 @@ class _PlayerPageState extends State<PlayerPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Expanded(child: activeAyahCard),
+                Expanded(child: nowPlayingHero),
                 const SizedBox(height: 12),
                 playbackPanel,
               ],
@@ -1920,7 +2179,7 @@ class _PlayerPageState extends State<PlayerPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Expanded(child: activeAyahCard),
+              Expanded(child: nowPlayingHero),
               const SizedBox(height: 10),
               playbackPanel,
             ],
@@ -1933,7 +2192,7 @@ class _PlayerPageState extends State<PlayerPage> {
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.only(top: 8),
-                      child: activeAyahCard,
+                      child: nowPlayingHero,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -1941,19 +2200,7 @@ class _PlayerPageState extends State<PlayerPage> {
                 ],
               )
             : isFoldableLayout
-            ? Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  Expanded(
-                    child: _buildSurahSelectionPane(
-                      theme: theme,
-                      colorScheme: colorScheme,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(child: foldableNowPlaying),
-                ],
-              )
+            ? foldableNowPlaying
             : mobileNowPlaying;
 
         return _buildAudioInteractionBoundary(
@@ -1982,7 +2229,7 @@ class _PlayerPageState extends State<PlayerPage> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: <Widget>[
                           header,
-                          Expanded(child: bodyContent),
+                          Expanded(child: ClipRect(child: bodyContent)),
                         ],
                       ),
                     ),

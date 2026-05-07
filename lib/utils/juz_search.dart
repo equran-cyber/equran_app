@@ -1,10 +1,52 @@
 import 'package:quran/quran.dart' as quran;
 
 class JuzGroup {
-  const JuzGroup({required this.juzNumber, required this.entries});
+  const JuzGroup({
+    required this.juzNumber,
+    required this.arabicName,
+    required this.entries,
+  });
 
   final int juzNumber;
+  final String arabicName;
   final List<JuzEntry> entries;
+}
+
+const List<String> arabicJuzNamesWithTashkil = <String>[
+  'الم',
+  'سَيَقُولُ',
+  'تِلْكَ الرُّسُلُ',
+  'لَنْ تَنَالُوا',
+  'وَالْمُحْصَنَاتُ',
+  'لَا يُحِبُّ اللَّهُ',
+  'وَإِذَا سَمِعُوا',
+  'وَلَوْ أَنَّنَا',
+  'قَالَ الْمَلَأُ',
+  'وَاعْلَمُوا',
+  'يَعْتَذِرُونَ',
+  'وَمَا مِنْ دَابَّةٍ',
+  'وَمَا أُبَرِّئُ',
+  'رُبَمَا',
+  'سُبْحَانَ الَّذِي',
+  'قَالَ أَلَمْ',
+  'اقْتَرَبَ',
+  'قَدْ أَفْلَحَ',
+  'وَقَالَ الَّذِينَ',
+  'أَمَّنْ خَلَقَ',
+  'اتْلُ مَا أُوحِيَ',
+  'وَمَنْ يَقْنُتْ',
+  'وَمَا لِيَ',
+  'فَمَنْ أَظْلَمُ',
+  'إِلَيْهِ يُرَدُّ',
+  'حم',
+  'قَالَ فَمَا خَطْبُكُمْ',
+  'قَدْ سَمِعَ',
+  'تَبَارَكَ الَّذِي',
+  'عَمَّ',
+];
+
+String arabicJuzNameWithTashkil(int juzNumber) {
+  return arabicJuzNamesWithTashkil[juzNumber - 1];
 }
 
 class JuzListItem {
@@ -46,6 +88,12 @@ List<JuzGroup> buildJuzGroups(String searchQuery) {
   final List<JuzGroup> groups = <JuzGroup>[];
 
   for (int juzNumber = 1; juzNumber <= 30; juzNumber++) {
+    final String arabicName = arabicJuzNameWithTashkil(juzNumber);
+    final bool juzHeaderMatches =
+        query.isNotEmpty &&
+        (juzNumber.toString() == query ||
+            juzNumber.toString().startsWith(query) ||
+            arabicName.contains(searchQuery.trim()));
     final Map<int, List<int>> juz = quran.getSurahAndVersesFromJuz(juzNumber);
     final List<JuzEntry> entries = <JuzEntry>[];
 
@@ -58,13 +106,19 @@ List<JuzGroup> buildJuzGroups(String searchQuery) {
         endVerse: verses[1],
       );
 
-      if (query.isEmpty || entry.matches(query, juzNumber)) {
+      if (query.isEmpty || juzHeaderMatches || entry.matches(query, juzNumber)) {
         entries.add(entry);
       }
     });
 
     if (entries.isNotEmpty) {
-      groups.add(JuzGroup(juzNumber: juzNumber, entries: entries));
+      groups.add(
+        JuzGroup(
+          juzNumber: juzNumber,
+          arabicName: arabicName,
+          entries: entries,
+        ),
+      );
     }
   }
 

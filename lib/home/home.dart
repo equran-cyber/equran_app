@@ -223,12 +223,33 @@ class _HomePageState extends State<HomePage> {
 
   void _openSettingsFromDrawer() {
     _scaffoldKey.currentState?.closeDrawer();
-    _onItemTapped(_settingsDestinationIndex);
+    _pushDrawerPage(_settingsDestinationIndex);
   }
 
   void _openDownloadsFromDrawer() {
     _scaffoldKey.currentState?.closeDrawer();
-    _onItemTapped(_downloadsDestinationIndex);
+    _pushDrawerPage(_downloadsDestinationIndex);
+  }
+
+  void _pushDrawerPage(int index) {
+    final Destinations destination = _pageDestinations[index];
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) {
+          return Scaffold(
+            appBar: AppBar(
+              toolbarHeight: ResponsiveNav.toolbarHeight(context),
+              title: Text(destination.label),
+              centerTitle: true,
+              iconTheme: IconThemeData(
+                size: ResponsiveNav.iconSize(context),
+              ),
+            ),
+            body: destination.destination,
+          );
+        },
+      ),
+    );
   }
 
   void _onItemTapped(int index) {
